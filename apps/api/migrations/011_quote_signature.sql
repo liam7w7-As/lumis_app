@@ -1,0 +1,2 @@
+ALTER TABLE quotes
+  ADD COLUMN include_signature TINYINT(1) NOT NULL DEFAULT 1;

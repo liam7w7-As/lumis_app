@@ -1,0 +1,18 @@
+{
+  "name": "lumis",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n mobile,api -c blue,green \"npm run dev:mobile\" \"npm run dev:api\"",
+    "dev:mobile": "npm run start --workspace=apps/mobile",
+    "dev:api": "npm run dev --workspace=apps/api",
+    "migrate": "npm run migrate --workspace=apps/api",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

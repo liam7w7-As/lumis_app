@@ -1,0 +1,65 @@
+{
+  "expo": {
+    "name": "Lumis",
+    "slug": "Lumis",
+    "scheme": "lumis",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.lumis.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-sharing",
+      "expo-asset",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Lumis usa tus fotos para adjuntar comprobantes de pago.",
+          "cameraPermission": "Lumis usa la cámara para fotografiar comprobantes de pago.",
+          "microphonePermission": false
+        }
+      ],
+      [
+        "expo-font",
+        {
+          "fonts": [
+            "./assets/fonts/Poppins-Regular.ttf",
+            "./assets/fonts/Poppins-Medium.ttf",
+            "./assets/fonts/Poppins-SemiBold.ttf",
+            "./assets/fonts/Poppins-Bold.ttf"
+          ],
+          "android": {
+            "fonts": [
+              {
+                "fontFamily": "Poppins",
+                "fontDefinitions": [
+                  { "path": "./assets/fonts/Poppins-Regular.ttf", "weight": 400 },
+                  { "path": "./assets/fonts/Poppins-Medium.ttf", "weight": 500 },
+                  { "path": "./assets/fonts/Poppins-SemiBold.ttf", "weight": 600 },
+                  { "path": "./assets/fonts/Poppins-Bold.ttf", "weight": 700 }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    ]
+  }
+}

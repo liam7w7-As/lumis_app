@@ -1,0 +1,55 @@
+CREATE TABLE IF NOT EXISTS business (
+  id TINYINT UNSIGNED NOT NULL PRIMARY KEY DEFAULT 1,
+  nombre VARCHAR(150) NOT NULL DEFAULT 'Mi Negocio',
+  color_primario VARCHAR(9) NOT NULL DEFAULT '#5842F4',
+  moneda VARCHAR(10) NOT NULL DEFAULT 'Bs.',
+  logo_url VARCHAR(255) NULL,
+  terminos_default TEXT NULL,
+  redes_sociales VARCHAR(150) NULL,
+  website VARCHAR(150) NULL,
+  direccion VARCHAR(255) NULL,
+  ciudad VARCHAR(150) NULL,
+  nit VARCHAR(30) NULL,
+  email VARCHAR(190) NULL,
+  telefono VARCHAR(40) NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS branches (
+  id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  user_id INT UNSIGNED NOT NULL,
+  name VARCHAR(150) NOT NULL,
+  address VARCHAR(255) NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_branches_user (user_id),
+  CONSTRAINT fk_branches_user FOREIGN KEY (user_id)
+    REFERENCES users (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+ALTER TABLE quotes
+  ADD COLUMN branch_id INT UNSIGNED NULL,
+  ADD COLUMN version_numero INT NOT NULL DEFAULT 1,
+  ADD COLUMN fecha_vencimiento DATE NULL,
+  ADD COLUMN terminos TEXT NULL,
+  ADD CONSTRAINT fk_quotes_branch FOREIGN KEY (branch_id)
+    REFERENCES branches (id) ON DELETE SET NULL;
+
+ALTER TABLE sales
+  ADD COLUMN branch_id INT UNSIGNED NULL,
+  ADD CONSTRAINT fk_sales_branch FOREIGN KEY (branch_id)
+    REFERENCES branches (id) ON DELETE SET NULL;
+
+ALTER TABLE products
+  ADD COLUMN codigo_interno VARCHAR(50) NULL,
+  ADD COLUMN marca VARCHAR(100) NULL,
+  ADD COLUMN procedencia VARCHAR(100) NULL;
+
+ALTER TABLE quote_items
+  ADD COLUMN codigo_interno VARCHAR(50) NULL,
+  ADD COLUMN marca VARCHAR(100) NULL,
+  ADD COLUMN procedencia VARCHAR(100) NULL;
+
+ALTER TABLE sale_items
+  ADD COLUMN codigo_interno VARCHAR(50) NULL,
+  ADD COLUMN marca VARCHAR(100) NULL,
+  ADD COLUMN procedencia VARCHAR(100) NULL;

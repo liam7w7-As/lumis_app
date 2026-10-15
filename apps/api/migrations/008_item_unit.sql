@@ -1,0 +1,5 @@
+ALTER TABLE quote_items
+  ADD COLUMN unit VARCHAR(20) NOT NULL DEFAULT 'Unidad';
+
+ALTER TABLE sale_items
+  ADD COLUMN unit VARCHAR(20) NOT NULL DEFAULT 'Unidad';

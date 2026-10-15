@@ -1,0 +1,2 @@
+ALTER TABLE products
+  ADD COLUMN unit VARCHAR(20) NOT NULL DEFAULT 'Unidad';
