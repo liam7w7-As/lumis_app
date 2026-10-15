@@ -5,24 +5,25 @@ Hostinger ejecuta `apps/api`; la app de `apps/mobile` se compila con EAS y se in
 
 ## 1. Configuración de Hostinger
 
-En la pantalla de configuración mostrada, usa estos valores relativos a la raíz del repositorio:
+Con `apps/api` como directorio raíz, usa estas rutas relativas a ese paquete:
 
 | Campo | Valor |
 | --- | --- |
 | Preajuste del marco | `Other` |
 | Rama | `main`, con los cambios que quieras publicar |
 | Versión de Node | `22.x` |
-| Directorio raíz | `./` |
+| Directorio raíz | `apps/api` |
 | Comando de compilación | `npm run build` |
 | Gestor de paquetes | `npm` |
-| Directorio de salida | `apps/api/dist` |
-| Archivo de entrada | `apps/api/dist/index.js` |
+| Directorio de salida | `dist` |
+| Archivo de entrada | `dist/index.js` |
 
-El desplegable de Hostinger mostrado sigue leyendo los scripts de la raíz aunque se escriba `apps/api` en Directorio raíz.
-El `package.json` de la raíz ahora incluye `build` y `start`, que delegan en el workspace de la API.
-Sube esos cambios a la rama conectada de GitHub y vuelve a seleccionar el repositorio para actualizar la detección.
-Selecciona `npm run build` (o `build` si solo muestra nombres) y usa `./` como raíz para que todas las rutas sean coherentes.
-El comando compila únicamente la API. `npm start` desde la raíz inicia el servidor del workspace.
+Los `package.json` de la raíz y de la API incluyen `build`, por lo que el comando está disponible aunque el selector consulte la raíz del repositorio.
+La configuración de la tabla corresponde al directorio raíz `apps/api` confirmado en hPanel. No añadas ese prefijo otra vez a las rutas de salida y entrada.
+El build compila la API e instala sus dependencias de producción dentro de `dist/node_modules`, usando el lockfile independiente `apps/api/package-lock.json`.
+También copia las migraciones a `dist/migrations`. El resultado puede ejecutarse fuera del monorepo sin depender del `node_modules` de la raíz.
+Cuando cambien las dependencias de la API, actualiza también su lockfile con `npm install --package-lock-only --prefix apps/api --workspaces=false --include=dev --ignore-scripts`, ejecutado desde la raíz del repositorio.
+Para comprobar el paquete aislado: `npm run build` y `npm run test:deployment --workspace=apps/api`.
 Hostinger permite indicar manualmente la salida y el archivo de entrada con el preajuste Other. [Documentación de Hostinger](https://www.hostinger.com/support/how-to-deploy-a-nodejs-website-in-hostinger/).
 
 En **Variables de entorno → Añadir**, configura:
@@ -54,7 +55,7 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
 
 Con los valores completos, continúa el despliegue y revisa el registro de compilación y arranque.
 El servidor aplica automáticamente las migraciones SQL al arrancar. Si la base ya tiene información, respáldala antes de desplegar.
-La carpeta `migrations` debe conservarse junto a `dist` en la carpeta de la API; copiar únicamente los JavaScript compilados no basta.
+Conserva la carpeta `dist` completa, incluidos `node_modules`, `migrations`, `package.json` y `package-lock.json`.
 No ejecutes el script `seed` en producción: introduce datos de ejemplo.
 
 ## 2. Archivos persistentes y acceso
@@ -78,7 +79,8 @@ Si falla el despliegue:
 - `Missing script: build` o el comando no aparece: comprueba que el commit de GitHub incluye el script `build` en el `package.json` de la raíz y vuelve a cargar la selección del repositorio.
 - Errores de tipos o `tsc`: revisa que se instalaron las dependencias de desarrollo antes de compilar.
 - `Access denied`: revisa usuario, contraseña y asignación de la base MySQL.
-- `ENOENT ... migrations`: falta la carpeta de migraciones junto a `dist`.
+- `Cannot find module 'cors'` u otra dependencia: verifica que el despliegue use el build actualizado y que incluya `dist/node_modules`; vuelve a desplegar el último commit.
+- `ENOENT ... migrations`: falta la carpeta `dist/migrations` que genera el build.
 - `Cannot find module ... index.js`: revisa la ruta del archivo de entrada y la salida real del build en el registro.
 - Error al crear la carpeta de subidas: revisa la ruta y los permisos de `UPLOADS_DIR`.
 

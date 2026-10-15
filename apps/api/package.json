@@ -23,8 +23,9 @@
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc",
+    "build": "node scripts/build.cjs",
     "test": "tsx --test tests/*.test.ts",
+    "test:deployment": "node --test tests/deployment.test.cjs",
     "start": "node dist/index.js",
     "migrate": "tsx src/db/migrate.ts",
     "seed": "tsx src/db/seed.ts",

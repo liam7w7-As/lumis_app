@@ -1,12 +1,15 @@
 import fs from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import mysql, { RowDataPacket } from 'mysql2/promise';
 import { config } from '../config';
 
-// Se resuelve desde __dirname y no desde process.cwd(): en Hostinger el cwd no
-// es necesariamente la raíz del paquete. Compilado queda en dist/db/, con tsx en
-// src/db/ — en ambos casos dos niveles arriba está apps/api/migrations.
-const MIGRATIONS_DIR = path.join(__dirname, '..', '..', 'migrations');
+// El build incluye SQL dentro de dist; en desarrollo se usa apps/api/migrations.
+// Ambas rutas se resuelven desde el módulo, independientemente del cwd del hosting.
+const packagedMigrations = path.join(__dirname, '..', 'migrations');
+const MIGRATIONS_DIR = existsSync(packagedMigrations)
+  ? packagedMigrations
+  : path.join(__dirname, '..', '..', 'migrations');
 
 export async function runMigrations(): Promise<string[]> {
   const { host, port, user, password, database } = config.db;
