@@ -305,6 +305,7 @@ export function SalesScreen() {
               onVoid={() => handleVoid(item)}
               onDelete={() => handleDelete(item)}
               onDuplicate={() => handleDuplicate(item)}
+              onPreview={() => { closeRow(); router.push("/pos/" + item.id + "/preview"); }}
             />
           )}
           ListEmptyComponent={

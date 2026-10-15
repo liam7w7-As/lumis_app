@@ -1,7 +1,10 @@
 import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useAuth } from '../context/AuthContext';
+import { mediaSource } from '../lib/api';
 import { useTheme } from '../theme/ThemeContext';
-import { formatDate, formatMoney } from '../lib/format';
+import { formatDate } from '../lib/format';
+import { useMoney } from '../context/BusinessContext';
 import type { SaleEstadoPago, SaleMetodoPago, SalePayment } from '../lib/api';
 
 interface SalePaymentSectionProps {
@@ -71,6 +74,8 @@ export function SalePaymentSection({
   busyPayment,
 }: SalePaymentSectionProps) {
   const { colors } = useTheme();
+  const formatMoney = useMoney();
+  const { token } = useAuth();
   const saldo = Math.max(total - totalPagado, 0);
   const progress = total > 0 ? Math.min((totalPagado / total) * 100, 100) : 0;
 
@@ -125,7 +130,7 @@ export function SalePaymentSection({
           {receiptUri ? <ReadyPill /> : <RequiredPill />}
         </View>
         {receiptUri ? (
-          <Image source={{ uri: receiptUri }} style={styles.thumb} resizeMode="cover" />
+          <Image source={mediaSource(receiptUri, token)} style={styles.thumb} resizeMode="cover" />
         ) : null}
         {receiptButtons(
           receiptUri ? { library: 'Cambiar', camera: 'Otra foto' } : { library: 'Galería', camera: 'Cámara' },
@@ -163,7 +168,7 @@ export function SalePaymentSection({
           Foto del comprobante (opcional)
         </Text>
         {receiptUri ? (
-          <Image source={{ uri: receiptUri }} style={styles.thumb} resizeMode="cover" />
+          <Image source={mediaSource(receiptUri, token)} style={styles.thumb} resizeMode="cover" />
         ) : null}
         <View style={styles.receiptRow}>
           <Pressable

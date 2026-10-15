@@ -1,9 +1,10 @@
 import { Router } from 'express';
+import { registerItemActions } from './itemActions';
 import { PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import { z } from 'zod';
 import { pool } from '../db/pool';
 import { badRequest, conflict, notFound } from '../middlewares/errorHandler';
-import { AuthRequest, requireAuth } from '../middlewares/requireAuth';
+import { AuthRequest, requireAuth, scopeToBusiness } from '../middlewares/requireAuth';
 
 interface QuoteRow extends RowDataPacket {
   id: number;
@@ -56,8 +57,10 @@ async function rollbackQuiet(conn: PoolConnection): Promise<void> {
 }
 
 export const quotesRouter = Router();
+quotesRouter.use(requireAuth, scopeToBusiness('quotes'));
+registerItemActions(quotesRouter, 'quote');
 
-quotesRouter.get('/', requireAuth, async (_req: AuthRequest, res, next) => {
+quotesRouter.get('/', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const [rows] = await pool.query<QuoteRow[]>(
       `SELECT q.id, q.client_id, c.name AS client_name, q.status, q.total,
@@ -65,8 +68,10 @@ quotesRouter.get('/', requireAuth, async (_req: AuthRequest, res, next) => {
        FROM quotes q
        LEFT JOIN clients c ON c.id = q.client_id
        JOIN users u ON u.id = q.user_id
+       WHERE q.business_id = ?
        ORDER BY q.created_at DESC, q.id DESC
        LIMIT 200`,
+      [req.businessId],
     );
     res.json({
       quotes: rows.map((r) => ({
@@ -107,9 +112,9 @@ const createQuoteSchema = z.object({
     .max(200),
 });
 
-quotesRouter.get('/next-number', requireAuth, async (_req: AuthRequest, res, next) => {
+quotesRouter.get('/next-number', requireAuth, async (req: AuthRequest, res, next) => {
   try {
-    const [rows] = await pool.query<RowDataPacket[]>('SELECT MAX(id) AS maxId FROM quotes');
+    const [rows] = await pool.query<RowDataPacket[]>('SELECT MAX(id) AS maxId FROM quotes WHERE business_id = ?', [req.businessId]);
     const maxId = (rows[0]?.maxId as number | null) ?? 0;
     res.json({ nextNumber: maxId + 1 });
   } catch (err) {
@@ -141,7 +146,7 @@ quotesRouter.get('/:id', requireAuth, async (req: AuthRequest, res, next) => {
     const [items] = await pool.query<RowDataPacket[]>(
       `SELECT id, product_id, description, quantity, unit, unit_price, subtotal,
               codigo_interno, marca, procedencia
-       FROM quote_items WHERE quote_id = ? ORDER BY id`,
+       FROM quote_items WHERE quote_id = ? ORDER BY sort_order, id`,
       [id],
     );
     res.json({
@@ -246,9 +251,9 @@ quotesRouter.post('/', requireAuth, async (req: AuthRequest, res, next) => {
     const total = round2(lines.reduce((sum, l) => sum + l.subtotal, 0));
 
     const [ins] = await conn.query<ResultSetHeader>(
-      `INSERT INTO quotes (user_id, client_id, branch_id, status, notes, total)
-       VALUES (?, ?, ?, 'borrador', ?, ?)`,
-      [req.userId, clientId, branchId, notes, total],
+      `INSERT INTO quotes (business_id, user_id, client_id, branch_id, status, notes, total)
+       VALUES (?, ?, ?, ?, 'borrador', ?, ?)`,
+      [req.businessId, req.userId, clientId, branchId, notes, total],
     );
     for (const l of lines) {
       await conn.query(
@@ -289,14 +294,14 @@ quotesRouter.post('/:id/duplicate', requireAuth, async (req: AuthRequest, res, n
       throw notFound('Cotización no encontrada');
     }
     const [ins] = await conn.query<ResultSetHeader>(
-      `INSERT INTO quotes (user_id, client_id, branch_id, status, notes, total)
-       VALUES (?, ?, ?, 'borrador', ?, ?)`,
-      [req.userId, quote.client_id, quote.branch_id, quote.notes, quote.total],
+      `INSERT INTO quotes (business_id, user_id, client_id, branch_id, status, notes, total)
+       VALUES (?, ?, ?, ?, 'borrador', ?, ?)`,
+      [req.businessId, req.userId, quote.client_id, quote.branch_id, quote.notes, quote.total],
     );
     const [items] = await conn.query<RowDataPacket[]>(
       `SELECT product_id, description, quantity, unit, unit_price, subtotal,
               codigo_interno, marca, procedencia
-       FROM quote_items WHERE quote_id = ?`,
+       FROM quote_items WHERE quote_id = ? ORDER BY sort_order, id`,
       [id],
     );
     for (const it of items) {

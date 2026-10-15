@@ -4,7 +4,7 @@ import { DarkTheme, DefaultTheme, Stack, ThemeProvider as NavigationThemeProvide
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import * as SystemUI from 'expo-system-ui';
-import { BrandColorSync } from '../src/components/BrandColorSync';
+import { BusinessProvider } from '../src/context/BusinessContext';
 import { AuthProvider } from '../src/context/AuthContext';
 import { ThemeProvider, useTheme } from '../src/theme/ThemeContext';
 
@@ -43,7 +43,6 @@ function ThemedNavigator() {
   return (
     <NavigationThemeProvider value={navigationTheme}>
       <View style={[styles.root, { backgroundColor: colors.background }]} onLayout={SplashScreen.hide}>
-        <BrandColorSync />
         <StatusBar style={dark ? 'light' : 'dark'} />
         <Stack
           screenOptions={{
@@ -61,7 +60,7 @@ export default function RootLayout() {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <ThemedNavigator />
+        <BusinessProvider><ThemedNavigator /></BusinessProvider>
       </AuthProvider>
     </ThemeProvider>
   );

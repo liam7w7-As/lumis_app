@@ -3,7 +3,7 @@ import { ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import { z } from 'zod';
 import { pool } from '../db/pool';
 import { notFound } from '../middlewares/errorHandler';
-import { AuthRequest, requireAuth } from '../middlewares/requireAuth';
+import { AuthRequest, requireAuth, scopeToBusiness } from '../middlewares/requireAuth';
 
 const createProductSchema = z.object({
   name: z.string().trim().min(1, 'El nombre es obligatorio').max(150),
@@ -17,13 +17,14 @@ const createProductSchema = z.object({
 });
 
 export const productsRouter = Router();
+productsRouter.use(requireAuth, scopeToBusiness('products'));
 
 productsRouter.get('/', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const search = String(req.query.search ?? '').trim();
-    const params: unknown[] = [req.userId];
+    const params: unknown[] = [req.businessId];
     let sql =
-      'SELECT id, name, description, price, stock, unit, codigo_interno, marca, procedencia FROM products WHERE user_id = ?';
+      'SELECT id, name, description, price, stock, unit, codigo_interno, marca, procedencia FROM products WHERE business_id = ?';
     if (search.length > 0) {
       sql += ' AND name LIKE ?';
       params.push(`%${search}%`);
@@ -53,9 +54,9 @@ productsRouter.post('/', requireAuth, async (req: AuthRequest, res, next) => {
     const { name, description, price, stock, unit, codigoInterno, marca, procedencia } =
       createProductSchema.parse(req.body);
     const [ins] = await pool.query<ResultSetHeader>(
-      `INSERT INTO products (user_id, name, description, price, stock, unit, codigo_interno, marca, procedencia)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [req.userId, name, description, price, stock, unit, codigoInterno, marca, procedencia],
+      `INSERT INTO products (business_id, user_id, name, description, price, stock, unit, codigo_interno, marca, procedencia)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [req.businessId, req.userId, name, description, price, stock, unit, codigoInterno, marca, procedencia],
     );
     res.status(201).json({
       product: { id: ins.insertId, name, description, price, stock, unit, codigoInterno, marca, procedencia },
@@ -72,8 +73,8 @@ productsRouter.delete('/:id', requireAuth, async (req: AuthRequest, res, next) =
       throw notFound('Producto no encontrado');
     }
     const [rows] = await pool.query<RowDataPacket[]>(
-      'SELECT id FROM products WHERE id = ? AND user_id = ?',
-      [id, req.userId],
+      'SELECT id FROM products WHERE id = ? AND business_id = ?',
+      [id, req.businessId],
     );
     if (rows.length === 0) {
       throw notFound('Producto no encontrado');

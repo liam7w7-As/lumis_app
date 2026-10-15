@@ -5,7 +5,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { SwipeRow, type SwipeRowHandle } from './SwipeRow';
 import { useTheme } from '../theme/ThemeContext';
 import { gradientFor } from '../lib/brandColors';
-import { avatarColor, formatDate, formatMoney, initials } from '../lib/format';
+import { avatarColor, formatDate, initials } from '../lib/format';
+import { useMoney } from '../context/BusinessContext';
 import type { Quote, QuoteStatus } from '../lib/api';
 
 export const STATUS_LABEL: Record<QuoteStatus, string> = {
@@ -29,7 +30,7 @@ interface QuoteCardProps {
   onPress?: () => void;
   onOpened?: (ref: SwipeRowHandle | null) => void;
   onGenerateSale: () => void;
-  onDeliveryNote: () => void;
+  onPreview: () => void;
   onDelete: () => void;
   onDuplicate: () => void;
 }
@@ -60,11 +61,12 @@ export function QuoteCard({
   onPress,
   onOpened,
   onGenerateSale,
-  onDeliveryNote,
+  onPreview,
   onDelete,
   onDuplicate,
 }: QuoteCardProps) {
   const { colors } = useTheme();
+  const formatMoney = useMoney();
   const [scale] = useState(() => new Animated.Value(1));
   const swipeRef = useRef<SwipeRowHandle>(null);
   const statusColor = quote.status === 'convertida' ? colors.primary : STATUS_COLOR[quote.status];
@@ -83,8 +85,8 @@ export function QuoteCard({
       <ActionButton label="Generar venta" onPress={onGenerateSale} color={colors.onPrimary}>
         <Text style={[styles.dollar, { color: colors.onPrimary }]}>$</Text>
       </ActionButton>
-      <ActionButton label="N. entrega" onPress={onDeliveryNote} color={colors.onPrimary}>
-        <Ionicons name="receipt-outline" size={24} color={colors.onPrimary} />
+      <ActionButton label="Vista previa" onPress={onPreview} color={colors.onPrimary}>
+        <Ionicons name="document-text-outline" size={24} color={colors.onPrimary} />
       </ActionButton>
       <ActionButton label="Borrar" onPress={onDelete} color={colors.onPrimary}>
         <Ionicons name="trash-outline" size={24} color={colors.onPrimary} />

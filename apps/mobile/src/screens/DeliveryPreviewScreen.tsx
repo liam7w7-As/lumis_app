@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   Alert,
   Pressable,
   ScrollView,
@@ -16,7 +17,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
-import { ApiError, api, mediaUrl, type Business, type SaleDetail } from '../lib/api';
+import { api, mediaUrl, type Business, type SaleDetail } from '../lib/api';
 import { contrastText, forBackground } from '../lib/brandColors';
 import { formatMoney } from '../lib/format';
 import { monto as montoLetras } from '../lib/numeroALetras';
@@ -65,7 +66,8 @@ const DEFAULT_BUSINESS = {
 
 type BusyAction = 'print' | 'download' | 'share' | null;
 
-export function DeliveryPreviewScreen({ saleId }: { saleId: number }) {
+export function DeliveryPreviewScreen({ saleId, documentType = 'delivery' }: { saleId: number; documentType?: 'sale' | 'delivery' }) {
+  const title = documentType === 'sale' ? 'Nota de venta' : 'Nota de entrega';
   const { token } = useAuth();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
@@ -85,10 +87,11 @@ export function DeliveryPreviewScreen({ saleId }: { saleId: number }) {
     try {
       const [{ sale: data }, biz, fts] = await Promise.all([
         api.saleDetail(saleId, token),
-        api.business(token).then((r) => r.business).catch(() => null),
+        api.business(token).then((r) => r.business),
         loadDocFonts(),
       ]);
       const imgs = await loadDocImages({
+        token,
         logoUrl: mediaUrl(biz?.logo_url ?? null),
         selloUrl: mediaUrl(biz?.sello_url ?? null),
       });
@@ -97,7 +100,7 @@ export function DeliveryPreviewScreen({ saleId }: { saleId: number }) {
       setImages(imgs);
       setFonts(fts);
     } catch (err) {
-      Alert.alert('Error', err instanceof ApiError ? err.message : 'No se pudo cargar');
+      Alert.alert('Error', err instanceof Error ? err.message : 'No se pudo cargar');
       router.back();
     } finally {
       setLoading(false);
@@ -122,6 +125,7 @@ export function DeliveryPreviewScreen({ saleId }: { saleId: number }) {
       throw new Error('Sin venta');
     }
     return buildDeliveryNoteHtml({
+      documentType,
       sale,
       business: {
         nombre: brand.nombre,
@@ -175,8 +179,8 @@ export function DeliveryPreviewScreen({ saleId }: { saleId: number }) {
     if (!base64) {
       throw new Error('No se pudo generar el PDF');
     }
-    const fileName = `nota-entrega-${sale.id}.pdf`;
-    const dir = new Directory(Paths.document, 'Notas de entrega');
+    const fileName = `nota-${documentType === 'sale' ? 'venta' : 'entrega'}-${sale.id}.pdf`;
+    const dir = new Directory(Paths.document, documentType === 'sale' ? 'Notas de venta' : 'Notas de entrega');
     if (!dir.exists) {
       dir.create({ intermediates: true });
     }
@@ -199,7 +203,7 @@ export function DeliveryPreviewScreen({ saleId }: { saleId: number }) {
       }
       await Sharing.shareAsync(uri, {
         mimeType: 'application/pdf',
-        dialogTitle: `Nota de entrega #${sale.id}`,
+        dialogTitle: `${title} #${sale.id}`,
       });
     } catch (err) {
       Alert.alert('Error', err instanceof Error ? err.message : 'No se pudo descargar');
@@ -219,7 +223,7 @@ export function DeliveryPreviewScreen({ saleId }: { saleId: number }) {
       }
       await Sharing.shareAsync(uri, {
         mimeType: 'application/pdf',
-        dialogTitle: `Nota de entrega #${sale.id}`,
+        dialogTitle: `${title} #${sale.id}`,
       });
     } catch (err) {
       Alert.alert('Error', err instanceof Error ? err.message : 'No se pudo compartir');
@@ -258,16 +262,16 @@ export function DeliveryPreviewScreen({ saleId }: { saleId: number }) {
             {/* MASTHEAD: logo/negocio izq | título/meta derecha */}
             <View style={styles.masthead}>
               <View style={styles.brandSide}>
-                <Text style={styles.logoText}>{brand.nombre}</Text>
+                <View>{images?.logo ? <Image source={{ uri: images.logo }} resizeMode="contain" style={{ width: 160, height: 65, backgroundColor: "#fff" }} /> : <Text style={styles.logoText}>{brand.nombre}</Text>}</View>
                 <View style={styles.clientSection}>
-                  <Text style={styles.clientLabel}>NOTA DE ENTREGA PARA:</Text>
+                  <Text style={styles.clientLabel}>{title.toUpperCase()} PARA:</Text>
                   <Text style={styles.clientName} numberOfLines={2}>
                     {sale.client?.name ?? 'Sin Cliente'}
                   </Text>
                 </View>
               </View>
               <View style={styles.metaSide}>
-                <Text style={[styles.docTitle, { color: brand.color }]}>NOTA DE ENTREGA</Text>
+                <Text style={[styles.docTitle, { color: brand.color }]}>{title.toUpperCase()}</Text>
                 <View style={styles.metaTable}>
                   <MetaRow label="No:" value={String(sale.id)} />
                   {sale.branchName && <MetaRow label="Sucursal:" value={sale.branchName} />}
@@ -315,10 +319,10 @@ export function DeliveryPreviewScreen({ saleId }: { saleId: number }) {
                   {it.unit || 'Unid.'}
                 </Text>
                 <Text style={[styles.td, styles.colPrice, styles.tdSmall]}>
-                  {formatMoney(it.unitPrice)}
+                  {formatMoney(it.unitPrice, brand.moneda)}
                 </Text>
                 <Text style={[styles.td, styles.colSub, styles.tdBold]}>
-                  {formatMoney(it.subtotal)}
+                  {formatMoney(it.subtotal, brand.moneda)}
                 </Text>
               </View>
             ))}
@@ -327,12 +331,12 @@ export function DeliveryPreviewScreen({ saleId }: { saleId: number }) {
             <View style={styles.totalsWrap}>
               <View style={styles.subtotalRow}>
                 <Text style={styles.subtotalLabel}>Sub total:</Text>
-                <Text style={styles.subtotalValue}>{formatMoney(sale.total)}</Text>
+                <Text style={styles.subtotalValue}>{formatMoney(sale.total, brand.moneda)}</Text>
               </View>
               <View style={[styles.totalBar, { backgroundColor: brand.color }]}>
                 <Text style={[styles.totalLabel, { color: onBrand }]}>TOTAL</Text>
                 <Text style={[styles.totalValue, { color: onBrand }]}>
-                  {brand.moneda} {formatMoney(sale.total)}
+                  {formatMoney(sale.total, brand.moneda)}
                 </Text>
               </View>
               <Text style={styles.literal}>

@@ -16,7 +16,7 @@ import { useAuth } from '../context/AuthContext';
 import { useDraft } from '../context/DraftContext';
 import { useTheme } from '../theme/ThemeContext';
 import { ApiError, api, type Branch } from '../lib/api';
-import { formatMoney } from '../lib/format';
+import { useMoney } from '../context/BusinessContext';
 import { PrimaryButton } from '../components/PrimaryButton';
 
 function todayLabel(): string {
@@ -30,6 +30,7 @@ function todayLabel(): string {
 export function NewQuoteScreen() {
   const { user, token } = useAuth();
   const { colors } = useTheme();
+  const formatMoney = useMoney();
   const insets = useSafeAreaInsets();
   const { client, setClient, items, removeItem, clear } = useDraft();
   const [nextNumber, setNextNumber] = useState<number | null>(null);
@@ -114,13 +115,6 @@ export function NewQuoteScreen() {
           <Text style={[styles.title, { color: colors.text }]}>Nueva cotización</Text>
           <View style={styles.headerActions}>
             <Pressable
-              style={[styles.circleButton, { backgroundColor: colors.surface }]}
-              onPress={() => Alert.alert('Foto', 'Próximamente')}
-              hitSlop={8}
-            >
-              <Ionicons name="camera-outline" size={20} color={colors.text} />
-            </Pressable>
-            <Pressable
               style={[styles.circleButton, { backgroundColor: colors.primary }]}
               onPress={save}
               disabled={saving}
@@ -129,7 +123,7 @@ export function NewQuoteScreen() {
               {saving ? (
                 <ActivityIndicator size="small" color={colors.onPrimary} />
               ) : (
-                <Ionicons name="checkmark" size={22} color={colors.onPrimary} />
+                <Text style={{ color: colors.onPrimary, fontWeight: "700" }}>Guardar</Text>
               )}
             </Pressable>
           </View>
@@ -300,7 +294,8 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   circleButton: {
-    width: 44,
+    minWidth: 76,
+    paddingHorizontal: 12,
     height: 44,
     borderRadius: 22,
     alignItems: 'center',

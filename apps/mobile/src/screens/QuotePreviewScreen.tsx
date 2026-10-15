@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   Alert,
   Pressable,
   ScrollView,
@@ -16,7 +17,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
-import { ApiError, api, mediaUrl, type Business, type QuoteDetail } from '../lib/api';
+import { api, mediaUrl, type Business, type QuoteDetail } from '../lib/api';
 import { contrastText, forBackground } from '../lib/brandColors';
 import { formatMoney } from '../lib/format';
 import { monto as montoLetras } from '../lib/numeroALetras';
@@ -95,6 +96,7 @@ export function QuotePreviewScreen({ quoteId }: { quoteId: number }) {
         loadDocFonts(),
       ]);
       const imgs = await loadDocImages({
+        token,
         logoUrl: mediaUrl(biz?.logo_url ?? null),
         selloUrl: mediaUrl(biz?.sello_url ?? null),
       });
@@ -105,7 +107,7 @@ export function QuotePreviewScreen({ quoteId }: { quoteId: number }) {
       setFonts(fts);
     } catch (err) {
       if (request === requestId.current) {
-        setError(err instanceof ApiError ? err.message : 'No se pudo cargar la vista previa');
+        setError(err instanceof Error ? err.message : 'No se pudo cargar la vista previa');
       }
     } finally {
       if (request === requestId.current) setLoading(false);
@@ -274,7 +276,7 @@ export function QuotePreviewScreen({ quoteId }: { quoteId: number }) {
             {/* MASTHEAD: logo/negocio izq | título/meta derecha */}
             <View style={styles.masthead}>
               <View style={styles.brandSide}>
-                <Text style={styles.logoText}>{brand.nombre}</Text>
+                <View>{images?.logo ? <Image source={{ uri: images.logo }} resizeMode="contain" style={{ width: 160, height: 65, backgroundColor: "#fff" }} /> : <Text style={styles.logoText}>{brand.nombre}</Text>}</View>
                 <View style={styles.clientSection}>
                   <Text style={styles.clientLabel}>COTIZACIÓN PARA:</Text>
                   <Text style={styles.clientName} numberOfLines={2}>

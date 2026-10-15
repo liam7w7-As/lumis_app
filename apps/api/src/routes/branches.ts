@@ -3,7 +3,7 @@ import { ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import { z } from 'zod';
 import { pool } from '../db/pool';
 import { notFound } from '../middlewares/errorHandler';
-import { AuthRequest, requireAuth } from '../middlewares/requireAuth';
+import { AuthRequest, requireAuth, requireAdmin, scopeToBusiness } from '../middlewares/requireAuth';
 
 const createBranchSchema = z.object({
   name: z.string().trim().min(2, 'El nombre es muy corto').max(150),
@@ -15,12 +15,13 @@ const updateBranchSchema = z.object({
 });
 
 export const branchesRouter = Router();
+branchesRouter.use(requireAuth, scopeToBusiness('branches'));
 
 branchesRouter.get('/', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const [rows] = await pool.query<RowDataPacket[]>(
-      'SELECT id, name, address FROM branches WHERE user_id = ? ORDER BY id',
-      [req.userId],
+      'SELECT id, name, address FROM branches WHERE business_id = ? ORDER BY id',
+      [req.businessId],
     );
     res.json({
       branches: rows.map((r) => ({
@@ -34,12 +35,12 @@ branchesRouter.get('/', requireAuth, async (req: AuthRequest, res, next) => {
   }
 });
 
-branchesRouter.post('/', requireAuth, async (req: AuthRequest, res, next) => {
+branchesRouter.post('/', requireAuth, requireAdmin, async (req: AuthRequest, res, next) => {
   try {
     const { name, address } = createBranchSchema.parse(req.body);
     const [ins] = await pool.query<ResultSetHeader>(
-      'INSERT INTO branches (user_id, name, address) VALUES (?, ?, ?)',
-      [req.userId, name, address ?? null],
+      'INSERT INTO branches (business_id, user_id, name, address) VALUES (?, ?, ?, ?)',
+      [req.businessId, req.userId, name, address ?? null],
     );
     res.status(201).json({ branch: { id: ins.insertId, name, address: address ?? null } });
   } catch (err) {
@@ -47,7 +48,7 @@ branchesRouter.post('/', requireAuth, async (req: AuthRequest, res, next) => {
   }
 });
 
-branchesRouter.patch('/:id', requireAuth, async (req: AuthRequest, res, next) => {
+branchesRouter.patch('/:id', requireAuth, requireAdmin, async (req: AuthRequest, res, next) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) {
@@ -55,8 +56,8 @@ branchesRouter.patch('/:id', requireAuth, async (req: AuthRequest, res, next) =>
     }
     const { name } = updateBranchSchema.parse(req.body);
     const [result] = await pool.query<ResultSetHeader>(
-      'UPDATE branches SET name = ? WHERE id = ? AND user_id = ?',
-      [name, id, req.userId],
+      'UPDATE branches SET name = ? WHERE id = ? AND business_id = ?',
+      [name, id, req.businessId],
     );
     if (result.affectedRows === 0) {
       throw notFound('Sucursal no encontrada');
@@ -67,7 +68,7 @@ branchesRouter.patch('/:id', requireAuth, async (req: AuthRequest, res, next) =>
   }
 });
 
-branchesRouter.delete('/:id', requireAuth, async (req: AuthRequest, res, next) => {
+branchesRouter.delete('/:id', requireAuth, requireAdmin, async (req: AuthRequest, res, next) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) {
@@ -76,8 +77,8 @@ branchesRouter.delete('/:id', requireAuth, async (req: AuthRequest, res, next) =
     // Las ventas y cotizaciones que la usaban quedan con branch_id NULL
     // (FK ON DELETE SET NULL), así que el borrado es seguro.
     const [result] = await pool.query<ResultSetHeader>(
-      'DELETE FROM branches WHERE id = ? AND user_id = ?',
-      [id, req.userId],
+      'DELETE FROM branches WHERE id = ? AND business_id = ?',
+      [id, req.businessId],
     );
     if (result.affectedRows === 0) {
       throw notFound('Sucursal no encontrada');

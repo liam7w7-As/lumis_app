@@ -18,7 +18,7 @@ import { useAuth } from '../context/AuthContext';
 import { useDraft } from '../context/DraftContext';
 import { useTheme } from '../theme/ThemeContext';
 import { ApiError, api, type Product } from '../lib/api';
-import { formatMoney } from '../lib/format';
+import { useMoney, useBusiness } from '../context/BusinessContext';
 import { DEFAULT_UNITS, loadUnits, saveUnits } from '../lib/units';
 import { AnimatedInput } from '../components/AnimatedInput';
 import { UnitSheet } from '../components/UnitSheet';
@@ -30,6 +30,8 @@ function parseNumber(raw: string): number {
 export function AddItemScreen({ quoteId, saleId }: { quoteId?: number; saleId?: number }) {
   const { token, user } = useAuth();
   const { colors } = useTheme();
+  const formatMoney = useMoney();
+  const { business } = useBusiness();
   const insets = useSafeAreaInsets();
   const { addItem } = useDraft();
 
@@ -237,7 +239,7 @@ export function AddItemScreen({ quoteId, saleId }: { quoteId?: number; saleId?: 
             {saving ? (
               <ActivityIndicator size="small" color={colors.onPrimary} />
             ) : (
-              <Ionicons name="checkmark" size={22} color={colors.onPrimary} />
+              <Text style={{ color: colors.onPrimary, fontWeight: "700" }}>Guardar</Text>
             )}
           </Pressable>
         </View>
@@ -252,7 +254,7 @@ export function AddItemScreen({ quoteId, saleId }: { quoteId?: number; saleId?: 
 
         <View style={styles.formRow}>
           <View style={styles.priceWrap}>
-            <Text style={[styles.prefix, { color: colors.muted }]}>Bs.</Text>
+            <Text style={[styles.prefix, { color: colors.muted }]}>{business?.moneda ?? 'Bs.'}</Text>
             <TextInput
               style={[styles.miniInput, { color: colors.text, borderBottomColor: colors.border }]}
               placeholder="0"
@@ -357,7 +359,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   circleButton: {
-    width: 44,
+    minWidth: 76,
+    paddingHorizontal: 12,
     height: 44,
     borderRadius: 22,
     alignItems: 'center',

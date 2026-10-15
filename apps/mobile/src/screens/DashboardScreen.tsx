@@ -1,8 +1,9 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useBusiness } from '../context/BusinessContext';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
 import { gradientFor } from '../lib/brandColors';
@@ -43,7 +44,16 @@ function StatCard({
 
 export function DashboardScreen() {
   const { user, token } = useAuth();
-  const { colors, dark, toggle } = useTheme();
+  const { colors, dark } = useTheme();
+  const { changeMode } = useBusiness();
+  const [changingMode, setChangingMode] = useState(false);
+  const toggle = async () => {
+    if (changingMode) return;
+    setChangingMode(true);
+    try { await changeMode(dark ? 'light' : 'dark'); }
+    catch (err) { Alert.alert('Apariencia', err instanceof Error ? err.message : 'No se pudo guardar'); }
+    finally { setChangingMode(false); }
+  };
   const insets = useSafeAreaInsets();
   const [period, setPeriod] = useState<DashboardPeriod>('semana');
   const [data, setData] = useState<DashboardStats | null>(null);
@@ -96,6 +106,7 @@ export function DashboardScreen() {
           <View style={styles.headerActions}>
             <Pressable
               onPress={toggle}
+              disabled={changingMode}
               hitSlop={10}
               accessibilityRole="button"
               accessibilityLabel={dark ? 'Activar modo claro' : 'Activar modo oscuro'}

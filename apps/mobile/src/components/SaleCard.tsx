@@ -5,7 +5,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { SwipeRow, type SwipeRowHandle } from './SwipeRow';
 import { useTheme } from '../theme/ThemeContext';
 import { gradientFor } from '../lib/brandColors';
-import { formatDate, formatMoney } from '../lib/format';
+import { formatDate } from '../lib/format';
+import { useMoney } from '../context/BusinessContext';
 import type { Sale, SaleEstadoPago } from '../lib/api';
 
 export const SALE_STATUS_LABEL: Record<SaleEstadoPago, string> = {
@@ -25,6 +26,7 @@ interface SaleCardProps {
   onPress?: () => void;
   onOpened?: (ref: SwipeRowHandle | null) => void;
   onVoid: () => void;
+  onPreview: () => void;
   onDelete: () => void;
   onDuplicate: () => void;
 }
@@ -55,10 +57,12 @@ export function SaleCard({
   onPress,
   onOpened,
   onVoid,
+  onPreview,
   onDelete,
   onDuplicate,
 }: SaleCardProps) {
   const { colors } = useTheme();
+  const formatMoney = useMoney();
   const [scale] = useState(() => new Animated.Value(1));
   const swipeRef = useRef<SwipeRowHandle>(null);
   const statusColor = SALE_STATUS_COLOR[sale.estadoPago];
@@ -75,6 +79,9 @@ export function SaleCard({
       end={{ x: 1, y: 1 }}
       style={styles.actions}
     >
+      <ActionButton label="Vista previa" onPress={onPreview} color={colors.onPrimary}>
+        <Ionicons name="document-text-outline" size={24} color={colors.onPrimary} />
+      </ActionButton>
       <ActionButton label="Anular venta" onPress={onVoid} color={colors.onPrimary}>
         <Text style={[styles.dollar, { color: colors.onPrimary }]}>$</Text>
       </ActionButton>

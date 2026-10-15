@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import { z } from 'zod';
 import { pool } from '../db/pool';
-import { AuthRequest, requireAuth } from '../middlewares/requireAuth';
+import { AuthRequest, requireAuth, scopeToBusiness } from '../middlewares/requireAuth';
 
 const emptyToNull = (v: string | null | undefined) =>
   v && v.trim().length > 0 ? v.trim() : null;
@@ -15,12 +15,13 @@ const createClientSchema = z.object({
 });
 
 export const clientsRouter = Router();
+clientsRouter.use(requireAuth, scopeToBusiness('clients'));
 
 clientsRouter.get('/', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const [rows] = await pool.query<RowDataPacket[]>(
-      'SELECT id, name, phone, email FROM clients WHERE user_id = ? ORDER BY name LIMIT 200',
-      [req.userId],
+      'SELECT id, name, phone, email FROM clients WHERE business_id = ? ORDER BY name LIMIT 200',
+      [req.businessId],
     );
     res.json({
       clients: rows.map((r) => ({
@@ -39,8 +40,8 @@ clientsRouter.post('/', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const { name, phone, email, address } = createClientSchema.parse(req.body);
     const [ins] = await pool.query<ResultSetHeader>(
-      'INSERT INTO clients (user_id, name, phone, email, address) VALUES (?, ?, ?, ?, ?)',
-      [req.userId, name, phone, email, address],
+      'INSERT INTO clients (business_id, user_id, name, phone, email, address) VALUES (?, ?, ?, ?, ?, ?)',
+      [req.businessId, req.userId, name, phone, email, address],
     );
     res.status(201).json({ client: { id: ins.insertId, name, phone, email, address } });
   } catch (err) {

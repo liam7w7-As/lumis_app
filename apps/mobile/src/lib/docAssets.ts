@@ -1,3 +1,4 @@
+import { mediaSource } from './api';
 import { Asset } from 'expo-asset';
 import { File, Paths } from 'expo-file-system';
 
@@ -16,10 +17,7 @@ export type DocAssetKey =
   | 'web'
   | 'map';
 
-const ASSET_MODULES: Record<DocAssetKey, number> = {
-  logo: require('../../assets/pdf/logo.png'),
-  firma: require('../../assets/pdf/firma.png'),
-  sello: require('../../assets/pdf/sello.png'),
+const ASSET_MODULES: Partial<Record<DocAssetKey, number>> = {
   facebook: require('../../assets/pdf/facebook.png'),
   tiktok: require('../../assets/pdf/tiktok.png'),
   instagram: require('../../assets/pdf/instagram.png'),
@@ -27,9 +25,6 @@ const ASSET_MODULES: Record<DocAssetKey, number> = {
   web: require('../../assets/pdf/web.png'),
   map: require('../../assets/pdf/map.png'),
 };
-
-// Nombre alternativo del sello (igual que en la plantilla web).
-const SELLO_ALT_MODULE: number = require('../../assets/pdf/sello_de_novaled.png');
 
 const FONT_MODULES: Record<string, number> = {
   regular: require('../../assets/fonts/Poppins-Regular.ttf'),
@@ -62,23 +57,22 @@ async function moduleToBase64(moduleId: number): Promise<string | null> {
 }
 
 // Logo/sello subidos en Configuración: se descargan y se incrustan como data URI.
-async function remoteToBase64(url: string): Promise<string | null> {
+async function remoteToBase64(url: string, token?: string): Promise<string | null> {
   try {
     const destination = new File(
       Paths.cache,
       `lumis-doc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.img`,
     );
-    const fetched = await File.downloadFileAsync(url, destination);
-    if ((fetched.size ?? 0) < 100) {
-      return null;
-    }
+    const fetched = await File.downloadFileAsync(url, destination, { headers: mediaSource(url, token ?? null)?.headers });
+    if ((fetched.size ?? 0) === 0) { fetched.delete(); throw new Error('Imagen vacía'); }
     const base64 = await fetched.base64();
+    fetched.delete();
     const ext = url.split('.').pop()?.toLowerCase();
     const mime =
       ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : ext === 'webp' ? 'image/webp' : 'image/png';
     return `data:${mime};base64,${base64}`;
   } catch {
-    return null;
+    throw new Error('No se pudo cargar el logo o sello de la empresa. Revisa la conexión y vuelve a intentarlo.');
   }
 }
 
@@ -106,13 +100,12 @@ export async function loadDocFonts(): Promise<DocFonts> {
 }
 
 export async function loadDocAsset(key: DocAssetKey): Promise<string | null> {
-  if (key === 'sello') {
-    return (await moduleToBase64(SELLO_ALT_MODULE)) ?? moduleToBase64(ASSET_MODULES.sello);
-  }
-  return moduleToBase64(ASSET_MODULES[key]);
+  const module = ASSET_MODULES[key];
+  return module == null ? null : moduleToBase64(module);
 }
 
 export interface DocAssetOverrides {
+  token?: string;
   logoUrl?: string | null;
   selloUrl?: string | null;
 }
@@ -122,16 +115,16 @@ export async function loadDocImages(overrides: DocAssetOverrides = {}): Promise<
   const entries = await Promise.all(
     keys.map(async (key): Promise<[DocAssetKey, string | null]> => [key, await loadDocAsset(key)]),
   );
-  const images = Object.fromEntries(entries) as DocImages;
+  const images = { logo: null, firma: null, sello: null, ...Object.fromEntries(entries) } as DocImages;
 
   if (overrides.logoUrl) {
-    const logo = await remoteToBase64(overrides.logoUrl);
+    const logo = await remoteToBase64(overrides.logoUrl, overrides.token);
     if (logo) {
       images.logo = logo;
     }
   }
   if (overrides.selloUrl) {
-    const sello = await remoteToBase64(overrides.selloUrl);
+    const sello = await remoteToBase64(overrides.selloUrl, overrides.token);
     if (sello) {
       images.sello = sello;
       // Con sello propio no se superpone la firma integrada.

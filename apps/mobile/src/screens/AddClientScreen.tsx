@@ -78,7 +78,7 @@ export function AddClientScreen() {
             {saving ? (
               <ActivityIndicator size="small" color={colors.onPrimary} />
             ) : (
-              <Ionicons name="checkmark" size={22} color={colors.onPrimary} />
+              <Text style={{ color: colors.onPrimary, fontWeight: "700" }}>Guardar</Text>
             )}
           </Pressable>
         </View>
@@ -130,7 +130,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   circleButton: {
-    width: 44,
+    minWidth: 76,
+    paddingHorizontal: 12,
     height: 44,
     borderRadius: 22,
     alignItems: 'center',

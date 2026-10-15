@@ -1,4 +1,5 @@
 import * as ImagePicker from 'expo-image-picker';
+import { File } from 'expo-file-system';
 import { Alert } from 'react-native';
 
 export type ReceiptExt = 'jpg' | 'jpeg' | 'png' | 'webp';
@@ -9,14 +10,6 @@ export interface PickedImage {
   /** Contenido en base64 listo para subir a la API. */
   base64: string;
   ext: ReceiptExt;
-}
-
-function extFromAsset(asset: ImagePicker.ImagePickerAsset): ReceiptExt {
-  const mime = asset.mimeType ?? '';
-  if (mime.includes('png')) return 'png';
-  if (mime.includes('webp')) return 'webp';
-  if (mime.includes('jpeg') || mime.includes('jpg')) return 'jpeg';
-  return 'jpg';
 }
 
 async function pick(source: 'library' | 'camera'): Promise<PickedImage | null> {
@@ -41,8 +34,9 @@ async function pick(source: 'library' | 'camera'): Promise<PickedImage | null> {
   }
 
   const options: ImagePicker.ImagePickerOptions = {
-    quality: 0.5,
-    base64: true,
+    quality: 1,
+    allowsEditing: false,
+    base64: false,
   };
   const result =
     source === 'library'
@@ -51,8 +45,15 @@ async function pick(source: 'library' | 'camera'): Promise<PickedImage | null> {
 
   if (result.canceled) return null;
   const asset = result.assets?.[0];
-  if (!asset?.base64) return null;
-  return { uri: asset.uri, base64: asset.base64, ext: extFromAsset(asset) };
+  if (!asset) return null;
+  try {
+    const file = new File(asset.uri);
+    if (file.size > 8 * 1024 * 1024) { Alert.alert('Imagen muy grande', 'Selecciona una imagen de menos de 8 MB.'); return null; }
+    const base64 = await file.base64();
+    const ext = base64.startsWith('iVBORw0KGgo') ? 'png' : base64.startsWith('/9j/') ? 'jpeg' : base64.startsWith('UklGR') ? 'webp' : null;
+    if (!ext) { Alert.alert('Formato no compatible', 'Selecciona una imagen PNG, JPEG o WebP.'); return null; }
+    return { uri: asset.uri, base64, ext };
+  } catch { Alert.alert('Imagen', 'No se pudo leer la imagen seleccionada.'); return null; }
 }
 
 export function pickImageFromLibrary(): Promise<PickedImage | null> {

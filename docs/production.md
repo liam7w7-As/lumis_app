@@ -133,3 +133,34 @@ API compilada; lint y typecheck de la app y typecheck desde la raíz aprobados; 
 El dashboard usa agregados reales de la base y períodos en horario de Bolivia. Una base nueva mostrará ceros hasta registrar operaciones.
 La APK/AAB nativa, la validación en un teléfono y el despliegue remoto quedan por ejecutar con la cuenta y configuración de producción.
 Los cambios locales de esta revisión deben llegar a la rama conectada de GitHub para que Hostinger los incluya.
+
+## Actualización 1.1: empresas, vendedores y sincronización
+
+1. En hPanel, exporta una copia de la base MySQL y respalda los archivos actuales antes de desplegar esta actualización.
+2. Comprueba que `UPLOADS_DIR` apunta a una carpeta absoluta persistente fuera de `hbuilds` y de `public_html`. Si antes se usó la carpeta predeterminada, copia sus archivos a esa ubicación conservando los nombres.
+3. Despliega el nuevo commit de `main` con la configuración de la sección 1. Al arrancar, la API aplica `019_business_tenants` una vez.
+4. Todas las cuentas y datos anteriores permanecen en la empresa original. La cuenta más antigua (menor ID) queda como administradora; las demás como vendedores. No se borran cotizaciones, ventas, catálogo ni configuración.
+5. Instala el APK 1.1 en ambos dispositivos e inicia sesión. Los archivos ahora requieren autenticación; los APK anteriores deben actualizarse para mostrar los logos y comprobantes protegidos.
+6. Desde Configuración → Usuarios de la empresa → Agregar vendedor, el administrador registra nombre, usuario y contraseña. Ese vendedor entra a la misma empresa. El registro de la pantalla de login crea una empresa independiente con su propio administrador.
+
+El administrador edita los datos, logo, sello, color, sucursales y agentes de la empresa. Los vendedores comparten catálogo, clientes, ventas y cotizaciones, y pueden cambiar la apariencia de su propia cuenta. La API filtra todos esos recursos por empresa y verifica permisos también para archivos y operaciones por ID.
+
+Los campos de Configuración se editan en un formulario que se adapta al teclado. «Guardar» persiste el texto que se está editando. Logo y sello se guardan al subirlos. Nombre, color, moneda y logo se actualizan al iniciar sesión, al volver a la app y cada 30 segundos mientras está activa. Para refrescar el formulario de Configuración, vuelve a abrirlo. La preferencia claro/oscuro/sistema se comparte entre dispositivos de la misma cuenta.
+
+El navbar y los PDF usan la marca de la empresa. El login recuerda en ese dispositivo el nombre y logo de la última empresa; antes del primer inicio de sesión muestra Lumis. El icono instalado y el splash pertenecen a la aplicación y no cambian con el logo de cada empresa.
+
+Los PDF solo usan el logo y sello subidos por la empresa; se retiraron los respaldos de firma y sello de la plantilla anterior para no mostrar la marca de otra empresa. Si usabas ese sello, súbelo desde Configuración.
+
+Los PNG nuevos se conservan sin convertirlos a JPEG; los soportes de logo son blancos para mantenerlos legibles en oscuro. Si un archivo anterior ya quedó negro al convertirlo, vuelve a subir el PNG original.
+
+En el detalle de cotizaciones en borrador y ventas activas, desliza un producto para Editar, Eliminar, Duplicar o Mover. Mover abre una lista con flechas para elegir el orden; «Guardar orden» lo conserva en el servidor y en el PDF. En las listas, el swipe permite abrir la vista previa de cotización o nota de venta sin marcar una entrega.
+
+### Comprobaciones de esta versión
+
+- `npm run typecheck` y `npm run lint --workspace=apps/mobile`.
+- `npm run test --workspace=apps/api`.
+- La prueba de integración de empresas está desactivada por defecto. Para ejecutarla con MySQL **local**, establece `LUMIS_INTEGRATION_TEST=1`. Crea y elimina únicamente una base temporal `lumis_test_...`; rechaza hosts remotos.
+- `npm run build` y `npm run test:deployment --workspace=apps/api`.
+- `npx expo export --platform android` y `npx expo-doctor` desde `apps/mobile`.
+
+El perfil preview conserva las cuatro arquitecturas para teléfonos y emuladores. Se activaron compresión de bibliotecas nativas, R8 y eliminación de recursos sin uso mediante expo-build-properties. La compresión reduce la descarga del APK; el espacio instalado es una medición diferente. El perfil production sigue generando AAB para Google Play. [Opciones oficiales de Expo 57](https://docs.expo.dev/versions/v57.0.0/sdk/build-properties/).

@@ -30,7 +30,9 @@ import {
   type SalePayment,
 } from '../lib/api';
 import { pickImageFromCamera, pickImageFromLibrary, type ReceiptExt } from '../lib/media';
-import { formatMoney } from '../lib/format';
+import { useMoney } from '../context/BusinessContext';
+import { ItemSwipe } from '../components/ItemSwipe';
+import { ReorderItemsModal } from '../components/ReorderItemsModal';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { SegmentedTabs } from '../components/SegmentedTabs';
 import { SalePaymentSection } from '../components/SalePaymentSection';
@@ -65,6 +67,7 @@ function parseNum(raw: string): number | null {
 
 export function SaleEditorScreen({ saleId }: { saleId?: number }) {
   const { colors } = useTheme();
+  const formatMoney = useMoney();
   const { token, user } = useAuth();
   const insets = useSafeAreaInsets();
   const { client, setClient, items, updateItem, removeItem, clear } = useDraft();
@@ -87,6 +90,8 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [ordering, setOrdering] = useState(false);
+  const [lineBusy, setLineBusy] = useState(false);
   const [expanded, setExpanded] = useState<LineKey | null>(null);
   const [editQty, setEditQty] = useState('1');
   const [editPrice, setEditPrice] = useState('');
@@ -210,26 +215,9 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
       return;
     }
     try {
-      const { total: newTotal } = await api.updateSaleItem(
-        saleId,
-        itemId,
-        { quantity, unitPrice },
-        token,
-      );
-      setSale((prev) =>
-        prev
-          ? {
-              ...prev,
-              total: newTotal,
-              items: prev.items.map((it) =>
-                it.id === itemId
-                  ? { ...it, quantity, unitPrice, subtotal: round2(quantity * unitPrice) }
-                  : it,
-              ),
-            }
-          : prev,
-      );
+      await api.updateSaleItem(saleId, itemId, { quantity, unitPrice }, token);
       setExpanded(null);
+      await refreshLineItems();
     } catch (err) {
       showApiError(err, 'No se pudo guardar el artículo');
     }
@@ -238,10 +226,9 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
   const removeSavedItem = async (itemId: number) => {
     if (!token || saleId == null) return;
     try {
-      const { total: newTotal } = await api.deleteSaleItem(saleId, itemId, token);
-      setSale((prev) =>
-        prev ? { ...prev, total: newTotal, items: prev.items.filter((it) => it.id !== itemId) } : prev,
-      );
+      await api.deleteSaleItem(saleId, itemId, token);
+      setExpanded(null);
+      await refreshLineItems();
     } catch (err) {
       showApiError(err, 'No se pudo borrar el artículo');
     }
@@ -421,15 +408,26 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
     }
   };
 
-  const handleHeaderCheck = () => {
+  const handleHeaderCheck = async () => {
     if (docTab === 'entrega' && isDetail) {
       handleDeliver();
       return;
     }
     if (isDetail) {
-      router.back();
+      if (!token || saleId == null || isVoided) { router.back(); return; }
+      setSaving(true);
+      try {
+        await persistLineDraft();
+        await api.updateSale(saleId, { notaPago: notaPago.trim() || null, transferenciaNumero: transferenciaNumero.trim() || null }, token);
+        router.back();
+      } catch (err) { showApiError(err, 'No se pudo guardar la venta'); }
+      finally { setSaving(false); }
       return;
     }
+    await handleRealizar();
+  };
+
+  const discardDraft = () => {
     Alert.alert('Descartar nota de venta', 'Se perderá lo que agregaste.', [
       { text: 'Cancelar', style: 'cancel' },
       {
@@ -453,6 +451,7 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
     }
     setSaving(true);
     try {
+      await persistLineDraft();
       if (!sale?.entregadaAt) {
         const res = await api.deliverSale(saleId, token);
         setSale((prev) => (prev ? { ...prev, entregadaAt: res.entregadaAt } : prev));
@@ -606,14 +605,14 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
         value={editPrice}
         onChangeText={onPrice}
         keyboardType="decimal-pad"
-        placeholder="Bs."
+        placeholder="Precio"
         placeholderTextColor={colors.muted}
       />
       <Pressable
         style={[styles.editorDone, { backgroundColor: colors.primary }]}
         onPress={onCommit}
       >
-        <Ionicons name="checkmark" size={18} color={colors.onPrimary} />
+        <Text style={{ color: colors.onPrimary, fontWeight: "700" }}>Guardar</Text>
       </Pressable>
       <Pressable
         style={[styles.editorDone, { backgroundColor: colors.background }]}
@@ -624,10 +623,36 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
     </View>
   );
 
+  const refreshLineItems = async () => {
+    if (!token || saleId == null) return;
+    const { sale: updated } = await api.saleDetail(saleId, token);
+    setSale(updated); setTotalPagado(updated.totalPagado); setPayments(updated.payments);
+  };
+  const persistLineDraft = async () => {
+    if (!token || saleId == null || typeof expanded !== "number") return;
+    const quantity = parseNum(editQty), unitPrice = parseNum(editPrice);
+    if (quantity == null || quantity <= 0 || unitPrice == null || unitPrice < 0) throw new Error("Revisa la cantidad y el precio.");
+    await api.updateSaleItem(saleId, expanded, { quantity, unitPrice }, token);
+    setExpanded(null);
+  };
+  const duplicateLine = async (itemId: number) => {
+    if (!token || saleId == null || lineBusy) return;
+    setLineBusy(true);
+    try { await persistLineDraft(); await api.duplicateItem('sales', saleId, itemId, token); await refreshLineItems(); }
+    catch (err) { showApiError(err, 'No se pudo duplicar el producto'); }
+    finally { setLineBusy(false); }
+  };
+  const reorderLines = async (ids: number[]) => {
+    if (!token || saleId == null) return;
+    await persistLineDraft(); await api.reorderItems('sales', saleId, ids, token); await refreshLineItems();
+  };
   const renderLines = () => {
     if (isDetail) {
       return (sale?.items ?? []).map((it, index) => (
-        <View key={it.id} style={[styles.itemCard, { backgroundColor: colors.surface }]}>
+        <ItemSwipe key={it.id} disabled={isVoided || lineBusy} onEdit={() => openEditor(it.id, it.quantity, it.unitPrice)}
+          onDelete={() => Alert.alert("Quitar producto", it.description, [{ text: "Cancelar", style: "cancel" }, { text: "Eliminar", style: "destructive", onPress: () => { void removeSavedItem(it.id); } }])}
+          onDuplicate={() => { void duplicateLine(it.id); }} onMove={() => setOrdering(true)}>
+        <View style={[styles.itemCard, { backgroundColor: colors.surface }]}>
           <View style={styles.itemHead}>
             <View style={[styles.itemBadge, { backgroundColor: colors.primary }]}>
               <Text style={styles.itemBadgeText}>{index + 1}</Text>
@@ -653,6 +678,7 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
               setEditPrice,
             )}
         </View>
+        </ItemSwipe>
       ));
     }
 
@@ -791,7 +817,7 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()} hitSlop={10}>
+          <Pressable onPress={() => isDetail ? router.back() : discardDraft()} hitSlop={10}>
             <Ionicons name="arrow-back" size={24} color={colors.text} />
           </Pressable>
           <Text style={[styles.title, { color: colors.text }]}>
@@ -806,7 +832,7 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
             {saving ? (
               <ActivityIndicator size="small" color={colors.onPrimary} />
             ) : (
-              <Ionicons name="checkmark" size={22} color={colors.onPrimary} />
+              <Text style={{ color: colors.onPrimary, fontWeight: "700" }}>Guardar</Text>
             )}
           </Pressable>
         </View>
@@ -985,6 +1011,7 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
         )}
       </ScrollView>
 
+      <ReorderItemsModal visible={ordering} items={sale?.items ?? []} onClose={() => setOrdering(false)} onSave={reorderLines} />
       <Modal
         visible={branchesOpen}
         transparent
@@ -1113,7 +1140,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   circleButton: {
-    width: 44,
+    minWidth: 76,
+    paddingHorizontal: 12,
     height: 44,
     borderRadius: 22,
     alignItems: 'center',
@@ -1265,7 +1293,8 @@ const styles = StyleSheet.create({
     fontFamily: 'Poppins',
   },
   editorDone: {
-    width: 38,
+    minWidth: 38,
+    paddingHorizontal: 10,
     height: 38,
     borderRadius: 19,
     alignItems: 'center',

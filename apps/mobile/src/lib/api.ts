@@ -21,6 +21,9 @@ export interface User {
   name: string;
   username: string;
   email: string | null;
+  businessId: number;
+  role: 'admin' | 'seller';
+  themeMode: 'system' | 'light' | 'dark';
 }
 
 export type DashboardPeriod = 'hoy' | 'semana' | 'mes';
@@ -114,6 +117,7 @@ export interface Branch {
 }
 
 export interface Agent {
+  accountId?: number | null;
   id: number;
   name: string;
 }
@@ -178,7 +182,7 @@ export interface SaleUpdateInput {
   agentId?: number | null;
   notaPago?: string | null;
   transferenciaNumero?: string | null;
-  comprobanteUrl?: string | null;
+  comprobanteUrl?: null;
   includeSello?: boolean;
 }
 
@@ -270,6 +274,15 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 }
 
 export const api = {
+  users: (token: string) => request<{ users: User[] }>('/api/auth/users', { token }),
+  createUser: (input: { username: string; name: string; password: string }, token: string) =>
+    request<{ user: User }>('/api/auth/users', { method: 'POST', body: input, token }),
+  updatePreferences: (themeMode: 'system' | 'light' | 'dark', token: string) =>
+    request<{ themeMode: string }>('/api/auth/preferences', { method: 'PATCH', body: { themeMode }, token }),
+  reorderItems: (kind: 'quotes' | 'sales', id: number, itemIds: number[], token: string) =>
+    request<{ ok: boolean }>('/api/' + kind + '/' + id + '/items/reorder', { method: 'POST', body: { itemIds }, token }),
+  duplicateItem: (kind: 'quotes' | 'sales', id: number, itemId: number, token: string) =>
+    request<{ item: { id: number }; total: number }>('/api/' + kind + '/' + id + '/items/' + itemId + '/duplicate', { method: 'POST', token }),
   health: () => request<{ ok: boolean; service: string; time: string }>('/health'),
   register: (input: { username: string; name: string; password: string }) =>
     request<{ user: User; token: string }>('/api/auth/register', {
@@ -474,3 +487,8 @@ export const api = {
       token,
     }),
 };
+
+export function mediaSource(path: string | null, token: string | null) {
+  const uri = mediaUrl(path) ?? undefined;
+  return { uri, ...(uri?.startsWith(API_URL + '/') && token ? { headers: { Authorization: 'Bearer ' + token } } : {}) };
+}

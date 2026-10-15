@@ -35,6 +35,7 @@ function fmtHora(iso: string): string {
 }
 
 export function buildDeliveryNoteHtml(input: {
+  documentType?: 'sale' | 'delivery';
   sale: SaleDetail;
   business: DocBusiness;
   branchName: string | null;
@@ -43,6 +44,8 @@ export function buildDeliveryNoteHtml(input: {
 }): string {
   const { sale, business, branchName, images, fonts } = input;
 
+  const title = input.documentType === 'sale' ? 'NOTA DE VENTA' : 'NOTA DE ENTREGA';
+  const label = input.documentType === 'sale' ? 'Nota de venta' : 'Nota de entrega';
   const colorPrimario = forBackground(business.color_primario || '#5842F4');
   const colorOnPrimario = contrastText(colorPrimario);
   const moneda = business.moneda || 'Bs.';
@@ -118,7 +121,7 @@ export function buildDeliveryNoteHtml(input: {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>NOTA DE ENTREGA #${sale.id}</title>
+<title>${title} #${sale.id}</title>
 <style>
   ${fontFaces}
   @page { size: letter portrait; margin: 10mm 12mm 0 12mm; }
@@ -223,14 +226,14 @@ export function buildDeliveryNoteHtml(input: {
         }
       </div>
       <div class="client-section">
-        <div class="client-label">NOTA DE ENTREGA PARA:</div>
+        <div class="client-label">${title} PARA:</div>
         <div class="client-name">${escapeHtml(clientName)}</div>
       </div>
     </td>
     <td class="meta-side">
-      <div class="document-title">NOTA DE ENTREGA</div>
+      <div class="document-title">${title}</div>
       <table class="meta-table">
-        <tr><td class="meta-label">Nota de entrega No:</td><td class="meta-value">${sale.id}</td></tr>
+        <tr><td class="meta-label">${label} No:</td><td class="meta-value">${sale.id}</td></tr>
         ${branchName ? `<tr><td class="meta-label">Sucursal:</td><td class="meta-value">${escapeHtml(branchName)}</td></tr>` : ''}
         <tr><td class="meta-label">Fecha:</td><td class="meta-value">${fmtFecha(sale.createdAt)} ${fmtHora(sale.createdAt)}</td></tr>
         ${business.nit ? `<tr><td class="meta-label">NIT:</td><td class="meta-value">${escapeHtml(business.nit)}</td></tr>` : ''}

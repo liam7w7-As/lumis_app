@@ -1,4 +1,8 @@
+import { randomUUID } from 'node:crypto';
+import { decodeImage } from '../lib/imageUpload';
+import { reconcileCreditSale } from '../lib/saleTotals';
 import { Router } from 'express';
+import { registerItemActions } from './itemActions';
 import { PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -6,9 +10,11 @@ import { z } from 'zod';
 import { config } from '../config';
 import { pool } from '../db/pool';
 import { badRequest, conflict, notFound } from '../middlewares/errorHandler';
-import { AuthRequest, requireAuth } from '../middlewares/requireAuth';
+import { AuthRequest, requireAuth, scopeToBusiness } from '../middlewares/requireAuth';
 
 export const salesRouter = Router();
+salesRouter.use(requireAuth, scopeToBusiness('sales'));
+registerItemActions(salesRouter, 'sale');
 
 export type SaleEstadoPago = 'por_cobrar' | 'pagado';
 export type SaleMetodoPago = 'efectivo' | 'qr' | 'transferencia' | 'por_pagar';
@@ -59,6 +65,7 @@ async function recalcTotal(conn: PoolConnection, saleId: number): Promise<number
   );
   const total = round2(Number(rows[0]?.total ?? 0));
   await conn.query('UPDATE sales SET total = ? WHERE id = ?', [total, saleId]);
+  await reconcileCreditSale(conn, saleId, total);
   return total;
 }
 
@@ -144,13 +151,13 @@ async function requireBranch(conn: PoolConnection, branchId: number | null): Pro
 /** Valida que el agente sea del usuario y devuelve su nombre (null si no hay). */
 async function requireAgent(
   conn: PoolConnection,
-  userId: number | undefined,
+  businessId: number | undefined,
   agentId: number | null,
 ): Promise<string | null> {
-  if (agentId === null || userId === undefined) return null;
+  if (agentId === null || businessId === undefined) return null;
   const [rows] = await conn.query<RowDataPacket[]>(
-    'SELECT name FROM agents WHERE id = ? AND user_id = ?',
-    [agentId, userId],
+    'SELECT name FROM agents WHERE id = ? AND business_id = ?',
+    [agentId, businessId],
   );
   if (rows.length === 0) {
     throw notFound('Agente de venta no encontrado');
@@ -239,13 +246,14 @@ salesRouter.get('/', requireAuth, async (req: AuthRequest, res, next) => {
        LEFT JOIN clients c ON c.id = s.client_id
        LEFT JOIN branches b ON b.id = s.branch_id
        JOIN users u ON u.id = s.user_id
-       WHERE s.estado = ?
+       WHERE s.business_id = ? AND s.estado = ?
          AND (? IS NULL OR s.estado_pago = ?)
          AND (? IS NULL OR s.branch_id = ?)
          AND (? IS NULL OR c.name LIKE ? OR CAST(s.id AS CHAR) LIKE ?)
        ORDER BY s.created_at DESC, s.id DESC
        LIMIT 200`,
       [
+        req.businessId,
         estado,
         filters.estadoPago ?? null,
         filters.estadoPago ?? null,
@@ -279,9 +287,9 @@ salesRouter.get('/', requireAuth, async (req: AuthRequest, res, next) => {
   }
 });
 
-salesRouter.get('/next-number', requireAuth, async (_req: AuthRequest, res, next) => {
+salesRouter.get('/next-number', requireAuth, async (req: AuthRequest, res, next) => {
   try {
-    const [rows] = await pool.query<RowDataPacket[]>('SELECT MAX(id) AS maxId FROM sales');
+    const [rows] = await pool.query<RowDataPacket[]>('SELECT MAX(id) AS maxId FROM sales WHERE business_id = ?', [req.businessId]);
     const maxId = (rows[0]?.maxId as number | null) ?? 0;
     res.json({ nextNumber: maxId + 1 });
   } catch (err) {
@@ -313,7 +321,7 @@ salesRouter.get('/:id', requireAuth, async (req: AuthRequest, res, next) => {
     const [items] = await pool.query<RowDataPacket[]>(
       `SELECT id, product_id, description, quantity, unit, unit_price, subtotal,
               codigo_interno, marca, procedencia
-       FROM sale_items WHERE sale_id = ? ORDER BY id`,
+       FROM sale_items WHERE sale_id = ? ORDER BY sort_order, id`,
       [id],
     );
     const [payments] = await pool.query<RowDataPacket[]>(
@@ -445,15 +453,8 @@ salesRouter.post('/:id/deliver', requireAuth, async (req: AuthRequest, res, next
 salesRouter.post('/:id/receipt', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const id = parseId(req.params.id);
-    const { base64, ext } = receiptSchema.parse(req.body);
-    const clean = base64.replace(/\s/g, '');
-    if (!/^[A-Za-z0-9+/=]+$/.test(clean)) {
-      throw badRequest('La imagen no es válida');
-    }
-    const buffer = Buffer.from(clean, 'base64');
-    if (buffer.length === 0 || buffer.length > 8 * 1024 * 1024) {
-      throw badRequest('El comprobante debe pesar menos de 8 MB');
-    }
+    const { base64 } = receiptSchema.parse(req.body);
+    const { buffer, ext } = decodeImage(base64);
 
     const [rows] = await pool.query<RowDataPacket[]>(
       'SELECT id, estado, comprobante_url FROM sales WHERE id = ?',
@@ -467,7 +468,7 @@ salesRouter.post('/:id/receipt', requireAuth, async (req: AuthRequest, res, next
       throw conflict('La venta está anulada');
     }
 
-    const fileName = `receipt-${id}-${Date.now()}.${ext}`;
+    const fileName = `receipt-${id}-${randomUUID()}.${ext}`;
     await fs.writeFile(path.join(config.uploadsDir, fileName), buffer);
     const url = `/uploads/${fileName}`;
     await pool.query('UPDATE sales SET comprobante_url = ? WHERE id = ?', [url, id]);
@@ -475,7 +476,7 @@ salesRouter.post('/:id/receipt', requireAuth, async (req: AuthRequest, res, next
     // El comprobante anterior se borra para no acumular archivos huérfanos.
     const previous = (sale.comprobante_url as string | null) ?? null;
     if (previous?.startsWith('/uploads/')) {
-      await fs.rm(path.join(config.uploadsDir, path.basename(previous)), { force: true });
+      await fs.rm(path.join(config.uploadsDir, path.basename(previous)), { force: true }).catch(() => {});
     }
 
     res.status(201).json({ url });
@@ -593,7 +594,7 @@ salesRouter.post('/:id/duplicate', requireAuth, async (req: AuthRequest, res, ne
     const [items] = await conn.query<RowDataPacket[]>(
       `SELECT product_id, description, quantity, unit, unit_price, subtotal,
               codigo_interno, marca, procedencia
-       FROM sale_items WHERE sale_id = ? ORDER BY id`,
+       FROM sale_items WHERE sale_id = ? ORDER BY sort_order, id`,
       [id],
     );
     if (items.length === 0) {
@@ -602,9 +603,9 @@ salesRouter.post('/:id/duplicate', requireAuth, async (req: AuthRequest, res, ne
 
     // La copia nace activa y por cobrar: es una venta nueva, sin cobrar.
     const [ins] = await conn.query<ResultSetHeader>(
-      `INSERT INTO sales (user_id, client_id, branch_id, total, estado_pago, metodo_pago)
-       VALUES (?, ?, ?, ?, 'por_cobrar', ?)`,
-      [req.userId, source.client_id, source.branch_id, source.total, source.metodo_pago],
+      `INSERT INTO sales (business_id, user_id, client_id, branch_id, total, estado_pago, metodo_pago)
+       VALUES (?, ?, ?, ?, ?, 'por_cobrar', ?)`,
+      [req.businessId, req.userId, source.client_id, source.branch_id, source.total, source.metodo_pago],
     );
     for (const it of items) {
       await conn.query(
@@ -636,7 +637,7 @@ const updateSaleSchema = z.object({
   agentId: z.number().int().positive().nullable().optional(),
   notaPago: z.string().trim().max(500).nullable().optional(),
   transferenciaNumero: z.string().trim().max(50).nullable().optional(),
-  comprobanteUrl: z.string().trim().max(255).nullable().optional(),
+  comprobanteUrl: z.null().optional(),
   includeSello: z.boolean().optional(),
 });
 
@@ -703,7 +704,7 @@ salesRouter.patch('/:id', requireAuth, async (req: AuthRequest, res, next) => {
         );
         sellerName = (uRows[0]?.name as string | undefined) ?? undefined;
       } else {
-        sellerName = (await requireAgent(conn, req.userId, agentId)) ?? undefined;
+        sellerName = (await requireAgent(conn, req.businessId, agentId)) ?? undefined;
         sellerNameStored = sellerName ?? null;
       }
     }
@@ -769,17 +770,17 @@ salesRouter.post('/', requireAuth, async (req: AuthRequest, res, next) => {
     await conn.beginTransaction();
     await requireClient(conn, clientId);
     await requireBranch(conn, branchId);
-    const sellerName = await requireAgent(conn, req.userId, agentId);
+    const sellerName = await requireAgent(conn, req.businessId, agentId);
 
     const total = round2(items.reduce((sum, it) => sum + it.quantity * it.unitPrice, 0));
     let estadoPago: SaleEstadoPago = metodoPago === 'por_pagar' ? 'por_cobrar' : 'pagado';
 
     const [ins] = await conn.query<ResultSetHeader>(
-      `INSERT INTO sales (user_id, client_id, branch_id, agent_id, seller_name, total, estado_pago,
+      `INSERT INTO sales (business_id, user_id, client_id, branch_id, agent_id, seller_name, total, estado_pago,
          metodo_pago, nota_pago, transferencia_numero, paid_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        req.userId,
+        req.businessId, req.userId,
         clientId,
         branchId,
         agentId,
@@ -974,12 +975,12 @@ salesRouter.post('/from-quote', requireAuth, async (req: AuthRequest, res, next)
     const [items] = await conn.query<RowDataPacket[]>(
       `SELECT product_id, description, quantity, unit, unit_price, subtotal,
               codigo_interno, marca, procedencia
-       FROM quote_items WHERE quote_id = ?`,
+       FROM quote_items WHERE quote_id = ? ORDER BY sort_order, id`,
       [quoteId],
     );
     const [sale] = await conn.query<ResultSetHeader>(
-      'INSERT INTO sales (user_id, client_id, branch_id, quote_id, total) VALUES (?, ?, ?, ?, ?)',
-      [req.userId, quote.client_id, quote.branch_id, quoteId, quote.total],
+      'INSERT INTO sales (business_id, user_id, client_id, branch_id, quote_id, total) VALUES (?, ?, ?, ?, ?, ?)',
+      [req.businessId, req.userId, quote.client_id, quote.branch_id, quoteId, quote.total],
     );
     for (const it of items) {
       await conn.query(

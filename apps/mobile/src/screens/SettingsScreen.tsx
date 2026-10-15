@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -25,7 +25,8 @@ import { PrimaryButton } from '../components/PrimaryButton';
 import {
   ApiError,
   api,
-  mediaUrl,
+  mediaSource,
+  type Business,
   type Agent,
   type Branch,
   type BusinessUpdateInput,
@@ -33,6 +34,9 @@ import {
 import { generatePalette } from '../lib/brandColors';
 import { pickImageFromLibrary } from '../lib/media';
 import { BRAND } from '../config';
+import { FormModal } from '../components/FormModal';
+import { TeamUsers } from '../components/TeamUsers';
+import { useBusiness } from '../context/BusinessContext';
 
 type SettingsTab = 'info' | 'color';
 
@@ -96,8 +100,11 @@ interface NameEditor {
 
 export function SettingsScreen() {
   const { user, token, logout } = useAuth();
-  const { colors, mode, setMode, brandColor, setBrandColor } = useTheme();
+  const { colors, mode, brandColor } = useTheme();
   const insets = useSafeAreaInsets();
+  const isAdmin = user?.role === 'admin';
+  const { applyBusiness, changeMode, error: syncError } = useBusiness();
+  const baseline = useRef<Business | null>(null);
 
   const [tab, setTab] = useState<SettingsTab>('info');
   const [loading, setLoading] = useState(true);
@@ -148,6 +155,7 @@ export function SettingsScreen() {
         api.branches(token).then((r) => r.branches).catch(() => []),
       ]);
       if (biz) {
+        baseline.current = biz;
         setForm({
           nombre: biz.nombre ?? '',
           email: biz.email ?? '',
@@ -188,29 +196,28 @@ export function SettingsScreen() {
     setFieldDraft(form[key]);
   };
 
-  const commitField = () => {
-    if (!editingField) return;
-    setForm((prev) => ({ ...prev, [editingField]: fieldDraft.trim() }));
-    setEditingField(null);
-  };
-
   const handleSave = async () => {
-    if (!token || saving) return;
+    if (!token || saving || !isAdmin) return;
+    const nextForm = editingField ? { ...form, [editingField]: fieldDraft.trim() } : form;
+    const nextColor = hexEditing ? '#' + hexDraft.trim().replace(/^#/, '') : color;
+    if (!nextForm.nombre.trim() || !nextForm.moneda.trim()) { Alert.alert('Datos requeridos', 'Escribe el nombre de la empresa y la moneda.'); return; }
+    if (!/^#[0-9a-fA-F]{6}$/.test(nextColor)) { Alert.alert('Color inválido', 'Usa un color hexadecimal de seis dígitos.'); return; }
     setSaving(true);
     try {
       const payload: BusinessUpdateInput = {
-        nombre: form.nombre.trim() || undefined,
-        moneda: form.moneda.trim() || undefined,
-        email: form.email.trim() || null,
-        telefono: form.telefono.trim() || null,
-        nit: form.nit.trim() || null,
-        redes_sociales: form.redes_sociales.trim() || null,
-        website: form.website.trim() || null,
-        direccion: form.direccion.trim() || null,
-        ciudad: form.ciudad.trim() || null,
-        color_primario: color,
+        nombre: nextForm.nombre.trim() || undefined,
+        moneda: nextForm.moneda.trim() || undefined,
+        email: nextForm.email.trim() || null,
+        telefono: nextForm.telefono.trim() || null,
+        nit: nextForm.nit.trim() || null,
+        redes_sociales: nextForm.redes_sociales.trim() || null,
+        website: nextForm.website.trim() || null,
+        direccion: nextForm.direccion.trim() || null,
+        ciudad: nextForm.ciudad.trim() || null,
+        color_primario: nextColor,
       };
-      const { business } = await api.updateBusiness(payload, token);
+      const { business } = await api.updateBusiness(Object.fromEntries(Object.entries(payload).filter(([key, value]) =>
+        value !== baseline.current?.[key as keyof Business])) as BusinessUpdateInput, token);
       setForm({
         nombre: business.nombre ?? '',
         email: business.email ?? '',
@@ -225,7 +232,10 @@ export function SettingsScreen() {
       setLogoUrl(business.logo_url);
       setSelloUrl(business.sello_url);
       setColor(business.color_primario);
-      await setBrandColor(business.color_primario);
+      baseline.current = business;
+      setEditingField(null);
+      setHexEditing(false);
+      await applyBusiness(business);
       Alert.alert('Guardado', 'La configuración se guardó correctamente.');
     } catch (err) {
       Alert.alert('Error', err instanceof ApiError ? err.message : 'No se pudo guardar');
@@ -235,7 +245,7 @@ export function SettingsScreen() {
   };
 
   const handleUploadAsset = async (tipo: 'logo' | 'sello') => {
-    if (!token || uploading) return;
+    if (!token || uploading || !isAdmin) return;
     const picked = await pickImageFromLibrary();
     if (!picked) return;
     setUploading(tipo);
@@ -249,6 +259,8 @@ export function SettingsScreen() {
       } else {
         setSelloUrl(url);
       }
+      const updated = (await api.business(token)).business;
+      if (updated) await applyBusiness(updated);
     } catch (err) {
       Alert.alert('Error', err instanceof ApiError ? err.message : 'No se pudo subir la imagen');
     } finally {
@@ -376,8 +388,9 @@ export function SettingsScreen() {
           <View style={styles.headerSpacer} />
         </View>
 
-        <SegmentedTabs<SettingsTab> options={TABS} value={tab} onChange={setTab} />
+        <SegmentedTabs<SettingsTab> options={isAdmin ? TABS : TABS.filter((item) => item.key === 'info')} value={tab} onChange={setTab} />
 
+        {syncError && <Text style={{ color: colors.error }}>Sin sincronizar: {syncError}</Text>}
         {loading ? (
           <View style={styles.loading}>
             <ActivityIndicator color={colors.primary} />
@@ -392,14 +405,14 @@ export function SettingsScreen() {
                 {logoUrl ? (
                   <View style={styles.logoPreviewWrap}>
                     <Image
-                      source={{ uri: mediaUrl(logoUrl) ?? undefined }}
-                      style={styles.logoPreview}
+                      source={mediaSource(logoUrl, token)}
+                      style={[styles.logoPreview, { backgroundColor: '#ffffff', borderRadius: 8 }]}
                       resizeMode="contain"
                     />
                     <Pressable
                       style={[styles.assetButton, { borderColor: colors.border }]}
                       onPress={() => handleUploadAsset('logo')}
-                      disabled={uploading !== null}
+                      disabled={uploading !== null || !isAdmin}
                     >
                       {uploading === 'logo' ? (
                         <ActivityIndicator size="small" color={colors.primary} />
@@ -414,7 +427,7 @@ export function SettingsScreen() {
                   <Pressable
                     style={[styles.uploadZone, { borderColor: colors.border }]}
                     onPress={() => handleUploadAsset('logo')}
-                    disabled={uploading !== null}
+                    disabled={uploading !== null || !isAdmin}
                   >
                     {uploading === 'logo' ? (
                       <ActivityIndicator size="small" color={colors.primary} />
@@ -433,7 +446,6 @@ export function SettingsScreen() {
                   <Text style={[styles.cardTitle, { color: colors.text }]}>Información</Text>
                 </View>
                 {INFO_FIELDS.map((field, index) => {
-                  const isEditing = editingField === field.key;
                   const value = form[field.key];
                   return (
                     <View
@@ -448,39 +460,20 @@ export function SettingsScreen() {
                     >
                       <View style={styles.fieldTexts}>
                         <Text style={[styles.fieldLabel, { color: colors.muted }]}>{field.label}</Text>
-                        {isEditing ? (
-                          <TextInput
-                            style={[styles.fieldInput, { color: colors.text }]}
-                            value={fieldDraft}
-                            onChangeText={setFieldDraft}
-                            placeholder={field.placeholder}
-                            placeholderTextColor={colors.muted}
-                            keyboardType={field.keyboardType}
-                            autoCapitalize={field.autoCapitalize ?? 'sentences'}
-                            autoFocus
-                            onSubmitEditing={commitField}
-                            returnKeyType="done"
-                          />
-                        ) : (
-                          <Text
-                            style={[
-                              styles.fieldValue,
-                              { color: value ? colors.text : colors.muted },
-                            ]}
-                            numberOfLines={1}
-                          >
-                            {value || field.placeholder}
-                          </Text>
-                        )}
+                        <Text style={[styles.fieldValue, { color: value ? colors.text : colors.muted }]} numberOfLines={2}>
+                          {value || field.placeholder}
+                        </Text>
                       </View>
                       <Pressable
-                        onPress={() => (isEditing ? commitField() : startEditField(field.key))}
+                        onPress={() => startEditField(field.key)}
+                        disabled={!isAdmin}
+                        accessibilityLabel={"Editar " + field.label}
                         hitSlop={8}
                       >
                         <Ionicons
-                          name={isEditing ? 'checkmark' : 'pencil-outline'}
+                          name="pencil-outline"
                           size={18}
-                          color={isEditing ? colors.primary : colors.icon}
+                          color={colors.icon}
                         />
                       </Pressable>
                     </View>
@@ -491,7 +484,7 @@ export function SettingsScreen() {
               <View style={[styles.card, { borderColor: colors.border, backgroundColor: colors.surface }]}>
                 <View style={styles.cardHeader}>
                   <Text style={[styles.cardTitle, { color: colors.text }]}>Agentes de venta</Text>
-                  <Pressable onPress={() => setEditingAgents((v) => !v)} hitSlop={8}>
+                  <Pressable disabled={!isAdmin} onPress={() => setEditingAgents((v) => !v)} hitSlop={8}>
                     <Ionicons
                       name={editingAgents ? 'checkmark' : 'pencil-outline'}
                       size={18}
@@ -511,22 +504,13 @@ export function SettingsScreen() {
                       >
                         <Text style={[styles.chipText, { color: colors.text }]}>{agent.name}</Text>
                       </Pressable>
-                      {editingAgents && (
+                      {editingAgents && !agent.accountId && (
                         <Pressable onPress={() => confirmDeleteAgent(agent)} hitSlop={8}>
                           <Ionicons name="close-circle" size={16} color={colors.error} />
                         </Pressable>
                       )}
                     </View>
                   ))}
-                  {editingAgents && (
-                    <Pressable
-                      style={[styles.chip, styles.chipAdd, { borderColor: colors.primary }]}
-                      onPress={() => openNameEditor('agent', null, '')}
-                    >
-                      <Ionicons name="add" size={15} color={colors.primary} />
-                      <Text style={[styles.chipText, { color: colors.primary }]}>Agregar</Text>
-                    </Pressable>
-                  )}
                 </View>
                 {agents.length === 0 && !editingAgents && (
                   <Text style={[styles.emptyHint, { color: colors.muted }]}>
@@ -538,7 +522,7 @@ export function SettingsScreen() {
               <View style={[styles.card, { borderColor: colors.border, backgroundColor: colors.surface }]}>
                 <View style={styles.cardHeader}>
                   <Text style={[styles.cardTitle, { color: colors.text }]}>Sucursal</Text>
-                  <Pressable onPress={() => setEditingBranches((v) => !v)} hitSlop={8}>
+                  <Pressable disabled={!isAdmin} onPress={() => setEditingBranches((v) => !v)} hitSlop={8}>
                     <Ionicons
                       name={editingBranches ? 'checkmark' : 'pencil-outline'}
                       size={18}
@@ -589,14 +573,14 @@ export function SettingsScreen() {
                 {selloUrl ? (
                   <View style={styles.selloPreviewWrap}>
                     <Image
-                      source={{ uri: mediaUrl(selloUrl) ?? undefined }}
-                      style={styles.selloPreview}
+                      source={mediaSource(selloUrl, token)}
+                      style={[styles.selloPreview, { backgroundColor: '#ffffff', borderRadius: 8 }]}
                       resizeMode="contain"
                     />
                     <Pressable
                       style={[styles.assetButton, { borderColor: colors.border }]}
                       onPress={() => handleUploadAsset('sello')}
-                      disabled={uploading !== null}
+                      disabled={uploading !== null || !isAdmin}
                     >
                       {uploading === 'sello' ? (
                         <ActivityIndicator size="small" color={colors.primary} />
@@ -611,7 +595,7 @@ export function SettingsScreen() {
                   <Pressable
                     style={[styles.uploadZone, { borderColor: colors.border }]}
                     onPress={() => handleUploadAsset('sello')}
-                    disabled={uploading !== null}
+                    disabled={uploading !== null || !isAdmin}
                   >
                     {uploading === 'sello' ? (
                       <ActivityIndicator size="small" color={colors.primary} />
@@ -630,11 +614,13 @@ export function SettingsScreen() {
                 </Text>
               </View>
 
-              <PrimaryButton title="Guardar" onPress={handleSave} loading={saving} />
+              {isAdmin && <PrimaryButton title="Guardar" onPress={handleSave} loading={saving} />}
             </View>
 
-            <Text style={[styles.section, { color: colors.muted }]}>Apariencia</Text>
-            <SegmentedTabs options={MODES} value={mode} onChange={setMode} />
+            <TeamUsers onCreated={() => { void load(); }} />
+            {!isAdmin && <Text style={{ color: colors.muted }}>La configuración de empresa la administra el administrador.</Text>}
+            <Text style={[styles.section, { color: colors.muted }]}>Apariencia de mi cuenta</Text>
+            <SegmentedTabs options={MODES} value={mode} onChange={(next) => { void changeMode(next).catch((err) => Alert.alert('Error', err.message)); }} />
 
             <Text style={[styles.section, { color: colors.muted }]}>Cuenta</Text>
             <View style={[styles.card, { borderColor: colors.border, backgroundColor: colors.surface }]}>
@@ -758,6 +744,16 @@ export function SettingsScreen() {
         )}
       </ScrollView>
 
+      <FormModal visible={editingField !== null} title={INFO_FIELDS.find((field) => field.key === editingField)?.label ?? "Editar dato"}
+        onClose={() => { if (!saving) setEditingField(null); }}>
+        <TextInput value={fieldDraft} onChangeText={setFieldDraft} autoFocus editable={!saving}
+          accessibilityLabel={INFO_FIELDS.find((field) => field.key === editingField)?.label}
+          keyboardType={INFO_FIELDS.find((field) => field.key === editingField)?.keyboardType}
+          autoCapitalize={INFO_FIELDS.find((field) => field.key === editingField)?.autoCapitalize ?? "sentences"}
+          style={[styles.modalInput, { color: colors.text, borderColor: colors.border, minHeight: 50 }]}
+          onSubmitEditing={() => { void handleSave(); }} returnKeyType="done" />
+        <PrimaryButton title="Guardar" onPress={handleSave} loading={saving} />
+      </FormModal>
       <Modal
         visible={nameEditor !== null}
         transparent

@@ -16,7 +16,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
 import { ApiError, api, type QuoteDetail, type QuoteItem, type QuoteStatus } from '../lib/api';
-import { formatDate, formatMoney } from '../lib/format';
+import { formatDate } from '../lib/format';
+import { useMoney, useBusiness } from '../context/BusinessContext';
+import { ItemSwipe } from '../components/ItemSwipe';
+import { ReorderItemsModal } from '../components/ReorderItemsModal';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { STATUS_COLOR, STATUS_LABEL } from '../components/QuoteCard';
 
@@ -29,6 +32,8 @@ export function QuoteDetailScreen() {
   const quoteId = Number(id);
   const { token } = useAuth();
   const { colors } = useTheme();
+  const formatMoney = useMoney();
+  const { business } = useBusiness();
   const insets = useSafeAreaInsets();
 
   const [quote, setQuote] = useState<QuoteDetail | null>(null);
@@ -47,6 +52,7 @@ export function QuoteDetailScreen() {
   const [editPrice, setEditPrice] = useState('');
   const [itemBusy, setItemBusy] = useState(false);
   const requestId = useRef(0);
+  const [ordering, setOrdering] = useState(false);
 
   const load = useCallback(async () => {
     const request = ++requestId.current;
@@ -83,6 +89,31 @@ export function QuoteDetailScreen() {
   const editable = quote?.status === 'borrador';
   const saveable = quote != null && quote.status !== 'convertida';
 
+  const refreshItems = async () => {
+    if (!token || !quote) return;
+    const { quote: updated } = await api.quoteDetail(quote.id, token);
+    setQuote((current) => current ? { ...current, items: updated.items, total: updated.total } : current);
+  };
+  const persistItemDraft = async () => {
+    if (!token || !quote || !editable || expandedItem == null) return;
+    const item = quote.items.find((entry) => entry.id === expandedItem);
+    if (!item) return;
+    const quantity = parseNum(editQty), unitPrice = parseNum(editPrice);
+    if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(unitPrice) || unitPrice < 0) throw new Error('Revisa la cantidad y el precio del producto.');
+    if (quantity !== item.quantity || unitPrice !== item.unitPrice) await api.updateQuoteItem(quote.id, item.id, { quantity, unitPrice }, token);
+    setExpandedItem(null);
+  };
+  const duplicateItem = async (item: QuoteItem) => {
+    if (!token || !quote || itemBusy) return;
+    setItemBusy(true);
+    try { await persistItemDraft(); await api.duplicateItem('quotes', quote.id, item.id, token); await refreshItems(); }
+    catch (err) { Alert.alert('Error', err instanceof Error ? err.message : 'No se pudo duplicar'); }
+    finally { setItemBusy(false); }
+  };
+  const reorderItems = async (ids: number[]) => {
+    if (!token || !quote) return;
+    await persistItemDraft(); await api.reorderItems('quotes', quote.id, ids, token); await refreshItems();
+  };
   const persistDocumentOptions = async () => {
     if (!token || !quote || !saveable) return;
     const patch = { notes: notes.trim() || null, includeSeal, showNotes, includeSignature };
@@ -96,11 +127,12 @@ export function QuoteDetailScreen() {
     if (!token || !quote || saving) return;
     setSaving(true);
     try {
+      await persistItemDraft();
       await persistDocumentOptions();
       Alert.alert('Guardado', 'Cambios guardados');
-      load();
+      await refreshItems();
     } catch (err) {
-      Alert.alert('Error', err instanceof ApiError ? err.message : 'No se pudo guardar');
+      Alert.alert('Error', err instanceof Error ? err.message : 'No se pudo guardar');
     } finally {
       setSaving(false);
     }
@@ -108,17 +140,13 @@ export function QuoteDetailScreen() {
 
   const openPreview = async () => {
     if (!token || !quote || saving || itemBusy) return;
-    const item = quote.items.find((entry) => entry.id === expandedItem);
-    if (item && (parseNum(editQty) !== item.quantity || parseNum(editPrice) !== item.unitPrice)) {
-      Alert.alert('Artículo sin guardar', 'Guarda la cantidad y el precio del artículo antes de generar la vista previa.');
-      return;
-    }
     setSaving(true);
     try {
+      await persistItemDraft();
       await persistDocumentOptions();
       router.push(`/quotes/${quote.id}/preview`);
     } catch (err) {
-      Alert.alert('Error', err instanceof ApiError ? err.message : 'No se pudieron guardar las opciones del documento');
+      Alert.alert('Error', err instanceof Error ? err.message : 'No se pudieron guardar las opciones del documento');
     } finally {
       setSaving(false);
     }
@@ -176,7 +204,7 @@ export function QuoteDetailScreen() {
     try {
       await api.updateQuoteItem(quote.id, item.id, { quantity: qty, unitPrice: price }, token);
       setExpandedItem(null);
-      load();
+      await refreshItems();
     } catch (err) {
       Alert.alert('Error', err instanceof ApiError ? err.message : 'No se pudo guardar');
     } finally {
@@ -195,7 +223,7 @@ export function QuoteDetailScreen() {
           try {
             await api.deleteQuoteItem(quote.id, item.id, token);
             setExpandedItem(null);
-            load();
+            await refreshItems();
           } catch (err) {
             Alert.alert('Error', err instanceof ApiError ? err.message : 'No se pudo quitar');
           }
@@ -250,7 +278,7 @@ export function QuoteDetailScreen() {
               {saving ? (
                 <ActivityIndicator size="small" color={colors.onPrimary} />
               ) : (
-                <Ionicons name="checkmark" size={22} color={colors.onPrimary} />
+                <Text style={{ color: colors.onPrimary, fontWeight: "700" }}>Guardar</Text>
               )}
             </Pressable>
           ) : (
@@ -320,7 +348,9 @@ export function QuoteDetailScreen() {
         {quote.items.map((item, index) => {
           const expanded = expandedItem === item.id;
           return (
-            <View key={item.id} style={[styles.itemCard, { backgroundColor: colors.surface }]}>
+            <ItemSwipe key={item.id} disabled={!editable || itemBusy} onEdit={() => { if (!expanded) toggleItem(item); }}
+              onDelete={() => removeItem(item)} onDuplicate={() => { void duplicateItem(item); }} onMove={() => setOrdering(true)}>
+            <View style={[styles.itemCard, { backgroundColor: colors.surface }]}>
               <Pressable onPress={() => toggleItem(item)} disabled={!editable}>
                 <View style={styles.itemRow}>
                   <View style={[styles.itemNumber, { backgroundColor: colors.primary }]}>
@@ -378,7 +408,7 @@ export function QuoteDetailScreen() {
                     <Text style={[styles.unitLabel, { color: colors.muted }]}>{item.unit}</Text>
                   </View>
                   <View style={styles.priceRow}>
-                    <Text style={[styles.pricePrefix, { color: colors.muted }]}>Bs.</Text>
+                    <Text style={[styles.pricePrefix, { color: colors.muted }]}>{business?.moneda ?? 'Bs.'}</Text>
                     <TextInput
                       style={[styles.priceInput, { color: colors.text, borderBottomColor: colors.border }]}
                       value={editPrice}
@@ -407,6 +437,7 @@ export function QuoteDetailScreen() {
                 </View>
               )}
             </View>
+            </ItemSwipe>
           );
         })}
 
@@ -493,6 +524,7 @@ export function QuoteDetailScreen() {
         />
       </ScrollView>
 
+      <ReorderItemsModal visible={ordering} items={quote.items} onClose={() => setOrdering(false)} onSave={reorderItems} />
       <Modal
         visible={clientOpen}
         transparent
@@ -556,7 +588,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   circleButton: {
-    width: 44,
+    minWidth: 76,
+    paddingHorizontal: 12,
     height: 44,
     borderRadius: 22,
     alignItems: 'center',

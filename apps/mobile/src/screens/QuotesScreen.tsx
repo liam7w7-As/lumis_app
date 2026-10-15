@@ -129,11 +129,6 @@ export function QuotesScreen() {
     }
   };
 
-  const handleDeliveryNote = () => {
-    closeRow();
-    Alert.alert('Nota de entrega', 'Próximamente');
-  };
-
   const q = query.trim().toLowerCase();
   const filtered = q
     ? quotes.filter(
@@ -222,7 +217,7 @@ export function QuotesScreen() {
               onPress={() => router.push(`/quotes/${item.id}`)}
               onOpened={handleOpened}
               onGenerateSale={() => handleSale(item)}
-              onDeliveryNote={handleDeliveryNote}
+              onPreview={() => { closeRow(); router.push("/quotes/" + item.id + "/preview"); }}
               onDelete={() => handleDelete(item)}
               onDuplicate={() => handleDuplicate(item)}
             />
