@@ -33,7 +33,9 @@
         "expo-splash-screen",
         {
           "backgroundColor": "#f6f7fc",
-          "dark": { "backgroundColor": "#12121a" }
+          "dark": {
+            "backgroundColor": "#12121a"
+          }
         }
       ],
       [
@@ -58,16 +60,34 @@
               {
                 "fontFamily": "Poppins",
                 "fontDefinitions": [
-                  { "path": "./assets/fonts/Poppins-Regular.ttf", "weight": 400 },
-                  { "path": "./assets/fonts/Poppins-Medium.ttf", "weight": 500 },
-                  { "path": "./assets/fonts/Poppins-SemiBold.ttf", "weight": 600 },
-                  { "path": "./assets/fonts/Poppins-Bold.ttf", "weight": 700 }
+                  {
+                    "path": "./assets/fonts/Poppins-Regular.ttf",
+                    "weight": 400
+                  },
+                  {
+                    "path": "./assets/fonts/Poppins-Medium.ttf",
+                    "weight": 500
+                  },
+                  {
+                    "path": "./assets/fonts/Poppins-SemiBold.ttf",
+                    "weight": 600
+                  },
+                  {
+                    "path": "./assets/fonts/Poppins-Bold.ttf",
+                    "weight": 700
+                  }
                 ]
               }
             ]
           }
         }
       ]
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "c9780fe6-718d-407b-8ba5-1475ccd57b62"
+      }
+    }
   }
 }
