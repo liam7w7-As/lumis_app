@@ -6,7 +6,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true
     },
@@ -28,6 +28,14 @@
       "expo-secure-store",
       "expo-sharing",
       "expo-asset",
+      "expo-system-ui",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#f6f7fc",
+          "dark": { "backgroundColor": "#12121a" }
+        }
+      ],
       [
         "expo-image-picker",
         {

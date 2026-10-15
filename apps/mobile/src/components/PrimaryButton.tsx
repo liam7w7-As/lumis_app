@@ -1,5 +1,4 @@
-import { useRef } from 'react';
-import { ActivityIndicator, Animated, Pressable, StyleSheet, Text } from 'react-native';
+import { ActivityIndicator, Animated, Pressable, StyleSheet, Text, useAnimatedValue } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 
 interface PrimaryButtonProps {
@@ -11,7 +10,7 @@ interface PrimaryButtonProps {
 
 export function PrimaryButton({ title, onPress, disabled, loading }: PrimaryButtonProps) {
   const { colors } = useTheme();
-  const scale = useRef(new Animated.Value(1)).current;
+  const scale = useAnimatedValue(1);
 
   const press = (to: number) => {
     Animated.timing(scale, { toValue: to, duration: 120, useNativeDriver: true }).start();

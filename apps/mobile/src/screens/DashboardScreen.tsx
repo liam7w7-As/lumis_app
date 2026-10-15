@@ -100,9 +100,14 @@ export function DashboardScreen() {
         <View style={styles.header}>
           <Logo size={26} />
           <View style={styles.headerActions}>
-            <Pressable onPress={toggle} hitSlop={10}>
+            <Pressable
+              onPress={toggle}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel={dark ? 'Activar modo claro' : 'Activar modo oscuro'}
+            >
               <Ionicons
-                name={dark ? 'sunny-outline' : 'sunny-outline'}
+                name={dark ? 'sunny-outline' : 'moon-outline'}
                 size={24}
                 color={colors.text}
               />

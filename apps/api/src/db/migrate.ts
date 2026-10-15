@@ -10,17 +10,34 @@ const MIGRATIONS_DIR = path.join(__dirname, '..', '..', 'migrations');
 
 export async function runMigrations(): Promise<string[]> {
   const { host, port, user, password, database } = config.db;
-  const admin = await mysql.createConnection({
-    host,
-    port,
-    user,
-    password,
-    multipleStatements: true,
-  });
+  let admin: mysql.Connection;
   try {
-    await admin.query(
-      `CREATE DATABASE IF NOT EXISTS \`${database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
-    );
+    admin = await mysql.createConnection({
+      host,
+      port,
+      user,
+      password,
+      database,
+      multipleStatements: true,
+    });
+  } catch {
+    // Si la BD aún no existe, conectamos sin base de datos específica
+    admin = await mysql.createConnection({
+      host,
+      port,
+      user,
+      password,
+      multipleStatements: true,
+    });
+  }
+  try {
+    try {
+      await admin.query(
+        `CREATE DATABASE IF NOT EXISTS \`${database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
+      );
+    } catch {
+      // Ignorar si el usuario no tiene permisos globales de CREATE DATABASE (habitual en Hostinger)
+    }
     await admin.changeUser({ database });
     await admin.query(
       `CREATE TABLE IF NOT EXISTS schema_migrations (

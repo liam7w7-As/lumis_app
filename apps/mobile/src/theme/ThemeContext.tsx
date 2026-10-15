@@ -1,6 +1,6 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { useColorScheme } from 'react-native';
+import { Appearance, useColorScheme } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { contrastText, forBackground, forDarkBackground } from '../lib/brandColors';
 
@@ -67,33 +67,41 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [mode, setModeState] = useState<ThemeMode>('system');
   const [brandColor, setBrandColorState] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  const modeWrite = useRef(Promise.resolve());
 
   useEffect(() => {
+    let active = true;
     (async () => {
-      try {
-        const stored = await SecureStore.getItemAsync(MODE_KEY);
-        if (stored === 'light' || stored === 'dark' || stored === 'system') {
-          setModeState(stored);
-        }
-        const storedBrand = await SecureStore.getItemAsync(BRAND_KEY);
-        if (storedBrand && /^#[0-9a-fA-F]{6}$/.test(storedBrand)) {
-          setBrandColorState(storedBrand);
-        }
-      } catch {
-        // Sin almacenamiento: se usa el tema del sistema en memoria.
-      } finally {
-        setReady(true);
+      const [stored, storedBrand] = await Promise.all([
+        SecureStore.getItemAsync(MODE_KEY).catch(() => null),
+        SecureStore.getItemAsync(BRAND_KEY).catch(() => null),
+      ]);
+      if (!active) return;
+
+      const next = stored === 'light' || stored === 'dark' ? stored : 'system';
+      Appearance.setColorScheme(next === 'system' ? 'unspecified' : next);
+      setModeState(next);
+      if (storedBrand && /^#[0-9a-fA-F]{6}$/.test(storedBrand)) {
+        setBrandColorState(storedBrand);
       }
+      setReady(true);
     })();
+    return () => {
+      active = false;
+    };
   }, []);
 
-  const setMode = useCallback(async (next: ThemeMode) => {
+  const setMode = useCallback((next: ThemeMode) => {
+    // Sincroniza también los diálogos y controles nativos. "Sistema" libera el override.
+    Appearance.setColorScheme(next === 'system' ? 'unspecified' : next);
     setModeState(next);
-    try {
-      await SecureStore.setItemAsync(MODE_KEY, next);
-    } catch {
-      // Sin almacenamiento: el cambio vive solo en memoria.
-    }
+    // Conserva el orden al cambiar varias veces rápidamente.
+    modeWrite.current = modeWrite.current
+      .then(() => SecureStore.setItemAsync(MODE_KEY, next))
+      .catch(() => {
+        // Sin almacenamiento: el cambio vive solo en memoria.
+      });
+    return modeWrite.current;
   }, []);
 
   const setBrandColor = useCallback(async (hex: string | null) => {

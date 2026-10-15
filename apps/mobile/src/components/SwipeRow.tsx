@@ -1,6 +1,6 @@
-import { forwardRef, useImperativeHandle, useRef } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
 import type { ReactNode } from 'react';
-import { Animated, PanResponder, StyleSheet, View } from 'react-native';
+import { Animated, PanResponder, StyleSheet, useAnimatedValue, View } from 'react-native';
 
 export interface SwipeRowHandle {
   close: () => void;
@@ -19,12 +19,14 @@ export const SwipeRow = forwardRef<SwipeRowHandle, SwipeRowProps>(function Swipe
   { actionsWidth, renderRightActions, onOpen, children },
   ref,
 ) {
-  const translateX = useRef(new Animated.Value(0)).current;
+  const translateX = useAnimatedValue(0);
   const settled = useRef(0);
   const callbacks = useRef({ onOpen });
-  callbacks.current = { onOpen };
+  useEffect(() => {
+    callbacks.current = { onOpen };
+  }, [onOpen]);
 
-  const animateTo = (to: number) => {
+  const animateTo = useCallback((to: number) => {
     settled.current = to;
     Animated.spring(translateX, {
       toValue: to,
@@ -36,7 +38,7 @@ export const SwipeRow = forwardRef<SwipeRowHandle, SwipeRowProps>(function Swipe
         callbacks.current.onOpen?.();
       }
     });
-  };
+  }, [translateX]);
 
   useImperativeHandle(
     ref,
@@ -47,11 +49,11 @@ export const SwipeRow = forwardRef<SwipeRowHandle, SwipeRowProps>(function Swipe
         }
       },
     }),
-    [],
+    [animateTo],
   );
 
-  const responder = useRef(
-    PanResponder.create({
+  const responder = useMemo(
+    () => PanResponder.create({
       onMoveShouldSetPanResponder: (_, gesture) =>
         Math.abs(gesture.dx) > 8 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.2,
       onPanResponderGrant: () => {
@@ -77,7 +79,8 @@ export const SwipeRow = forwardRef<SwipeRowHandle, SwipeRowProps>(function Swipe
         animateTo(to);
       },
     }),
-  ).current;
+    [actionsWidth, animateTo, translateX],
+  );
 
   return (
     <View>

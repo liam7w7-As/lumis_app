@@ -90,10 +90,6 @@ export function AddItemScreen({ quoteId, saleId }: { quoteId?: number; saleId?: 
     }
   }, [token]);
 
-  useEffect(() => {
-    loadCatalog();
-  }, [loadCatalog]);
-
   useFocusEffect(
     useCallback(() => {
       loadCatalog();

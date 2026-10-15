@@ -1,6 +1,5 @@
-import { useRef } from 'react';
 import type { ReactNode } from 'react';
-import { Animated, StyleSheet, TextInput, View } from 'react-native';
+import { Animated, StyleSheet, TextInput, useAnimatedValue, View } from 'react-native';
 import type { TextInputProps } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../theme/ThemeContext';
@@ -29,7 +28,7 @@ export function AnimatedInput({
   right,
 }: AnimatedInputProps) {
   const { colors } = useTheme();
-  const focus = useRef(new Animated.Value(0)).current;
+  const focus = useAnimatedValue(0);
 
   const animateTo = (to: number) => {
     Animated.timing(focus, { toValue: to, duration: 220, useNativeDriver: false }).start();
