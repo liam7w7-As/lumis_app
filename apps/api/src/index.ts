@@ -10,6 +10,7 @@ import { authRouter } from './routes/auth';
 import { branchesRouter } from './routes/branches';
 import { businessRouter } from './routes/business';
 import { clientsRouter } from './routes/clients';
+import { dashboardRouter } from './routes/dashboard';
 import { healthRouter } from './routes/health';
 import { productsRouter } from './routes/products';
 import { quotesRouter } from './routes/quotes';
@@ -42,6 +43,7 @@ async function main() {
   app.use('/api/business', businessRouter);
   app.use('/api/branches', branchesRouter);
   app.use('/api/clients', clientsRouter);
+  app.use('/api/dashboard', dashboardRouter);
   app.use('/api/products', productsRouter);
   app.use('/api/quotes', quotesRouter);
   app.use('/api/sales', salesRouter);

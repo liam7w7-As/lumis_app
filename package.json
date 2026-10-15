@@ -6,6 +6,8 @@
     "apps/*"
   ],
   "scripts": {
+    "build": "npm run build --workspace=apps/api",
+    "start": "npm run start --workspace=apps/api",
     "dev": "concurrently -n mobile,api -c blue,green \"npm run dev:mobile\" \"npm run dev:api\"",
     "dev:mobile": "npm run start --workspace=apps/mobile",
     "dev:api": "npm run dev --workspace=apps/api",
@@ -14,5 +16,9 @@
   },
   "devDependencies": {
     "concurrently": "^9.1.2"
+  },
+  "overrides": {
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
   }
 }

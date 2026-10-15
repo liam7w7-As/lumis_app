@@ -66,7 +66,7 @@ export function QuotesScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      void load();
+      void load(true);
     }, [load]),
   );
 

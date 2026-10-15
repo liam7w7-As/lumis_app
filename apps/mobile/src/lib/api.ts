@@ -23,6 +23,26 @@ export interface User {
   email: string | null;
 }
 
+export type DashboardPeriod = 'hoy' | 'semana' | 'mes';
+
+export interface DashboardStat {
+  value: number;
+  previousValue: number;
+  changePercent: number | null;
+}
+
+export interface DashboardStats {
+  period: DashboardPeriod;
+  timeZone: string;
+  comparison: string;
+  updatedAt: string;
+  quotes: DashboardStat;
+  approved: DashboardStat;
+  sales: DashboardStat;
+  receivable: DashboardStat;
+  chart: { label: string; value: number }[];
+}
+
 export type QuoteStatus = 'borrador' | 'aprobada' | 'rechazada' | 'convertida';
 
 export interface Quote {
@@ -262,6 +282,8 @@ export const api = {
       body: input,
     }),
   me: (token: string) => request<{ user: User }>('/api/auth/me', { token }),
+  dashboard: (token: string, period: DashboardPeriod) =>
+    request<{ dashboard: DashboardStats }>(`/api/dashboard?period=${period}`, { token }),
   quotes: (token: string) => request<{ quotes: Quote[] }>('/api/quotes', { token }),
   duplicateQuote: (id: number, token: string) =>
     request<{ quote: { id: number } }>(`/api/quotes/${id}/duplicate`, {

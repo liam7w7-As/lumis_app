@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -46,9 +46,13 @@ export function QuoteDetailScreen() {
   const [editQty, setEditQty] = useState('1');
   const [editPrice, setEditPrice] = useState('');
   const [itemBusy, setItemBusy] = useState(false);
+  const requestId = useRef(0);
 
   const load = useCallback(async () => {
-    if (!token || !Number.isInteger(quoteId)) {
+    const request = ++requestId.current;
+    if (!token || !Number.isSafeInteger(quoteId) || quoteId <= 0) {
+      setQuote(null);
+      setError('Cotización no encontrada');
       setLoading(false);
       return;
     }
@@ -56,40 +60,65 @@ export function QuoteDetailScreen() {
     setError(null);
     try {
       const { quote: data } = await api.quoteDetail(quoteId, token);
+      if (request !== requestId.current) return;
       setQuote(data);
       setNotes(data.notes ?? '');
       setIncludeSeal(data.includeSeal);
       setShowNotes(data.showNotes);
       setIncludeSignature(data.includeSignature);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Ocurrió un error inesperado');
+      if (request === requestId.current) setError(err instanceof ApiError ? err.message : 'Ocurrió un error inesperado');
     } finally {
-      setLoading(false);
+      if (request === requestId.current) setLoading(false);
     }
   }, [token, quoteId]);
 
   useFocusEffect(
     useCallback(() => {
-      load();
+      void load();
+      return () => { requestId.current += 1; };
     }, [load]),
   );
 
   const editable = quote?.status === 'borrador';
   const saveable = quote != null && quote.status !== 'convertida';
 
+  const persistDocumentOptions = async () => {
+    if (!token || !quote || !saveable) return;
+    const patch = { notes: notes.trim() || null, includeSeal, showNotes, includeSignature };
+    if (patch.notes === quote.notes && includeSeal === quote.includeSeal
+      && showNotes === quote.showNotes && includeSignature === quote.includeSignature) return;
+    await api.updateQuote(quote.id, patch, token);
+    setQuote({ ...quote, ...patch });
+  };
+
   const save = async () => {
-    if (!token || !quote) return;
+    if (!token || !quote || saving) return;
     setSaving(true);
     try {
-      await api.updateQuote(
-        quote.id,
-        { notes: notes.trim() || null, includeSeal, showNotes, includeSignature },
-        token,
-      );
+      await persistDocumentOptions();
       Alert.alert('Guardado', 'Cambios guardados');
       load();
     } catch (err) {
       Alert.alert('Error', err instanceof ApiError ? err.message : 'No se pudo guardar');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openPreview = async () => {
+    if (!token || !quote || saving || itemBusy) return;
+    const item = quote.items.find((entry) => entry.id === expandedItem);
+    if (item && (parseNum(editQty) !== item.quantity || parseNum(editPrice) !== item.unitPrice)) {
+      Alert.alert('Artículo sin guardar', 'Guarda la cantidad y el precio del artículo antes de generar la vista previa.');
+      return;
+    }
+    setSaving(true);
+    try {
+      await persistDocumentOptions();
+      router.push(`/quotes/${quote.id}/preview`);
+    } catch (err) {
+      Alert.alert('Error', err instanceof ApiError ? err.message : 'No se pudieron guardar las opciones del documento');
     } finally {
       setSaving(false);
     }
@@ -458,7 +487,9 @@ export function QuoteDetailScreen() {
 
         <PrimaryButton
           title="Generar vista previa"
-          onPress={() => router.push(`/quotes/${quote.id}/preview`)}
+          onPress={openPreview}
+          loading={saving}
+          disabled={itemBusy}
         />
       </ScrollView>
 

@@ -376,7 +376,7 @@ export function SettingsScreen() {
           <View style={styles.headerSpacer} />
         </View>
 
-        <SegmentedTabs options={TABS} value={tab} onChange={setTab} />
+        <SegmentedTabs<SettingsTab> options={TABS} value={tab} onChange={setTab} />
 
         {loading ? (
           <View style={styles.loading}>

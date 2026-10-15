@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
@@ -10,85 +10,76 @@ import { GradientCard } from '../components/GradientCard';
 import { SegmentedTabs } from '../components/SegmentedTabs';
 import { MiniBarChart } from '../components/MiniBarChart';
 import { Logo } from '../components/Logo';
+import { api, ApiError, type DashboardPeriod, type DashboardStat, type DashboardStats } from '../lib/api';
 
-type Period = 'hoy' | 'semana' | 'mes';
-
-interface Stat {
-  value: number;
-  delta: string;
-}
-
-interface PeriodStats {
-  quotes: Stat;
-  approved: Stat;
-  sales: Stat;
-  receivable: Stat;
-  chart: number[];
-}
-
-// Datos de muestra: se conectarán al backend cuando se definan los endpoints.
-const STATS: Record<Period, PeriodStats> = {
-  hoy: {
-    quotes: { value: 1, delta: '↑ 100%' },
-    approved: { value: 0, delta: '↑ 0%' },
-    sales: { value: 0, delta: '↑ 0%' },
-    receivable: { value: 0, delta: '↑ 0%' },
-    chart: [0, 1, 0, 0, 0, 0, 0],
-  },
-  semana: {
-    quotes: { value: 3, delta: '↑ 200%' },
-    approved: { value: 0, delta: '↑ 0%' },
-    sales: { value: 0, delta: '↑ 0%' },
-    receivable: { value: 0, delta: '↑ 0%' },
-    chart: [1, 2, 1, 0, 0, 0, 0],
-  },
-  mes: {
-    quotes: { value: 12, delta: '↑ 50%' },
-    approved: { value: 7, delta: '↑ 40%' },
-    sales: { value: 5, delta: '↑ 25%' },
-    receivable: { value: 2, delta: '↑ 10%' },
-    chart: [3, 5, 2, 6, 4, 7, 5],
-  },
-};
-
-const PERIODS: { key: Period; label: string }[] = [
+const PERIODS: { key: DashboardPeriod; label: string }[] = [
   { key: 'hoy', label: 'Hoy' },
   { key: 'semana', label: 'Semana' },
   { key: 'mes', label: 'Mes' },
 ];
 
-const DAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
-
 function StatCard({
   icon,
-  value,
+  stat,
   label,
-  delta,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
-  value: number;
+  stat: DashboardStat;
   label: string;
-  delta: string;
 }) {
   const { colors } = useTheme();
+  const change = stat.changePercent;
+  const delta = change === null ? 'Sin base previa'
+    : change === 0 ? 'Sin cambio' : `${change > 0 ? '↑' : '↓'} ${Math.abs(change)}%`;
   return (
     <View style={[styles.statCard, { borderColor: colors.border }]}>
       <Ionicons name={icon} size={20} color={colors.text} />
-      <Text style={[styles.statValue, { color: colors.text }]}>{value}</Text>
+      <Text style={[styles.statValue, { color: colors.text }]}>{stat.value}</Text>
       <Text style={[styles.statLabel, { color: colors.muted }]}>{label}</Text>
-      <Text style={styles.statDelta}>{delta}</Text>
+      <Text style={[styles.statDelta, { color: colors.muted }]}>{delta}</Text>
     </View>
   );
 }
 
 export function DashboardScreen() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const { colors, dark, toggle } = useTheme();
   const insets = useSafeAreaInsets();
-  const [period, setPeriod] = useState<Period>('semana');
+  const [period, setPeriod] = useState<DashboardPeriod>('semana');
+  const [data, setData] = useState<DashboardStats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const requestId = useRef(0);
+
+  const load = useCallback(async (refresh = false) => {
+    if (!token) return;
+    const request = ++requestId.current;
+    setLoading(!refresh);
+    setRefreshing(refresh);
+    setError(null);
+    try {
+      const { dashboard } = await api.dashboard(token, period);
+      if (request === requestId.current) setData(dashboard);
+    } catch (err) {
+      if (request === requestId.current) {
+        setError(err instanceof ApiError ? err.message : 'No se pudieron cargar las estadísticas');
+      }
+    } finally {
+      if (request === requestId.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    }
+  }, [token, period]);
+
+  useFocusEffect(useCallback(() => {
+    void load();
+    return () => { requestId.current += 1; };
+  }, [load]));
 
   const firstName = user?.name?.split(' ')[0] || user?.username || '';
-  const stats = STATS[period];
+  const stats = data?.period === period ? data : null;
   const gradient = useMemo(() => gradientFor(colors.primary), [colors.primary]);
 
   return (
@@ -96,6 +87,9 @@ export function DashboardScreen() {
       <ScrollView
         contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 8 }]}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor={colors.primary} colors={[colors.primary]} />
+        }
       >
         <View style={styles.header}>
           <Logo size={26} />
@@ -147,22 +141,37 @@ export function DashboardScreen() {
         >
           <View style={styles.sheetHead}>
             <Text style={[styles.sheetTitle, { color: colors.text }]}>Estadísticas</Text>
-            <SegmentedTabs options={PERIODS} value={period} onChange={setPeriod} />
+            <SegmentedTabs<DashboardPeriod> options={PERIODS} value={period} onChange={setPeriod} />
           </View>
 
-          <View style={styles.statGrid}>
-            <StatCard icon="document-text-outline" value={stats.quotes.value} label="Cotizaciones" delta={stats.quotes.delta} />
-            <StatCard icon="checkmark-circle-outline" value={stats.approved.value} label="Aprobadas" delta={stats.approved.delta} />
-            <StatCard icon="bag-outline" value={stats.sales.value} label="Ventas" delta={stats.sales.delta} />
-            <StatCard icon="card-outline" value={stats.receivable.value} label="Por cobrar" delta={stats.receivable.delta} />
-          </View>
-
-          <View style={[styles.chartCard, { borderColor: colors.border }]}>
-            <Text style={[styles.chartTitle, { color: colors.text }]}>Ventas</Text>
-            <MiniBarChart
-              data={DAYS.map((label, i) => ({ label, value: stats.chart[i] ?? 0 }))}
-            />
-          </View>
+          {error && (
+            <View style={styles.feedback}>
+              <Text style={{ color: colors.error }}>{error}</Text>
+              <Pressable onPress={() => void load()} accessibilityRole="button">
+                <Text style={{ color: colors.primary }}>Reintentar</Text>
+              </Pressable>
+            </View>
+          )}
+          {loading && !stats && <ActivityIndicator style={styles.feedback} size="large" color={colors.primary} />}
+          {stats && (
+            <>
+              <Text style={[styles.caption, { color: colors.muted }]}>{stats.comparison}</Text>
+              <View style={styles.statGrid}>
+                <StatCard icon="document-text-outline" stat={stats.quotes} label="Cotizaciones" />
+                <StatCard icon="checkmark-circle-outline" stat={stats.approved} label="Aprobadas" />
+                <StatCard icon="bag-outline" stat={stats.sales} label="Ventas" />
+                <StatCard icon="card-outline" stat={stats.receivable} label="Por cobrar" />
+              </View>
+              <View style={[styles.chartCard, { borderColor: colors.border }]}>
+                <Text style={[styles.chartTitle, { color: colors.text }]}>Ventas · cantidad</Text>
+                <MiniBarChart data={stats.chart} />
+                {stats.sales.value === 0 && <Text style={[styles.caption, { color: colors.muted }]}>Sin ventas en este período</Text>}
+              </View>
+              <Text style={[styles.caption, { color: colors.muted }]}>
+                Operaciones creadas en el período, en horario de Bolivia. Ventas activas; «Por cobrar» cuenta las pendientes de pago. La comparación usa el período anterior completo y los estados actuales.
+              </Text>
+            </>
+          )}
         </View>
       </ScrollView>
     </View>
@@ -216,9 +225,7 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
   },
   sheetHead: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    gap: 12,
   },
   sheetTitle: {
     fontSize: 18,
@@ -227,11 +234,13 @@ const styles = StyleSheet.create({
   },
   statGrid: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
     marginTop: 14,
   },
   statCard: {
-    flex: 1,
+    flexBasis: '46%',
+    flexGrow: 1,
     borderWidth: 1,
     borderRadius: 14,
     padding: 10,
@@ -250,8 +259,9 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontFamily: 'Poppins',
     fontWeight: '700',
-    color: '#22c55e',
   },
+  caption: { fontFamily: 'Poppins', fontSize: 11, marginTop: 12 },
+  feedback: { paddingVertical: 24, gap: 12, alignItems: 'center' },
   chartCard: {
     borderWidth: 1,
     borderRadius: 14,

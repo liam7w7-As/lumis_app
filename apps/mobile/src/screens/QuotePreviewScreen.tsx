@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -74,38 +74,48 @@ export function QuotePreviewScreen({ quoteId }: { quoteId: number }) {
   const [fonts, setFonts] = useState<DocFonts | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<BusyAction>(null);
+  const [error, setError] = useState<string | null>(null);
+  const requestId = useRef(0);
 
   const load = useCallback(async () => {
-    if (!token || !Number.isInteger(quoteId)) {
+    const request = ++requestId.current;
+    if (!token || !Number.isSafeInteger(quoteId) || quoteId <= 0) {
+      setQuote(null);
+      setError('Cotización no encontrada');
       setLoading(false);
       return;
     }
     setLoading(true);
+    setError(null);
+    setQuote(null);
     try {
       const [{ quote: data }, biz, fts] = await Promise.all([
         api.quoteDetail(quoteId, token),
-        api.business(token).then((r) => r.business).catch(() => null),
+        api.business(token).then((r) => r.business),
         loadDocFonts(),
       ]);
       const imgs = await loadDocImages({
         logoUrl: mediaUrl(biz?.logo_url ?? null),
         selloUrl: mediaUrl(biz?.sello_url ?? null),
       });
+      if (request !== requestId.current) return;
       setQuote(data);
       setBusiness(biz);
       setImages(imgs);
       setFonts(fts);
     } catch (err) {
-      Alert.alert('Error', err instanceof ApiError ? err.message : 'No se pudo cargar');
-      router.back();
+      if (request === requestId.current) {
+        setError(err instanceof ApiError ? err.message : 'No se pudo cargar la vista previa');
+      }
     } finally {
-      setLoading(false);
+      if (request === requestId.current) setLoading(false);
     }
   }, [token, quoteId]);
 
   useFocusEffect(
     useCallback(() => {
-      load();
+      void load();
+      return () => { requestId.current += 1; };
     }, [load]),
   );
 
@@ -147,7 +157,7 @@ export function QuotePreviewScreen({ quoteId }: { quoteId: number }) {
   };
 
   const printPdf = async () => {
-    if (!quote) return;
+    if (!quote || busy || loading || error) return;
     setBusy('print');
     try {
       await Print.printAsync({ html: buildHtml() });
@@ -234,7 +244,7 @@ export function QuotePreviewScreen({ quoteId }: { quoteId: number }) {
           <Ionicons name="arrow-back" size={24} color={colors.text} />
         </Pressable>
         <Text style={[styles.title, { color: colors.text }]}>Vista previa</Text>
-        <Pressable onPress={printPdf} hitSlop={10} disabled={busy !== null}>
+        <Pressable onPress={printPdf} hitSlop={10} disabled={busy !== null || loading || !quote || !!error}>
           {busy === 'print' ? (
             <ActivityIndicator size="small" color={colors.text} />
           ) : (
@@ -243,9 +253,16 @@ export function QuotePreviewScreen({ quoteId }: { quoteId: number }) {
         </Pressable>
       </View>
 
-      {loading || !quote ? (
+      {loading ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      ) : error || !quote ? (
+        <View style={styles.center}>
+          <Text style={{ color: colors.error, textAlign: 'center' }}>{error ?? 'Cotización no encontrada'}</Text>
+          <Pressable onPress={() => void load()} accessibilityRole="button" style={{ padding: 16 }}>
+            <Text style={{ color: colors.primary }}>Reintentar</Text>
+          </Pressable>
         </View>
       ) : (
         <ScrollView
@@ -320,10 +337,10 @@ export function QuotePreviewScreen({ quoteId }: { quoteId: number }) {
                   {it.unit || 'Unid.'}
                 </Text>
                 <Text style={[styles.td, styles.colPrice, styles.tdSmall]}>
-                  {formatMoney(it.unitPrice)}
+                  {formatMoney(it.unitPrice, brand.moneda)}
                 </Text>
                 <Text style={[styles.td, styles.colSub, styles.tdBold]}>
-                  {formatMoney(it.subtotal)}
+                  {formatMoney(it.subtotal, brand.moneda)}
                 </Text>
               </View>
             ))}
@@ -332,12 +349,12 @@ export function QuotePreviewScreen({ quoteId }: { quoteId: number }) {
             <View style={styles.totalsWrap}>
               <View style={styles.subtotalRow}>
                 <Text style={styles.subtotalLabel}>Sub total:</Text>
-                <Text style={styles.subtotalValue}>{formatMoney(quote.total)}</Text>
+                <Text style={styles.subtotalValue}>{formatMoney(quote.total, brand.moneda)}</Text>
               </View>
               <View style={[styles.totalBar, { backgroundColor: brand.color }]}>
                 <Text style={[styles.totalLabel, { color: onBrand }]}>TOTAL</Text>
                 <Text style={[styles.totalValue, { color: onBrand }]}>
-                  {brand.moneda} {formatMoney(quote.total)}
+                  {formatMoney(quote.total, brand.moneda)}
                 </Text>
               </View>
               <Text style={styles.literal}>

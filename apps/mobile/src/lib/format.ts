@@ -1,11 +1,11 @@
 import { CURRENCY } from '../config';
 
-export function formatMoney(value: number): string {
+export function formatMoney(value: number, symbol = CURRENCY.symbol): string {
   const formatted = new Intl.NumberFormat(CURRENCY.locale, {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   }).format(value);
-  return `${CURRENCY.symbol} ${formatted}`;
+  return `${symbol} ${formatted}`;
 }
 
 export function formatDate(iso: string): string {

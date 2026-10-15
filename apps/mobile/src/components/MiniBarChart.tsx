@@ -34,7 +34,7 @@ export function MiniBarChart({ data }: { data: BarDatum[] }) {
                   styles.bar,
                   {
                     backgroundColor: colors.primary,
-                    height: 6 + (d.value / max) * (PLOT_HEIGHT - 12),
+                    height: d.value === 0 ? 0 : Math.max(2, (d.value / max) * PLOT_HEIGHT),
                   },
                 ]}
               />
