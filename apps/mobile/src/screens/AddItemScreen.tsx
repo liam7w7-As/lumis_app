@@ -1,7 +1,7 @@
+import { feedback } from '../lib/feedback';
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -11,7 +11,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
@@ -114,7 +114,7 @@ export function AddItemScreen({ quoteId, saleId }: { quoteId?: number; saleId?: 
 
   const handleDeleteProduct = (product: Product) => {
     if (!token) return;
-    Alert.alert('Borrar producto', `¿Borrar "${product.name}" del catálogo?`, [
+    feedback.alert('Borrar producto', `¿Borrar "${product.name}" del catálogo?`, [
       { text: 'Cancelar', style: 'cancel' },
       {
         text: 'Borrar',
@@ -124,7 +124,7 @@ export function AddItemScreen({ quoteId, saleId }: { quoteId?: number; saleId?: 
             await api.deleteProduct(product.id, token);
             setCatalog((prev) => prev.filter((p) => p.id !== product.id));
           } catch (err) {
-            Alert.alert(
+            feedback.alert(
               'Error',
               err instanceof ApiError ? err.message : 'No se pudo borrar el producto',
             );
@@ -140,15 +140,15 @@ export function AddItemScreen({ quoteId, saleId }: { quoteId?: number; saleId?: 
     const parsedPrice = parseNumber(price);
     const parsedQty = parseNumber(quantity);
     if (trimmedName.length === 0) {
-      setError('El nombre del artículo es obligatorio');
+      setError('El nombre del artículo es obligatorio'); feedback.warning('Revisa el producto', 'El nombre del artículo es obligatorio');
       return;
     }
     if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) {
-      setError('El precio debe ser mayor a 0');
+      setError('El precio debe ser mayor a 0'); feedback.warning('Revisa el producto', 'El precio debe ser mayor a 0');
       return;
     }
     if (!Number.isFinite(parsedQty) || parsedQty <= 0) {
-      setError('La cantidad debe ser mayor a 0');
+      setError('La cantidad debe ser mayor a 0'); feedback.warning('Revisa el producto', 'La cantidad debe ser mayor a 0');
       return;
     }
     setError(null);
@@ -207,7 +207,8 @@ export function AddItemScreen({ quoteId, saleId }: { quoteId?: number; saleId?: 
       }
       router.back();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'No se pudo añadir el artículo');
+      const message = err instanceof ApiError ? err.message : 'No se pudo añadir el artículo.';
+      setError(message); feedback.error('No se pudo añadir el producto', message);
     } finally {
       setSaving(false);
     }

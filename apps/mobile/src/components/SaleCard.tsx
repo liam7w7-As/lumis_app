@@ -1,9 +1,10 @@
-import { useRef, useState } from 'react';
+import { useRef } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SwipeRow, type SwipeRowHandle } from './SwipeRow';
 import { useTheme } from '../theme/ThemeContext';
+import { usePressMotion } from '../hooks/usePressMotion';
 import { gradientFor } from '../lib/brandColors';
 import { formatDate } from '../lib/format';
 import { useMoney } from '../context/BusinessContext';
@@ -63,14 +64,10 @@ export function SaleCard({
 }: SaleCardProps) {
   const { colors } = useTheme();
   const formatMoney = useMoney();
-  const [scale] = useState(() => new Animated.Value(1));
+  const { scale, onPressIn, onPressOut } = usePressMotion();
   const swipeRef = useRef<SwipeRowHandle>(null);
   const statusColor = SALE_STATUS_COLOR[sale.estadoPago];
   const voided = sale.estado === 'anulada';
-
-  const press = (to: number) => {
-    Animated.timing(scale, { toValue: to, duration: 120, useNativeDriver: true }).start();
-  };
 
   const renderRightActions = () => (
     <LinearGradient
@@ -104,8 +101,8 @@ export function SaleCard({
       <Pressable
         onPress={onPress}
         disabled={!onPress}
-        onPressIn={() => press(0.98)}
-        onPressOut={() => press(1)}
+        onPressIn={onPressIn}
+        onPressOut={onPressOut}
       >
         <Animated.View
           style={[
@@ -123,16 +120,6 @@ export function SaleCard({
               <Text style={[styles.client, { color: colors.text }]} numberOfLines={1}>
                 {sale.clientName ?? 'Sin Cliente'}
               </Text>
-              {voided && (
-                <View style={[styles.voidedPill, { backgroundColor: '#ef44441A' }]}>
-                  <Text style={[styles.voidedText, { color: '#ef4444' }]}>Anulada</Text>
-                </View>
-              )}
-              {!voided && sale.entregadaAt && (
-                <View style={[styles.voidedPill, { backgroundColor: '#22c55e1A' }]}>
-                  <Text style={[styles.voidedText, { color: '#22c55e' }]}>Entregada</Text>
-                </View>
-              )}
               <Ionicons name="chevron-forward" size={18} color={colors.icon} />
             </View>
             <View style={styles.metaRow}>
@@ -153,16 +140,24 @@ export function SaleCard({
                 </Text>
               </View>
 
-              <View style={[styles.pill, { backgroundColor: colors.background }]}>
-                <Ionicons name="person-outline" size={12} color={colors.muted} />
-                <Text style={[styles.pillText, { color: colors.muted }]} numberOfLines={1}>
+              <View style={styles.seller}>
+                {voided && (
+                  <View style={[styles.voidedPill, { backgroundColor: '#ef44441A' }]}>
+                    <Text style={[styles.voidedText, { color: '#ef4444' }]}>Anulada</Text>
+                  </View>
+                )}
+                {!voided && sale.entregadaAt && (
+                  <View style={[styles.voidedPill, { backgroundColor: '#22c55e1A' }]}>
+                    <Text style={[styles.voidedText, { color: '#22c55e' }]}>Entregada</Text>
+                  </View>
+                )}
+                <View style={[styles.statusPill, { backgroundColor: `${statusColor}1A` }]}>
+                  <Text style={[styles.statusText, { color: statusColor }]}>
+                    {SALE_STATUS_LABEL[sale.estadoPago]}
+                  </Text>
+                </View>
+                <Text style={[styles.sellerName, { color: colors.muted }]} numberOfLines={1}>
                   {sale.sellerName.toUpperCase()}
-                </Text>
-              </View>
-
-              <View style={[styles.statusPill, { backgroundColor: `${statusColor}1A` }]}>
-                <Text style={[styles.statusText, { color: statusColor }]}>
-                  {SALE_STATUS_LABEL[sale.estadoPago]}
                 </Text>
               </View>
             </View>
@@ -227,6 +222,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   voidedPill: {
+    flexShrink: 0,
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
@@ -257,7 +253,23 @@ const styles = StyleSheet.create({
   amountText: {
     fontWeight: '700',
   },
+  seller: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginLeft: 'auto',
+    maxWidth: '100%',
+    flexShrink: 1,
+  },
+  sellerName: {
+    fontSize: 12,
+    fontFamily: 'Poppins',
+    fontWeight: '600',
+    maxWidth: 150,
+    flexShrink: 1,
+  },
   statusPill: {
+    flexShrink: 0,
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 10,

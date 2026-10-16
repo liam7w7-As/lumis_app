@@ -126,8 +126,8 @@ export function buildDeliveryNoteHtml(input: {
   ${fontFaces}
   @page { size: letter portrait; margin: 10mm 12mm 0 12mm; }
   * { box-sizing: border-box; font-family: 'Poppins', 'DejaVu Sans', sans-serif; }
-  /* El margen inferior es 0 para que el pie pegue al borde real de la hoja;
-     este padding es el espacio libre que deja el footer fijo. */
+  /* El espacio del tfoot se repite en cada página de la tabla para que
+     el pie fijo no cubra productos. El padding protege el contenido final. */
   body { margin: 0; padding-bottom: 18mm; color: #111827; font-size: 8pt; line-height: 1.25; font-family: 'Poppins', 'DejaVu Sans', sans-serif; }
   table { width: 100%; border-collapse: collapse; }
   .masthead { margin-bottom: 2mm; }
@@ -146,6 +146,8 @@ export function buildDeliveryNoteHtml(input: {
   .meta-value { color: #111827; text-align: left; }
   .items { width: 100%; border-collapse: collapse; margin-bottom: 2mm; table-layout: fixed; }
   .items thead { display: table-header-group; }
+  .items tfoot { display: table-footer-group; }
+  .items tfoot td { height: 10mm; padding: 0; border: 0; }
   .items tr { page-break-inside: avoid; }
   .items th { background: ${colorPrimario}; color: ${colorOnPrimario}; font-size: 7pt; line-height: 1; font-weight: bold; padding: 1.8mm 1.1mm; border-right: 1.5px solid #ffffff; border-bottom: 1.5px solid #ffffff; }
   .items th:last-child { border-right: none; }
@@ -262,6 +264,7 @@ export function buildDeliveryNoteHtml(input: {
   <tbody>
     ${rows}
   </tbody>
+  <tfoot aria-hidden="true"><tr><td colspan="9"></td></tr></tfoot>
 </table>
 
 <table class="totals-wrap">

@@ -1,6 +1,8 @@
+import { feedback } from '../lib/feedback';
 import { useEffect, useState } from 'react';
 import {
   Animated,
+  Easing,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -10,12 +12,13 @@ import {
   useAnimatedValue,
   View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { ApiError } from '../lib/api';
 import { useTheme } from '../theme/ThemeContext';
+import { useReducedMotion } from '../context/MotionContext';
 import { BRAND } from '../config';
 import { AnimatedInput } from '../components/AnimatedInput';
 import { PrimaryButton } from '../components/PrimaryButton';
@@ -35,14 +38,20 @@ export function AuthScreen() {
   const [busy, setBusy] = useState(false);
 
   const progress = useAnimatedValue(0);
+  const reducedMotion = useReducedMotion();
 
   useEffect(() => {
-    Animated.timing(progress, {
+    if (reducedMotion) { progress.setValue(1); return; }
+    const animation = Animated.timing(progress, {
       toValue: 1,
-      duration: 650,
+      duration: 440,
+      easing: Easing.out(Easing.cubic),
+      isInteraction: false,
       useNativeDriver: true,
-    }).start();
-  }, [progress]);
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [progress, reducedMotion]);
 
   const animFor = (index: number) => {
     const start = index * 0.07;
@@ -57,7 +66,7 @@ export function AuthScreen() {
         {
           translateY: progress.interpolate({
             inputRange: [start, end],
-            outputRange: [26, 0],
+            outputRange: [12, 0],
             extrapolate: 'clamp',
           }),
         },
@@ -76,7 +85,9 @@ export function AuthScreen() {
       }
       router.replace('/dashboard');
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Ocurrió un error inesperado');
+      const message = err instanceof ApiError ? err.message : 'Inténtalo de nuevo en unos momentos.';
+      setError(message);
+      feedback.error(mode === 'login' ? 'No se pudo iniciar sesión' : 'No se pudo crear la cuenta', message);
     } finally {
       setBusy(false);
     }

@@ -1,12 +1,16 @@
+import { FeedbackDialogHost } from '../src/components/FeedbackDialog';
 import { useEffect, useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider as NavigationThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
+import { useFonts } from 'expo-font';
 import { StatusBar } from 'expo-status-bar';
 import * as SystemUI from 'expo-system-ui';
 import { BusinessProvider } from '../src/context/BusinessContext';
 import { AuthProvider } from '../src/context/AuthContext';
 import { ThemeProvider, useTheme } from '../src/theme/ThemeContext';
+import { MotionProvider, useReducedMotion } from '../src/context/MotionContext';
+import { useStackMotion } from '../src/hooks/useStackMotion';
 
 void SplashScreen.preventAutoHideAsync().catch(() => {
   // La vista de arranque puede haberse cerrado durante una recarga en desarrollo.
@@ -14,6 +18,14 @@ void SplashScreen.preventAutoHideAsync().catch(() => {
 
 function ThemedNavigator() {
   const { dark, colors, ready } = useTheme();
+  const screenOptions = useStackMotion();
+  const reducedMotion = useReducedMotion();
+  const [fontsLoaded, fontError] = useFonts({
+    Poppins: require('../assets/fonts/Poppins-Regular.ttf'),
+    'Poppins-Medium': require('../assets/fonts/Poppins-Medium.ttf'),
+    'Poppins-SemiBold': require('../assets/fonts/Poppins-SemiBold.ttf'),
+    'Poppins-Bold': require('../assets/fonts/Poppins-Bold.ttf'),
+  });
   const navigationTheme = useMemo(() => {
     const base = dark ? DarkTheme : DefaultTheme;
     return {
@@ -38,19 +50,17 @@ function ThemedNavigator() {
   }, [ready, colors.background]);
 
   // Evita mostrar el tema del sistema antes de recuperar la elección guardada.
-  if (!ready) return null;
+  if (!ready || (!fontsLoaded && !fontError)) return null;
 
   return (
     <NavigationThemeProvider value={navigationTheme}>
       <View style={[styles.root, { backgroundColor: colors.background }]} onLayout={SplashScreen.hide}>
         <StatusBar style={dark ? 'light' : 'dark'} />
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            animation: 'slide_from_right',
-            contentStyle: { backgroundColor: colors.background },
-          }}
-        />
+        <FeedbackDialogHost />
+        <Stack screenOptions={screenOptions}>
+          <Stack.Screen name="login" options={{ animation: reducedMotion ? 'none' : 'fade', animationDuration: 220 }} />
+          <Stack.Screen name="dashboard" options={{ animation: reducedMotion ? 'none' : 'fade', animationDuration: 220 }} />
+        </Stack>
       </View>
     </NavigationThemeProvider>
   );
@@ -59,9 +69,11 @@ function ThemedNavigator() {
 export default function RootLayout() {
   return (
     <ThemeProvider>
-      <AuthProvider>
-        <BusinessProvider><ThemedNavigator /></BusinessProvider>
-      </AuthProvider>
+      <MotionProvider>
+        <AuthProvider>
+          <BusinessProvider><ThemedNavigator /></BusinessProvider>
+        </AuthProvider>
+      </MotionProvider>
     </ThemeProvider>
   );
 }

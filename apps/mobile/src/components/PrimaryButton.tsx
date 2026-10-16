@@ -1,5 +1,6 @@
-import { ActivityIndicator, Animated, Pressable, StyleSheet, Text, useAnimatedValue } from 'react-native';
+import { ActivityIndicator, Animated, Pressable, StyleSheet, Text } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
+import { usePressMotion } from '../hooks/usePressMotion';
 
 interface PrimaryButtonProps {
   title: string;
@@ -10,20 +11,15 @@ interface PrimaryButtonProps {
 
 export function PrimaryButton({ title, onPress, disabled, loading }: PrimaryButtonProps) {
   const { colors } = useTheme();
-  const scale = useAnimatedValue(1);
-
-  const press = (to: number) => {
-    Animated.timing(scale, { toValue: to, duration: 120, useNativeDriver: true }).start();
-  };
-
-  const inactive = disabled || loading;
+  const inactive = !!(disabled || loading);
+  const { scale, onPressIn, onPressOut } = usePressMotion(inactive);
 
   return (
     <Pressable
       onPress={onPress}
       disabled={inactive}
-      onPressIn={() => press(0.97)}
-      onPressOut={() => press(1)}
+      onPressIn={onPressIn}
+      onPressOut={onPressOut}
     >
       <Animated.View
         style={[

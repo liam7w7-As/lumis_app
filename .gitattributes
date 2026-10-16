@@ -1,0 +1,4 @@
+
+# Mantener las copias de PDF.js idénticas al paquete publicado.
+apps/mobile/assets/pdfjs/*.pdfjs text eol=lf
+apps/mobile/assets/pdfjs/LICENSE text eol=lf

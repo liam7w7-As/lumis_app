@@ -1,15 +1,15 @@
+import { FormModal } from '../components/FormModal';
+import { feedback } from '../lib/feedback';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
@@ -63,7 +63,7 @@ export function NewQuoteScreen() {
   const save = async () => {
     if (!token) return;
     if (items.length === 0) {
-      Alert.alert('Sin artículos', 'Agrega al menos un artículo a la cotización');
+      feedback.alert('Sin artículos', 'Agrega al menos un artículo a la cotización');
       return;
     }
     setSaving(true);
@@ -84,7 +84,7 @@ export function NewQuoteScreen() {
         },
         token,
       );
-      Alert.alert('Cotización creada', `Se creó la cotización #${quote.id}`, [
+      feedback.alert('Cotización creada', `Se creó la cotización #${quote.id}`, [
         {
           text: 'OK',
           onPress: () => {
@@ -94,7 +94,7 @@ export function NewQuoteScreen() {
         },
       ]);
     } catch (err) {
-      Alert.alert('Error', err instanceof ApiError ? err.message : 'No se pudo guardar');
+      feedback.alert('Error', err instanceof ApiError ? err.message : 'No se pudo guardar');
     } finally {
       setSaving(false);
     }
@@ -132,7 +132,7 @@ export function NewQuoteScreen() {
         <View style={styles.metaRow}>
           <View style={styles.dateWrap}>
             <Text style={[styles.dateText, { color: colors.muted }]}>Fecha {todayLabel()}</Text>
-            <Pressable onPress={() => Alert.alert('Fecha', 'Próximamente')} hitSlop={8}>
+            <Pressable onPress={() => feedback.alert('Fecha', 'Próximamente')} hitSlop={8}>
               <Ionicons name="pencil-outline" size={14} color={colors.muted} />
             </Pressable>
           </View>
@@ -225,15 +225,8 @@ export function NewQuoteScreen() {
         )}
       </ScrollView>
 
-      <Modal
-        visible={branchesOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setBranchesOpen(false)}
-      >
-        <Pressable style={styles.overlay} onPress={() => setBranchesOpen(false)}>
-          <Pressable style={[styles.optionsCard, { backgroundColor: colors.surface }]}>
-            <Text style={[styles.optionsTitle, { color: colors.text }]}>Sucursal</Text>
+      <FormModal visible={branchesOpen} title="Elegir sucursal" icon="storefront-outline" onClose={() => setBranchesOpen(false)}>
+
             {branches.map((option) => (
               <Pressable
                 key={option.id}
@@ -264,9 +257,7 @@ export function NewQuoteScreen() {
                 )}
               </Pressable>
             ))}
-          </Pressable>
-        </Pressable>
-      </Modal>
+      </FormModal>
     </View>
   );
 }

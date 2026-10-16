@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { documentDateSchema } from '../lib/documentDate';
 import { registerItemActions } from './itemActions';
 import { PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import { z } from 'zod';
@@ -329,6 +330,7 @@ quotesRouter.post('/:id/duplicate', requireAuth, async (req: AuthRequest, res, n
 });
 
 const updateQuoteSchema = z.object({
+  createdAt: documentDateSchema.optional(),
   status: z.enum(['borrador', 'aprobada', 'rechazada']).optional(),
   notes: z.string().trim().max(1000).nullable().optional(),
   includeSeal: z.boolean().optional(),
@@ -337,11 +339,13 @@ const updateQuoteSchema = z.object({
 });
 
 quotesRouter.patch('/:id', requireAuth, async (req: AuthRequest, res, next) => {
+  const conn = await pool.getConnection();
   try {
     const id = parseId(req.params.id);
     const patch = updateQuoteSchema.parse(req.body);
-    const [rows] = await pool.query<RowDataPacket[]>(
-      'SELECT status FROM quotes WHERE id = ?',
+    await conn.beginTransaction();
+    const [rows] = await conn.query<RowDataPacket[]>(
+      'SELECT status FROM quotes WHERE id = ? FOR UPDATE',
       [id],
     );
     const row = rows[0];
@@ -353,6 +357,10 @@ quotesRouter.patch('/:id', requireAuth, async (req: AuthRequest, res, next) => {
     }
     const sets: string[] = [];
     const params: unknown[] = [];
+    if (patch.createdAt !== undefined) {
+      sets.push('created_at = ?');
+      params.push(new Date(patch.createdAt));
+    }
     if (patch.status !== undefined) {
       sets.push('status = ?');
       params.push(patch.status);
@@ -377,10 +385,14 @@ quotesRouter.patch('/:id', requireAuth, async (req: AuthRequest, res, next) => {
       throw badRequest('Nada que actualizar');
     }
     params.push(id);
-    await pool.query(`UPDATE quotes SET ${sets.join(', ')} WHERE id = ?`, params);
-    res.json({ ok: true });
+    await conn.query(`UPDATE quotes SET ${sets.join(', ')} WHERE id = ?`, params);
+    await conn.commit();
+    res.json({ ok: true, createdAt: patch.createdAt === undefined ? undefined : new Date(patch.createdAt).toISOString() });
   } catch (err) {
+    await rollbackQuiet(conn);
     next(err);
+  } finally {
+    conn.release();
   }
 });
 

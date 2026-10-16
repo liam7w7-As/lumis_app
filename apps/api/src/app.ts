@@ -1,7 +1,6 @@
 import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
-import fs from 'node:fs';
 import { config } from './config';
 import { errorHandler } from './middlewares/errorHandler';
 import { agentsRouter } from './routes/agents';
@@ -18,7 +17,6 @@ import { salesRouter } from './routes/sales';
 import { uploadsRouter } from './routes/uploads';
 
 export function createApp() {
-  fs.mkdirSync(config.uploadsDir, { recursive: true });
   const app = express();
   app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
   app.use(cors({ origin: config.corsOrigin }));

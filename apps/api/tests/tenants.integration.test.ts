@@ -120,8 +120,20 @@ test('empresas, permisos, sincronización, archivos y orden de documentos', {
   await request('/api/quotes/%30'+q.id,b.token,'GET',undefined,404);
   assert.equal((await request('/api/dashboard',b.token)).dashboard.quotes.value,0);
   const png='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==';
+  config.uploadsDir = path.join(uploadDir, 'created-on-upload');
   const asset=await request('/api/business/assets',a.token,'POST',{tipo:'logo',base64:png,ext:'jpg'},201);
   assert.ok(asset.url.endsWith('.png'));
+  assert.ok((await fs.stat(config.uploadsDir)).isDirectory());
+  await request(asset.url,a.token,'HEAD');
+  const goodStorage = config.uploadsDir;
+  const blocked = path.join(uploadDir,'blocked-storage');
+  await fs.writeFile(blocked,'not a directory');
+  config.uploadsDir = blocked;
+  try {
+    const failure=await request('/api/business/assets',a.token,'POST',{tipo:'logo',base64:png,ext:'png'},503);
+    assert.equal(failure.code,'UPLOAD_STORAGE_UNAVAILABLE');
+    assert.equal((await request('/api/business',a.token)).business.logo_url,asset.url);
+  } finally { config.uploadsDir = goodStorage; }
   await request(asset.url,b.token,'GET',undefined,404);
   await request(asset.url,undefined,'GET',undefined,401);
   const image=await fetch(base+asset.url,{headers:{Authorization:'Bearer '+st}});
@@ -145,7 +157,75 @@ test('empresas, permisos, sincronización, archivos y orden de documentos', {
   const linked=(await request('/api/agents',a.token)).agents.find((agent:any)=>agent.accountId===seller.user.id);
   assert.ok(linked);
   await request('/api/agents/'+linked.id,a.token,'DELETE',undefined,409);
+  await fs.unlink(path.join(config.uploadsDir,path.basename(asset.url)));
+  const missing=await request(asset.url,a.token,'GET',undefined,404);
+  assert.equal(missing.code,'IMAGE_NOT_FOUND');
   const usersA=(await request('/api/auth/users',a.token)).users;
   assert.equal(usersA.length,2);
   assert.ok(usersA.every((u:any)=>u.businessId===a.user.businessId));
+
+  await t.test('la fecha de venta se sincroniza y no modifica entregas, pagos ni datos de otra empresa', async () => {
+    const dated=(await request('/api/sales',st,'POST',{
+      items:[{description:'Venta con fecha',quantity:1,unitPrice:10}],metodoPago:'por_pagar',
+      createdAt:'2025-09-30T23:45:20-04:00',
+    },201)).sale;
+    await request('/api/sales/'+dated.id+'/payments',st,'POST',{monto:3},201);
+    await request('/api/sales/'+dated.id+'/deliver',st,'POST',{});
+    const before=(await request('/api/sales/'+dated.id,st)).sale;
+    assert.equal(before.createdAt,'2025-10-01T03:45:20.000Z');
+    const changed='2026-02-28T23:45:20-04:00';
+    const expected='2026-03-01T03:45:20.000Z';
+    const updated=await request('/api/sales/'+dated.id,st,'PATCH',{createdAt:changed});
+    assert.equal(updated.createdAt,expected);
+    const after=(await request('/api/sales/'+dated.id,secondLogin.token)).sale;
+    assert.equal(after.createdAt,expected);
+    assert.equal(after.entregadaAt,before.entregadaAt);
+    assert.equal(after.estadoPago,before.estadoPago);
+    assert.deepEqual(after.payments,before.payments);
+    assert.equal((await request('/api/sales',a.token)).sales.find((sale:any)=>sale.id===dated.id).createdAt,expected);
+    await request('/api/sales/'+dated.id,a.token,'PATCH',{notaPago:'Sin cambiar la fecha'});
+    assert.equal((await request('/api/sales/'+dated.id,st)).sale.createdAt,expected);
+    await request('/api/sales/'+dated.id,b.token,'PATCH',{createdAt:'2024-01-01T12:00:00Z'},404);
+    for (const invalid of ['mañana','2026-02-30T12:00:00Z','1969-12-31T12:00:00Z','2040-01-01T12:00:00Z',null]) {
+      await request('/api/sales/'+dated.id,st,'PATCH',{createdAt:invalid},400);
+    }
+    assert.equal((await request('/api/sales/'+dated.id,st)).sale.createdAt,expected);
+    await request('/api/sales/'+dated.id+'/anular',st,'POST',{});
+    await request('/api/sales/'+dated.id,st,'PATCH',{createdAt:changed},409);
+    await request('/api/sales',st,'POST',{
+      items:[{description:'Fecha inválida',quantity:1,unitPrice:1}],createdAt:'2026-02-30T00:00:00Z',
+    },400);
+  });
+
+
+  await t.test('la fecha de cotización se sincroniza sin modificar sus productos ni permitir cambios tras convertirla', async () => {
+    const quote=(await request('/api/quotes',a.token,'POST',{
+      clientId:clientA.id,items:[{description:'Cotización con fecha',quantity:2,unitPrice:12}],notes:'Conservar',
+    },201)).quote;
+    const before=(await request('/api/quotes/'+quote.id,st)).quote;
+    const expected='2025-10-01T03:45:20.000Z';
+    const updated=await request('/api/quotes/'+quote.id,st,'PATCH',{createdAt:'2025-09-30T23:45:20-04:00'});
+    assert.equal(updated.createdAt,expected);
+    const after=(await request('/api/quotes/'+quote.id,secondLogin.token)).quote;
+    assert.equal(after.createdAt,expected);
+    assert.deepEqual(after.items,before.items);
+    assert.equal(after.total,before.total);
+    assert.equal(after.notes,before.notes);
+    assert.equal(after.status,before.status);
+    assert.equal((await request('/api/quotes',a.token)).quotes.find((q:any)=>q.id===quote.id).createdAt,expected);
+    await request('/api/quotes/'+quote.id,b.token,'PATCH',{createdAt:'2024-01-01T12:00:00Z'},404);
+    for(const invalid of ['mañana','2026-02-30T12:00:00Z','1969-12-31T12:00:00Z','2040-01-01T12:00:00Z',null]) {
+      await request('/api/quotes/'+quote.id,st,'PATCH',{createdAt:invalid,notes:'No guardar'},400);
+    }
+    assert.equal((await request('/api/quotes/'+quote.id,st)).quote.notes,'Conservar');
+    await request('/api/quotes/'+quote.id,a.token,'PATCH',{status:'rechazada'});
+    await request('/api/quotes/'+quote.id,st,'PATCH',{createdAt:expected});
+    await request('/api/quotes/'+quote.id,a.token,'PATCH',{status:'aprobada'});
+    await request('/api/quotes/'+quote.id,st,'PATCH',{createdAt:expected});
+    const sale=(await request('/api/sales/from-quote',st,'POST',{quoteId:quote.id},201)).sale;
+    await request('/api/quotes/'+quote.id,st,'PATCH',{createdAt:'2024-01-01T12:00:00Z'},409);
+    assert.equal((await request('/api/quotes/'+quote.id,st)).quote.createdAt,expected);
+    assert.notEqual((await request('/api/sales/'+sale.id,st)).sale.createdAt,expected);
+  });
+
 });

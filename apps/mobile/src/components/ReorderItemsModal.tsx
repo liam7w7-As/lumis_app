@@ -1,6 +1,7 @@
+import { feedback } from '../lib/feedback';
 import { useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { FormModal } from './FormModal';
 import { PrimaryButton } from './PrimaryButton';
 import { useTheme } from '../theme/ThemeContext';
@@ -28,10 +29,10 @@ function ReorderForm({ visible, items, onClose, onSave }: ReorderProps) {
     if (busy) return;
     setBusy(true);
     try { await onSave(order.map((item) => item.id)); onClose(); }
-    catch (err) { Alert.alert('No se pudo guardar el orden', err instanceof Error ? err.message : 'Intenta de nuevo'); }
+    catch (err) { feedback.alert('No se pudo guardar el orden', err instanceof Error ? err.message : 'Intenta de nuevo'); }
     finally { setBusy(false); }
   };
-  return <FormModal visible={visible} title="Ordenar productos" onClose={() => { if (!busy) onClose(); }}>
+  return <FormModal visible={visible} title="Ordenar productos" icon="reorder-four-outline" onClose={() => { if (!busy) onClose(); }}>
     <Text style={{ color: colors.muted }}>Usa las flechas para elegir el orden del documento y del PDF.</Text>
     {order.map((item,index) => <View key={item.id} style={[styles.row, { borderColor: colors.border }]}>
       <Text style={[styles.name, { color: colors.text }]}>{index + 1}. {item.description}</Text>

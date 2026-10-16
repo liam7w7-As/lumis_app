@@ -1,5 +1,5 @@
 import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useAuth } from '../context/AuthContext';
 import { mediaSource } from '../lib/api';
 import { useTheme } from '../theme/ThemeContext';

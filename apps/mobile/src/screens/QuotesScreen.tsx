@@ -1,18 +1,16 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { feedback } from '../lib/feedback';
+import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
-  Animated,
   FlatList,
   Pressable,
   RefreshControl,
   StyleSheet,
   Text,
   TextInput,
-  useAnimatedValue,
   View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
@@ -32,14 +30,10 @@ export function QuotesScreen() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState('');
 
-  const fade = useAnimatedValue(0);
   const openRow = useRef<SwipeRowHandle | null>(null);
-  useEffect(() => {
-    Animated.timing(fade, { toValue: 1, duration: 400, useNativeDriver: true }).start();
-  }, [fade]);
 
   const load = useCallback(
-    async (isRefresh = false) => {
+    async (isRefresh = false, silent = false) => {
       if (!token) {
         setLoading(false);
         setRefreshing(false);
@@ -47,7 +41,7 @@ export function QuotesScreen() {
       }
       if (isRefresh) {
         setRefreshing(true);
-      } else {
+      } else if (!silent) {
         setLoading(true);
       }
       setError(null);
@@ -55,7 +49,8 @@ export function QuotesScreen() {
         const { quotes: data } = await api.quotes(token);
         setQuotes(data);
       } catch (err) {
-        setError(err instanceof ApiError ? err.message : 'Ocurrió un error inesperado');
+        { const message = err instanceof ApiError ? err.message : 'No se pudo cargar el historial.';
+          setError(message); feedback.error('No se pudo cargar el historial', message); }
       } finally {
         setLoading(false);
         setRefreshing(false);
@@ -66,7 +61,7 @@ export function QuotesScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      void load(true);
+      void load(false, true);
     }, [load]),
   );
 
@@ -83,13 +78,13 @@ export function QuotesScreen() {
   };
 
   const showApiError = (err: unknown, fallback: string) => {
-    Alert.alert('Error', err instanceof ApiError ? err.message : fallback);
+    feedback.alert('Error', err instanceof ApiError ? err.message : fallback);
   };
 
   const handleDelete = (quote: Quote) => {
     if (!token) return;
     closeRow();
-    Alert.alert('Borrar cotización', `¿Borrar la cotización #${quote.id}?`, [
+    feedback.alert('Borrar cotización', `¿Borrar la cotización #${quote.id}?`, [
       { text: 'Cancelar', style: 'cancel' },
       {
         text: 'Borrar',
@@ -122,7 +117,7 @@ export function QuotesScreen() {
     closeRow();
     try {
       const { sale } = await api.saleFromQuote(quote.id, token);
-      Alert.alert('Venta generada', `Se generó la venta #${sale.id}`);
+      feedback.alert('Venta generada', `Se generó la venta #${sale.id}`);
       load(true);
     } catch (err) {
       showApiError(err, 'No se pudo generar la venta');
@@ -138,7 +133,7 @@ export function QuotesScreen() {
     : quotes;
 
   return (
-    <Animated.View style={[styles.screen, { backgroundColor: colors.background, opacity: fade }]}>
+    <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <Pressable onPress={() => router.back()} hitSlop={10}>
           <Ionicons name="arrow-back" size={24} color={colors.text} />
@@ -244,7 +239,7 @@ export function QuotesScreen() {
       >
         <Ionicons name="add" size={30} color={colors.onPrimary} />
       </Pressable>
-    </Animated.View>
+    </View>
   );
 }
 

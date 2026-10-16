@@ -1,5 +1,6 @@
+import { feedback } from '../lib/feedback';
 import { useCallback, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { api, type User } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
@@ -19,13 +20,13 @@ export function TeamUsers({ onCreated }: { onCreated: () => void }) {
   const load = useCallback(async () => {
     if (!token || user?.role !== 'admin') return;
     try { setUsers((await api.users(token)).users); }
-    catch (err) { Alert.alert('Usuarios', err instanceof Error ? err.message : 'No se pudo cargar el equipo'); }
+    catch (err) { feedback.alert('Usuarios', err instanceof Error ? err.message : 'No se pudo cargar el equipo'); }
   }, [token, user?.role]);
   useFocusEffect(useCallback(() => { void load(); }, [load]));
   const save = async () => {
     if (!token || busy) return;
     if (name.trim().length < 2 || !/^[a-zA-Z0-9._-]{3,60}$/.test(username.trim()) || password.length < 8) {
-      Alert.alert('Revisa los datos', 'Escribe el nombre, un usuario de al menos 3 caracteres y una contraseña de al menos 8 caracteres.');
+      feedback.alert('Revisa los datos', 'Escribe el nombre, un usuario de al menos 3 caracteres y una contraseña de al menos 8 caracteres.');
       return;
     }
     setBusy(true);
@@ -34,8 +35,8 @@ export function TeamUsers({ onCreated }: { onCreated: () => void }) {
       setUsers((prev) => [...prev, created]);
       setOpen(false); setName(''); setUsername(''); setPassword('');
       onCreated();
-      Alert.alert('Vendedor registrado', 'Ya puede iniciar sesión con su usuario y contraseña en esta empresa.');
-    } catch (err) { Alert.alert('Error', err instanceof Error ? err.message : 'No se pudo registrar'); }
+      feedback.alert('Vendedor registrado', 'Ya puede iniciar sesión con su usuario y contraseña en esta empresa.');
+    } catch (err) { feedback.alert('Error', err instanceof Error ? err.message : 'No se pudo registrar'); }
     finally { setBusy(false); }
   };
   if (user?.role !== 'admin') return null;
@@ -49,7 +50,7 @@ export function TeamUsers({ onCreated }: { onCreated: () => void }) {
       <Pressable onPress={() => setOpen(true)} style={[styles.add, { borderColor: colors.primary }]}>
         <Text style={{ color: colors.primary, fontWeight: '700' }}>Agregar vendedor</Text>
       </Pressable>
-      <FormModal visible={open} title="Registrar vendedor" onClose={() => { if (!busy) { setOpen(false); setPassword(''); } }}>
+      <FormModal visible={open} title="Registrar vendedor" icon="person-add-outline" onClose={() => { if (!busy) { setOpen(false); setPassword(''); } }}>
         <Text style={{ color: colors.muted }}>Tendrá acceso a las ventas, cotizaciones y catálogo de esta empresa.</Text>
         <TextInput accessibilityLabel="Nombre del vendedor" placeholder="Nombre completo" value={name} onChangeText={setName}
           autoFocus autoCapitalize="words" placeholderTextColor={colors.muted} style={[styles.input, { color: colors.text, borderColor: colors.border }]} />

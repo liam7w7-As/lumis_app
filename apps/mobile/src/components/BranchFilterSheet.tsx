@@ -1,5 +1,6 @@
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { AppModal } from './AppModal';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/ThemeContext';
 import type { Branch } from '../lib/api';
@@ -60,7 +61,7 @@ export function BranchFilterSheet({
   };
 
   return (
-    <Modal
+    <AppModal
       visible={visible}
       transparent
       animationType="slide"
@@ -97,7 +98,7 @@ export function BranchFilterSheet({
           {branches.map((b) => renderOption(b.id, b.name, 'business-outline'))}
         </ScrollView>
       </View>
-    </Modal>
+    </AppModal>
   );
 }
 
@@ -108,15 +109,15 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(15, 15, 25, 0.45)',
+    backgroundColor: 'rgba(7, 10, 23, 0.66)',
   },
   sheet: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
     paddingTop: 10,
     paddingHorizontal: 20,
     maxHeight: '70%',

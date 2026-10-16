@@ -1,3 +1,4 @@
+import { feedback } from '../lib/feedback';
 import { useState } from 'react';
 import {
   ActivityIndicator,
@@ -9,7 +10,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
@@ -33,6 +34,7 @@ export function AddClientScreen() {
     if (!token) return;
     if (name.trim().length < 2) {
       setError('El nombre del cliente es obligatorio');
+      feedback.warning('Revisa el nombre', 'Escribe al menos dos caracteres para registrar al cliente.');
       return;
     }
     setError(null);
@@ -49,7 +51,9 @@ export function AddClientScreen() {
       setClient(client);
       router.back();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'No se pudo guardar el cliente');
+      const message = err instanceof ApiError ? err.message : 'No se pudo guardar el cliente.';
+      setError(message);
+      feedback.error('No se pudo guardar el cliente', message);
     } finally {
       setSaving(false);
     }

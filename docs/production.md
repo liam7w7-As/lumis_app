@@ -65,7 +65,7 @@ La ubicación concreta depende del usuario y de los permisos de tu hosting; comp
 El valor por defecto guarda archivos dentro del directorio de ejecución. Hostinger reemplaza los directorios de despliegue y puede borrar esas subidas en una actualización. [Estructura de despliegues](https://www.hostinger.com/support/how-to-deploy-a-nodejs-website-in-hostinger/).
 Comprueba la persistencia subiendo un archivo de prueba y verificándolo después de volver a desplegar. Incluye esa carpeta en las copias de seguridad.
 
-Pendiente antes de usar datos reales públicamente: el registro de cuentas está abierto y las cuentas comparten el mismo negocio. Hay que restringir el alta de usuarios al personal autorizado; CORS no resuelve ese acceso.
+El registro público crea una empresa independiente con su administrador. Los vendedores de una empresa se crean desde Configuración por su administrador; la API verifica empresa y permisos también en archivos y operaciones por ID.
 También queda revisar las alertas de dependencias detectadas en la revisión, con versiones compatibles con Expo SDK 57.
 
 ## 3. Comprobar la API
@@ -145,7 +145,7 @@ Los cambios locales de esta revisión deben llegar a la rama conectada de GitHub
 
 El administrador edita los datos, logo, sello, color, sucursales y agentes de la empresa. Los vendedores comparten catálogo, clientes, ventas y cotizaciones, y pueden cambiar la apariencia de su propia cuenta. La API filtra todos esos recursos por empresa y verifica permisos también para archivos y operaciones por ID.
 
-Los campos de Configuración se editan en un formulario que se adapta al teclado. «Guardar» persiste el texto que se está editando. Logo y sello se guardan al subirlos. Nombre, color, moneda y logo se actualizan al iniciar sesión, al volver a la app y cada 30 segundos mientras está activa. Para refrescar el formulario de Configuración, vuelve a abrirlo. La preferencia claro/oscuro/sistema se comparte entre dispositivos de la misma cuenta.
+Los campos de Configuración se editan directamente y se guardan al salir del input; el teclado mantiene visible el campo. Logo y sello se guardan al subirlos. Nombre, color, moneda y logo se actualizan al iniciar sesión, al volver a la app y cada 30 segundos mientras está activa. Para refrescar el formulario de Configuración, vuelve a abrirlo. La preferencia claro/oscuro/sistema se comparte entre dispositivos de la misma cuenta.
 
 El navbar y los PDF usan la marca de la empresa. El login recuerda en ese dispositivo el nombre y logo de la última empresa; antes del primer inicio de sesión muestra Lumis. El icono instalado y el splash pertenecen a la aplicación y no cambian con el logo de cada empresa.
 
@@ -164,3 +164,42 @@ En el detalle de cotizaciones en borrador y ventas activas, desliza un producto 
 - `npx expo export --platform android` y `npx expo-doctor` desde `apps/mobile`.
 
 El perfil preview conserva las cuatro arquitecturas para teléfonos y emuladores. Se activaron compresión de bibliotecas nativas, R8 y eliminación de recursos sin uso mediante expo-build-properties. La compresión reduce la descarga del APK; el espacio instalado es una medición diferente. El perfil production sigue generando AAB para Google Play. [Opciones oficiales de Expo 57](https://docs.expo.dev/versions/v57.0.0/sdk/build-properties/).
+
+
+## APK reducido para celulares
+
+El perfil `apk` genera una APK de producción para procesadores ARM de 32 y 64 bits.
+Conserva compatibilidad con teléfonos antiguos de 32 bits y modernos de 64 bits; excluye las
+copias Intel x86/x86_64 del binario. El emulador usado en las pruebas declara soporte ARM,
+aunque para emuladores que solo admiten Intel se debe usar `preview`.
+
+Desde `apps/mobile`:
+
+```powershell
+npx eas-cli@latest build --platform android --profile apk
+```
+
+La URL pública queda fijada a `https://lumis.novaledbolivia.com` en ese perfil para evitar
+incorporar la dirección de desarrollo de la computadora. La firma y el identificador
+`com.lumis.app` permanecen iguales, y EAS incrementa `versionCode` automáticamente.
+
+- `apk`: APK reducida, ARM de 32/64 bits, entorno production.
+- `preview`: APK universal con cuatro arquitecturas para pruebas en teléfonos y emuladores.
+- `production`: AAB para Google Play; Google entrega a cada dispositivo su arquitectura.
+
+Siguen activados R8, eliminación de recursos sin uso y compresión de bibliotecas nativas.
+El bundle de Hermes permanece sin compresión adicional para conservar el arranque rápido.
+Los logos están redimensionados y PDF.js incluye únicamente motor, worker y visor local,
+sin mapas de código ni conexión a un CDN.
+
+La auditoría de los APK anteriores encontró 109.933.802 bytes en la primera APK y
+44.618.135 bytes tras activar las optimizaciones de release. En esta última, las
+bibliotecas Intel ocupaban 15.402.748 bytes comprimidos. Esa cantidad permite estimar
+el ahorro de quitarlas; el peso final debe medirse después de compilar, porque esta
+versión también incorpora el visor PDF.js y los cambios recientes.
+
+El contenido de `apps/api` no forma parte de la aplicación Android. Las mejoras de la API
+deben desplegarse también en Hostinger antes de probar en producción el guardado de fechas
+y el nuevo manejo de archivos.
+
+La versión 1.2 usa importaciones directas de Ionicons para no empaquetar las otras 18 familias de iconos que no utiliza. El export Android pasó de 60 a 42 recursos. El visor PDF muestra y comparte exactamente el mismo archivo generado; las fechas de cotizaciones y ventas se editan desde un calendario y se guardan en la API.

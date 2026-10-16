@@ -1,8 +1,8 @@
-export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
+export const API_URL = (process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000').replace(/\/+$/, '');
 
 export function mediaUrl(path: string | null): string | null {
   if (!path) return null;
-  if (/^https?:\/\//.test(path) || path.startsWith('file:')) return path;
+  if (/^https?:\/\//.test(path) || /^(file|content|data):/.test(path)) return path;
   return `${API_URL}${path}`;
 }
 
@@ -10,6 +10,7 @@ export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
+    public code?: string,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -175,6 +176,7 @@ export interface SaleDetail extends Sale {
 }
 
 export interface SaleUpdateInput {
+  createdAt?: string;
   estadoPago?: SaleEstadoPago;
   metodoPago?: SaleMetodoPago;
   clientId?: number | null;
@@ -239,6 +241,7 @@ export interface QuoteItemInput {
 }
 
 export interface QuoteUpdateInput {
+  createdAt?: string;
   status?: 'borrador' | 'aprobada' | 'rechazada';
   notes?: string | null;
   includeSeal?: boolean;
@@ -253,24 +256,26 @@ interface RequestOptions {
 }
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  let res: Response;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30000);
   try {
-    res = await fetch(`${API_URL}${path}`, {
-      method: options.method ?? 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}),
-      },
+    const res = await fetch(API_URL + path, {
+      method: options.method ?? 'GET', signal: controller.signal,
+      headers: { 'Content-Type': 'application/json', ...(options.token ? { Authorization: 'Bearer ' + options.token } : {}) },
       ...(options.body !== undefined ? { body: JSON.stringify(options.body) } : {}),
     });
-  } catch {
-    throw new ApiError(0, `No se pudo conectar con la API (${API_URL})`);
-  }
-  const data = (await res.json().catch(() => null)) as { error?: string } | null;
-  if (!res.ok) {
-    throw new ApiError(res.status, data?.error ?? `Error ${res.status}`);
-  }
-  return data as T;
+    const data = await res.json().catch(() => null) as { error?: string; code?: string; details?: Record<string, string[]> } | null;
+    if (!res.ok) {
+      const detail = data?.details ? Object.values(data.details).flat().filter(Boolean)[0] : undefined;
+      throw new ApiError(res.status, detail ?? data?.error ?? 'El servidor no pudo completar la solicitud. Inténtalo de nuevo.', data?.code);
+    }
+    if (data == null) throw new ApiError(502, 'El servidor respondió de forma inesperada. Inténtalo de nuevo.', 'INVALID_RESPONSE');
+    return data as T;
+  } catch (err) {
+    if (err instanceof ApiError) throw err;
+    throw new ApiError(0, controller.signal.aborted ? 'La solicitud tardó demasiado. Comprueba tu conexión y vuelve a intentarlo.'
+      : 'No se pudo conectar con el servidor. Comprueba tu conexión e inténtalo de nuevo.', controller.signal.aborted ? 'TIMEOUT' : 'NETWORK_ERROR');
+  } finally { clearTimeout(timer); }
 }
 
 export const api = {
@@ -335,7 +340,7 @@ export const api = {
     request<{ sale: SaleDetail }>(`/api/sales/${id}`, { token }),
   nextSaleNumber: (token: string) => request<{ nextNumber: number }>('/api/sales/next-number', { token }),
   updateSale: (id: number, input: SaleUpdateInput, token: string) =>
-    request<{ ok: boolean; estadoPago?: SaleEstadoPago; metodoPago?: SaleMetodoPago; sellerName?: string }>(
+    request<{ ok: boolean; estadoPago?: SaleEstadoPago; metodoPago?: SaleMetodoPago; sellerName?: string; createdAt?: string }>(
       `/api/sales/${id}`,
       { method: 'PATCH', body: input, token },
     ),
@@ -364,6 +369,7 @@ export const api = {
     }),
   createSale: (
     input: {
+      createdAt?: string;
       clientId?: number | null;
       branchId?: number | null;
       agentId?: number | null;
@@ -465,7 +471,7 @@ export const api = {
   quoteDetail: (id: number, token: string) =>
     request<{ quote: QuoteDetail }>(`/api/quotes/${id}`, { token }),
   updateQuote: (id: number, input: QuoteUpdateInput, token: string) =>
-    request<{ ok: boolean }>(`/api/quotes/${id}`, { method: 'PATCH', body: input, token }),
+    request<{ ok: boolean; createdAt?: string }>(`/api/quotes/${id}`, { method: 'PATCH', body: input, token }),
   addQuoteItem: (quoteId: number, input: QuoteItemInput, token: string) =>
     request<{ item: { id: number; subtotal: number }; total: number }>(
       `/api/quotes/${quoteId}/items`,

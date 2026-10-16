@@ -1,8 +1,8 @@
+import { AppModal } from './AppModal';
+import { feedback } from '../lib/feedback';
 import { useState } from 'react';
 import {
-  Alert,
   KeyboardAvoidingView,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -11,7 +11,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/ThemeContext';
 import { isValidUnitName } from '../lib/units';
@@ -76,6 +76,7 @@ export function UnitSheet({
     const message = isValidUnitName(name, units, editing === NEW_UNIT ? undefined : editing);
     if (message) {
       setError(message);
+      feedback.warning('Revisa la unidad', message);
       return;
     }
     if (editing === NEW_UNIT) {
@@ -88,17 +89,17 @@ export function UnitSheet({
 
   const confirmDelete = (unit: string) => {
     if (!canDelete) {
-      Alert.alert('No se puede borrar', 'Debe quedar al menos una unidad de medida.');
+      feedback.alert('No se puede borrar', 'Debe quedar al menos una unidad de medida.');
       return;
     }
-    Alert.alert('Borrar unidad', `¿Borrar "${unit}" de la lista?`, [
+    feedback.alert('Borrar unidad', `¿Borrar "${unit}" de la lista?`, [
       { text: 'Cancelar', style: 'cancel' },
       { text: 'Borrar', style: 'destructive', onPress: () => onDelete(unit) },
     ]);
   };
 
   return (
-    <Modal
+    <AppModal
       visible={visible}
       transparent
       animationType="slide"
@@ -222,7 +223,7 @@ export function UnitSheet({
           </View>
         </KeyboardAvoidingView>
       </View>
-    </Modal>
+    </AppModal>
   );
 }
 
@@ -243,8 +244,8 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   sheet: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
     paddingTop: 10,
     paddingHorizontal: 20,
     maxHeight: '72%',

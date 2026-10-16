@@ -1,6 +1,7 @@
+import { feedback } from '../lib/feedback';
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBusiness } from '../context/BusinessContext';
@@ -51,7 +52,7 @@ export function DashboardScreen() {
     if (changingMode) return;
     setChangingMode(true);
     try { await changeMode(dark ? 'light' : 'dark'); }
-    catch (err) { Alert.alert('Apariencia', err instanceof Error ? err.message : 'No se pudo guardar'); }
+    catch (err) { feedback.alert('Apariencia', err instanceof Error ? err.message : 'No se pudo guardar'); }
     finally { setChangingMode(false); }
   };
   const insets = useSafeAreaInsets();
@@ -61,19 +62,25 @@ export function DashboardScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const requestId = useRef(0);
+  const loadedPeriod = useRef<DashboardPeriod | null>(null);
 
   const load = useCallback(async (refresh = false) => {
     if (!token) return;
     const request = ++requestId.current;
-    setLoading(!refresh);
+    setLoading(!refresh && loadedPeriod.current !== period);
     setRefreshing(refresh);
     setError(null);
     try {
       const { dashboard } = await api.dashboard(token, period);
-      if (request === requestId.current) setData(dashboard);
+      if (request === requestId.current) {
+        loadedPeriod.current = period;
+        setData(dashboard);
+      }
     } catch (err) {
       if (request === requestId.current) {
-        setError(err instanceof ApiError ? err.message : 'No se pudieron cargar las estadísticas');
+        const message = err instanceof ApiError ? err.message : 'No se pudieron cargar las estadísticas.';
+        setError(message);
+        feedback.error('No se pudo actualizar el dashboard', message);
       }
     } finally {
       if (request === requestId.current) {
@@ -102,7 +109,7 @@ export function DashboardScreen() {
         }
       >
         <View style={styles.header}>
-          <Logo size={26} />
+          <Logo size={26} imageOnly />
           <View style={styles.headerActions}>
             <Pressable
               onPress={toggle}

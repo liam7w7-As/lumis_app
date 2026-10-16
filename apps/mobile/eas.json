@@ -20,6 +20,17 @@
     "production": {
       "environment": "production",
       "autoIncrement": true
+    },
+    "apk": {
+      "extends": "preview",
+      "environment": "production",
+      "env": {
+        "LUMIS_ANDROID_ARCHS": "armeabi-v7a,arm64-v8a",
+        "EXPO_PUBLIC_API_URL": "https://lumis.novaledbolivia.com"
+      },
+      "android": {
+        "buildType": "apk"
+      }
     }
   }
 }

@@ -1,10 +1,14 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { loadRemoteImage } from '../lib/remoteImage';
+import { NoticeCard } from '../components/NoticeCard';
+import { feedback } from '../lib/feedback';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { InlineSettingInput } from '../components/InlineSettingInput';
+import { createInlineAutosave, type InlineSaveState } from '../lib/inlineAutosave';
 import {
   ActivityIndicator,
-  Alert,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -14,7 +18,7 @@ import {
   View,
 } from 'react-native';
 import type { KeyboardTypeOptions } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
@@ -26,10 +30,10 @@ import {
   ApiError,
   api,
   mediaSource,
+  mediaUrl,
   type Business,
   type Agent,
   type Branch,
-  type BusinessUpdateInput,
 } from '../lib/api';
 import { generatePalette } from '../lib/brandColors';
 import { pickImageFromLibrary } from '../lib/media';
@@ -66,21 +70,42 @@ interface InfoField {
   key: InfoFieldKey;
   label: string;
   placeholder: string;
+  maxLength?: number;
   keyboardType?: KeyboardTypeOptions;
   autoCapitalize?: 'none' | 'sentences' | 'words';
 }
 
 const INFO_FIELDS: InfoField[] = [
-  { key: 'nombre', label: 'Nombre de la empresa', placeholder: 'Mi Negocio', autoCapitalize: 'words' },
-  { key: 'email', label: 'Correo', placeholder: 'correo@ejemplo.com', keyboardType: 'email-address', autoCapitalize: 'none' },
-  { key: 'telefono', label: 'Número de contacto', placeholder: '+591 70000000', keyboardType: 'phone-pad' },
-  { key: 'nit', label: 'NIT', placeholder: '12345678' },
-  { key: 'moneda', label: 'Tipo de moneda', placeholder: 'Bs.' },
-  { key: 'redes_sociales', label: 'Red Social', placeholder: '@minegocio', autoCapitalize: 'none' },
-  { key: 'website', label: 'Página Web', placeholder: 'www.minegocio.com', keyboardType: 'url', autoCapitalize: 'none' },
-  { key: 'direccion', label: 'Dirección', placeholder: 'Av. Principal #123', autoCapitalize: 'words' },
-  { key: 'ciudad', label: 'Ciudad', placeholder: 'La Paz - Bolivia', autoCapitalize: 'words' },
+  { key: 'nombre', maxLength: 150, label: 'Nombre de la empresa', placeholder: 'Mi Negocio', autoCapitalize: 'words' },
+  { key: 'email', maxLength: 254, label: 'Correo', placeholder: 'correo@ejemplo.com', keyboardType: 'email-address', autoCapitalize: 'none' },
+  { key: 'telefono', maxLength: 40, label: 'Número de contacto', placeholder: '+591 70000000', keyboardType: 'phone-pad' },
+  { key: 'nit', maxLength: 30, label: 'NIT', placeholder: '12345678' },
+  { key: 'moneda', maxLength: 10, label: 'Tipo de moneda', placeholder: 'Bs.' },
+  { key: 'redes_sociales', maxLength: 150, label: 'Red Social', placeholder: '@minegocio', autoCapitalize: 'none' },
+  { key: 'website', maxLength: 150, label: 'Página Web', placeholder: 'www.minegocio.com', keyboardType: 'url', autoCapitalize: 'none' },
+  { key: 'direccion', maxLength: 255, label: 'Dirección', placeholder: 'Av. Principal #123', autoCapitalize: 'words' },
+  { key: 'ciudad', maxLength: 150, label: 'Ciudad', placeholder: 'La Paz - Bolivia', autoCapitalize: 'words' },
 ];
+
+type SettingsFieldKey = InfoFieldKey | 'color_primario';
+const EMPTY_FIELDS: Record<SettingsFieldKey, string> = {
+  nombre: '', email: '', telefono: '', nit: '', moneda: '', redes_sociales: '',
+  website: '', direccion: '', ciudad: '', color_primario: '#5F5BF2',
+};
+function normalizeField(key: SettingsFieldKey, raw: string): string | null {
+  const value = raw.trim();
+  if ((key === 'nombre' || key === 'moneda') && !value) {
+    throw new Error(key === 'nombre' ? 'Escribe el nombre de la empresa.' : 'Escribe la moneda que utiliza tu empresa.');
+  }
+  if (key === 'color_primario') {
+    if (!/^#[0-9a-fA-F]{6}$/.test(value)) throw new Error('Escribe seis dígitos hexadecimales, por ejemplo 5F5BF2.');
+    return value.toLowerCase();
+  }
+  return value || null;
+}
+function businessFields(business: Business): Record<SettingsFieldKey, string> {
+  return Object.fromEntries(Object.keys(EMPTY_FIELDS).map((key) => [key, business[key as SettingsFieldKey] ?? ''])) as Record<SettingsFieldKey, string>;
+}
 
 const SHADE_KEYS = ['brand-300', 'brand-400', 'brand-500', 'brand-600', 'brand-700'];
 
@@ -103,27 +128,24 @@ export function SettingsScreen() {
   const { colors, mode, brandColor } = useTheme();
   const insets = useSafeAreaInsets();
   const isAdmin = user?.role === 'admin';
-  const { applyBusiness, changeMode, error: syncError } = useBusiness();
-  const baseline = useRef<Business | null>(null);
+  const { applyBusiness, changeMode, refresh: refreshBusiness, error: syncError } = useBusiness();
 
   const [tab, setTab] = useState<SettingsTab>('info');
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
 
-  const [form, setForm] = useState<Record<InfoFieldKey, string>>({
-    nombre: '',
-    email: '',
-    telefono: '',
-    nit: '',
-    moneda: '',
-    redes_sociales: '',
-    website: '',
-    direccion: '',
-    ciudad: '',
-  });
+  const [form, setForm] = useState({ ...EMPTY_FIELDS });
+  const [fieldStates, setFieldStates] = useState<Partial<Record<SettingsFieldKey, InlineSaveState>>>({});
+  const [focusedField, setFocusedField] = useState<SettingsFieldKey | null>(null);
+  const focusedKey = useRef<SettingsFieldKey | null>(null);
+  const inputs = useRef<Partial<Record<SettingsFieldKey, TextInput | null>>>({});
+  const scroll = useRef<ScrollView>(null);
+  const scrollY = useRef(0);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [selloUrl, setSelloUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState<'logo' | 'sello' | null>(null);
+  const [previews, setPreviews] = useState<Partial<Record<'logo' | 'sello', {url: string; uri: string}>>>({});
+  const failedAssets = useRef(new Set<string>());
+  const [nameSaving, setNameSaving] = useState(false);
 
   const [agents, setAgents] = useState<Agent[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -133,14 +155,68 @@ export function SettingsScreen() {
   const [nameDraft, setNameDraft] = useState('');
   const [nameError, setNameError] = useState<string | null>(null);
 
-  const [editingField, setEditingField] = useState<InfoFieldKey | null>(null);
-  const [fieldDraft, setFieldDraft] = useState('');
-
   const [color, setColor] = useState(brandColor ?? colors.primary);
-  const [hexEditing, setHexEditing] = useState(false);
-  const [hexDraft, setHexDraft] = useState('');
 
   const palette = useMemo(() => generatePalette(color), [color]);
+
+  const inlineSaver = useMemo(() => createInlineAutosave<SettingsFieldKey>({
+    initial: { ...EMPTY_FIELDS },
+    normalize: normalizeField,
+    write: async (key, value) => {
+      if (!token || !isAdmin) throw new Error('Inicia sesión con una cuenta administradora para guardar.');
+      const { business } = await api.updateBusiness({ [key]: value }, token);
+      // La descarga del logo no retrasa el siguiente guardado de texto.
+      void applyBusiness(business).catch(() => {});
+      return business[key] ?? '';
+    },
+    onChange: (values, states) => {
+      setForm(values);
+      setFieldStates(states);
+      if (/^#[0-9a-fA-F]{6}$/.test(values.color_primario)) setColor(values.color_primario);
+    },
+    onError: (key, message) => feedback.error('No se pudo guardar ' +
+      (INFO_FIELDS.find((field) => field.key === key)?.label.toLowerCase() ?? 'el color de marca'), message),
+  }), [token, isAdmin, applyBusiness]);
+
+  const keepFocusedVisible = useCallback(() => {
+    const key = focusedKey.current;
+    const input = key ? inputs.current[key] : null;
+    if (!input || !scroll.current) return;
+    input.measureInWindow((_x, y, _width, height) => {
+      scroll.current?.getNativeScrollRef()?.measureInWindow((_sx, top, _sw, viewportHeight) => {
+        const bottom = Math.min(top + viewportHeight, Keyboard.metrics()?.screenY ?? Infinity) - 28;
+        if (y + height > bottom) scroll.current?.scrollTo({ y: Math.max(0, scrollY.current + y + height - bottom), animated: true });
+        else if (y < top + 24) scroll.current?.scrollTo({ y: Math.max(0, scrollY.current + y - top - 24), animated: true });
+      });
+    });
+  }, []);
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', keepFocusedVisible);
+    const hide = Keyboard.addListener('keyboardDidHide', () => {
+      const key = focusedKey.current;
+      if (key) inputs.current[key]?.blur();
+    });
+    return () => { show.remove(); hide.remove(); };
+  }, [keepFocusedVisible]);
+
+  const focusField = (key: SettingsFieldKey) => {
+    focusedKey.current = key;
+    setFocusedField(key);
+    requestAnimationFrame(keepFocusedVisible);
+  };
+  const finishField = (key: SettingsFieldKey) => {
+    void inlineSaver.save(key);
+  };
+  const blurFields = () => {
+    const key = focusedKey.current;
+    if (key) {
+      void inlineSaver.save(key);
+      inputs.current[key]?.blur();
+      focusedKey.current = null;
+    }
+    Keyboard.dismiss();
+  };
+
 
   const load = useCallback(async () => {
     if (!token) {
@@ -149,24 +225,14 @@ export function SettingsScreen() {
     }
     setLoading(true);
     try {
+      await inlineSaver.flush();
       const [biz, agentList, branchList] = await Promise.all([
         api.business(token).then((r) => r.business),
         api.agents(token).then((r) => r.agents).catch(() => []),
         api.branches(token).then((r) => r.branches).catch(() => []),
       ]);
       if (biz) {
-        baseline.current = biz;
-        setForm({
-          nombre: biz.nombre ?? '',
-          email: biz.email ?? '',
-          telefono: biz.telefono ?? '',
-          nit: biz.nit ?? '',
-          moneda: biz.moneda ?? '',
-          redes_sociales: biz.redes_sociales ?? '',
-          website: biz.website ?? '',
-          direccion: biz.direccion ?? '',
-          ciudad: biz.ciudad ?? '',
-        });
+        inlineSaver.reset(businessFields(biz));
         setLogoUrl(biz.logo_url);
         setSelloUrl(biz.sello_url);
         if (biz.color_primario) {
@@ -176,96 +242,62 @@ export function SettingsScreen() {
       setAgents(agentList);
       setBranches(branchList);
     } catch (err) {
-      Alert.alert(
+      feedback.alert(
         'Error',
         err instanceof ApiError ? err.message : 'No se pudo cargar la configuración',
       );
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [token, inlineSaver]);
 
   useFocusEffect(
     useCallback(() => {
-      load();
-    }, [load]),
+      void load();
+      return () => {
+        const key = focusedKey.current;
+        if (key) { void inlineSaver.save(key); inputs.current[key]?.blur(); }
+        Keyboard.dismiss();
+      };
+    }, [load, inlineSaver]),
   );
 
-  const startEditField = (key: InfoFieldKey) => {
-    setEditingField(key);
-    setFieldDraft(form[key]);
-  };
-
-  const handleSave = async () => {
-    if (!token || saving || !isAdmin) return;
-    const nextForm = editingField ? { ...form, [editingField]: fieldDraft.trim() } : form;
-    const nextColor = hexEditing ? '#' + hexDraft.trim().replace(/^#/, '') : color;
-    if (!nextForm.nombre.trim() || !nextForm.moneda.trim()) { Alert.alert('Datos requeridos', 'Escribe el nombre de la empresa y la moneda.'); return; }
-    if (!/^#[0-9a-fA-F]{6}$/.test(nextColor)) { Alert.alert('Color inválido', 'Usa un color hexadecimal de seis dígitos.'); return; }
-    setSaving(true);
-    try {
-      const payload: BusinessUpdateInput = {
-        nombre: nextForm.nombre.trim() || undefined,
-        moneda: nextForm.moneda.trim() || undefined,
-        email: nextForm.email.trim() || null,
-        telefono: nextForm.telefono.trim() || null,
-        nit: nextForm.nit.trim() || null,
-        redes_sociales: nextForm.redes_sociales.trim() || null,
-        website: nextForm.website.trim() || null,
-        direccion: nextForm.direccion.trim() || null,
-        ciudad: nextForm.ciudad.trim() || null,
-        color_primario: nextColor,
-      };
-      const { business } = await api.updateBusiness(Object.fromEntries(Object.entries(payload).filter(([key, value]) =>
-        value !== baseline.current?.[key as keyof Business])) as BusinessUpdateInput, token);
-      setForm({
-        nombre: business.nombre ?? '',
-        email: business.email ?? '',
-        telefono: business.telefono ?? '',
-        nit: business.nit ?? '',
-        moneda: business.moneda ?? '',
-        redes_sociales: business.redes_sociales ?? '',
-        website: business.website ?? '',
-        direccion: business.direccion ?? '',
-        ciudad: business.ciudad ?? '',
-      });
-      setLogoUrl(business.logo_url);
-      setSelloUrl(business.sello_url);
-      setColor(business.color_primario);
-      baseline.current = business;
-      setEditingField(null);
-      setHexEditing(false);
-      await applyBusiness(business);
-      Alert.alert('Guardado', 'La configuración se guardó correctamente.');
-    } catch (err) {
-      Alert.alert('Error', err instanceof ApiError ? err.message : 'No se pudo guardar');
-    } finally {
-      setSaving(false);
+  const handleSaveColor = async () => {
+    blurFields();
+    if (await inlineSaver.save('color_primario')) {
+      feedback.success('Color guardado', 'El color de marca se actualizó para tu empresa.');
     }
   };
 
   const handleUploadAsset = async (tipo: 'logo' | 'sello') => {
     if (!token || uploading || !isAdmin) return;
-    const picked = await pickImageFromLibrary();
-    if (!picked) return;
     setUploading(tipo);
+    let sent = false;
     try {
-      const { url } = await api.uploadBusinessAsset(
-        { tipo, base64: picked.base64, ext: picked.ext },
-        token,
-      );
-      if (tipo === 'logo') {
-        setLogoUrl(url);
-      } else {
-        setSelloUrl(url);
-      }
+      const picked = await pickImageFromLibrary();
+      if (!picked) return;
+      const { url } = await api.uploadBusinessAsset({ tipo, base64: picked.base64, ext: picked.ext }, token);
+      sent = true;
+      const image = await loadRemoteImage(mediaUrl(url)!, token, true);
       const updated = (await api.business(token)).business;
-      if (updated) await applyBusiness(updated);
+      if (!updated) throw new Error('No se pudo confirmar la configuración de la empresa. Vuelve a abrir Configuración.');
+      setPreviews((current) => ({ ...current, [tipo]: { url, uri: image.uri } }));
+      if (tipo === 'logo') setLogoUrl(url); else setSelloUrl(url);
+      const warning = await applyBusiness(updated);
+      if (warning) feedback.warning('Imagen guardada con observaciones', warning);
+      else feedback.success(tipo === 'logo' ? 'Logo actualizado' : 'Sello actualizado',
+        'La imagen se guardó y verificó correctamente. Ya está disponible para tu empresa y sus documentos.');
     } catch (err) {
-      Alert.alert('Error', err instanceof ApiError ? err.message : 'No se pudo subir la imagen');
-    } finally {
-      setUploading(null);
-    }
+      const detail = err instanceof Error ? err.message : 'Inténtalo de nuevo o selecciona otra imagen.';
+      feedback.error(sent ? 'No se pudo verificar la imagen' : 'No se pudo guardar la imagen',
+        sent ? 'El servidor recibió el archivo, pero no pudimos confirmar que se pueda mostrar. ' + detail : detail);
+    } finally { setUploading(null); }
+  };
+  const reportAssetError = (tipo: 'logo' | 'sello', url: string | null) => {
+    if (!url || failedAssets.current.has(url)) return;
+    failedAssets.current.add(url);
+    feedback.error(tipo === 'logo' ? 'No se pudo mostrar el logo' : 'No se pudo mostrar el sello',
+      'La imagen guardada no está disponible o no se puede leer. Vuelve a subir el archivo original desde esta pantalla.');
   };
 
   const openNameEditor = (kind: 'agent' | 'branch', id: number | null, initial: string) => {
@@ -281,12 +313,14 @@ export function SettingsScreen() {
   };
 
   const submitName = async () => {
-    if (!token || !nameEditor) return;
+    if (!token || !nameEditor || nameSaving) return;
     const name = nameDraft.trim();
     if (name.length < 2) {
-      setNameError('El nombre es muy corto');
+      setNameError('El nombre debe tener al menos dos caracteres.');
+      feedback.warning('Revisa el nombre', 'Escribe al menos dos caracteres antes de guardar.');
       return;
     }
+    setNameSaving(true);
     try {
       if (nameEditor.kind === 'agent') {
         if (nameEditor.id == null) {
@@ -294,7 +328,7 @@ export function SettingsScreen() {
           setAgents((prev) => [...prev, agent]);
         } else {
           const { agent } = await api.updateAgent(nameEditor.id, { name }, token);
-          setAgents((prev) => prev.map((a) => (a.id === agent.id ? agent : a)));
+          setAgents((prev) => prev.map((a) => (a.id === agent.id ? { ...a, ...agent } : a)));
         }
       } else if (nameEditor.id == null) {
         const { branch } = await api.createBranch(name, token);
@@ -304,13 +338,16 @@ export function SettingsScreen() {
         setBranches((prev) => prev.map((b) => (b.id === branch.id ? { ...b, name: branch.name } : b)));
       }
       closeNameEditor();
+      feedback.success('Datos actualizados', 'El cambio se guardó correctamente.');
     } catch (err) {
-      setNameError(err instanceof ApiError ? err.message : 'No se pudo guardar');
-    }
+      const message = err instanceof Error ? err.message : 'No se pudo guardar. Inténtalo otra vez.';
+      setNameError(message);
+      feedback.error('No se pudo guardar', message);
+    } finally { setNameSaving(false); }
   };
 
   const confirmDeleteAgent = (agent: Agent) => {
-    Alert.alert('Borrar agente', `¿Borrar "${agent.name}" de la lista?`, [
+    feedback.alert('Borrar agente', `¿Borrar "${agent.name}" de la lista?`, [
       { text: 'Cancelar', style: 'cancel' },
       {
         text: 'Borrar',
@@ -321,7 +358,7 @@ export function SettingsScreen() {
             await api.deleteAgent(agent.id, token);
             setAgents((prev) => prev.filter((a) => a.id !== agent.id));
           } catch (err) {
-            Alert.alert('Error', err instanceof ApiError ? err.message : 'No se pudo borrar');
+            feedback.alert('Error', err instanceof ApiError ? err.message : 'No se pudo borrar');
           }
         },
       },
@@ -329,7 +366,7 @@ export function SettingsScreen() {
   };
 
   const confirmDeleteBranch = (branch: Branch) => {
-    Alert.alert('Borrar sucursal', `¿Borrar "${branch.name}" de la lista?`, [
+    feedback.alert('Borrar sucursal', `¿Borrar "${branch.name}" de la lista?`, [
       { text: 'Cancelar', style: 'cancel' },
       {
         text: 'Borrar',
@@ -340,26 +377,11 @@ export function SettingsScreen() {
             await api.deleteBranch(branch.id, token);
             setBranches((prev) => prev.filter((b) => b.id !== branch.id));
           } catch (err) {
-            Alert.alert('Error', err instanceof ApiError ? err.message : 'No se pudo borrar');
+            feedback.alert('Error', err instanceof ApiError ? err.message : 'No se pudo borrar');
           }
         },
       },
     ]);
-  };
-
-  const startHexEdit = () => {
-    setHexDraft(color.replace('#', '').toUpperCase());
-    setHexEditing(true);
-  };
-
-  const commitHex = () => {
-    const clean = hexDraft.trim().replace(/^#/, '');
-    if (!/^[0-9a-fA-F]{6}$/.test(clean)) {
-      Alert.alert('Color inválido', 'Escribe un color en formato hexadecimal, por ejemplo 5F5BF2.');
-      return;
-    }
-    setColor(`#${clean.toLowerCase()}`);
-    setHexEditing(false);
   };
 
   const nameEditorTitle =
@@ -372,8 +394,14 @@ export function SettingsScreen() {
         : 'Editar sucursal';
 
   return (
-    <View style={[styles.screen, { backgroundColor: colors.background }]}>
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={[styles.screen, { backgroundColor: colors.background }]}>
       <ScrollView
+        ref={scroll}
+        onScroll={(event) => { scrollY.current = event.nativeEvent.contentOffset.y; }}
+        scrollEventThrottle={16}
+        onLayout={() => { requestAnimationFrame(keepFocusedVisible); }}
+        keyboardDismissMode="on-drag"
         contentContainerStyle={[
           styles.scroll,
           { paddingTop: insets.top + 8, paddingBottom: 24 + insets.bottom },
@@ -381,16 +409,16 @@ export function SettingsScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()} hitSlop={10}>
+          <Pressable onPress={() => { blurFields(); router.back(); }} accessibilityLabel="Volver" hitSlop={10}>
             <Ionicons name="arrow-back" size={24} color={colors.text} />
           </Pressable>
           <Text style={[styles.title, { color: colors.text }]}>Configuración</Text>
           <View style={styles.headerSpacer} />
         </View>
 
-        <SegmentedTabs<SettingsTab> options={isAdmin ? TABS : TABS.filter((item) => item.key === 'info')} value={tab} onChange={setTab} />
+        <SegmentedTabs<SettingsTab> options={isAdmin ? TABS : TABS.filter((item) => item.key === 'info')} value={tab} onChange={(next) => { blurFields(); setTab(next); }} />
 
-        {syncError && <Text style={{ color: colors.error }}>Sin sincronizar: {syncError}</Text>}
+        {syncError && <NoticeCard tone="error" title="Hay un problema de sincronización" message={syncError} action="Reintentar" onPress={() => { void refreshBusiness(); void load(); }} />}
         {loading ? (
           <View style={styles.loading}>
             <ActivityIndicator color={colors.primary} />
@@ -405,7 +433,8 @@ export function SettingsScreen() {
                 {logoUrl ? (
                   <View style={styles.logoPreviewWrap}>
                     <Image
-                      source={mediaSource(logoUrl, token)}
+                      source={mediaSource(previews.logo?.url === logoUrl ? previews.logo.uri : logoUrl, token)}
+                      onError={() => reportAssetError("logo", logoUrl)}
                       style={[styles.logoPreview, { backgroundColor: '#ffffff', borderRadius: 8 }]}
                       resizeMode="contain"
                     />
@@ -445,40 +474,32 @@ export function SettingsScreen() {
                 <View style={styles.cardHeader}>
                   <Text style={[styles.cardTitle, { color: colors.text }]}>Información</Text>
                 </View>
-                {INFO_FIELDS.map((field, index) => {
-                  const value = form[field.key];
-                  return (
-                    <View
-                      key={field.key}
-                      style={[
-                        styles.fieldRow,
-                        index < INFO_FIELDS.length - 1 && {
-                          borderBottomWidth: StyleSheet.hairlineWidth,
-                          borderBottomColor: colors.border,
-                        },
-                      ]}
-                    >
-                      <View style={styles.fieldTexts}>
-                        <Text style={[styles.fieldLabel, { color: colors.muted }]}>{field.label}</Text>
-                        <Text style={[styles.fieldValue, { color: value ? colors.text : colors.muted }]} numberOfLines={2}>
-                          {value || field.placeholder}
-                        </Text>
-                      </View>
-                      <Pressable
-                        onPress={() => startEditField(field.key)}
-                        disabled={!isAdmin}
-                        accessibilityLabel={"Editar " + field.label}
-                        hitSlop={8}
-                      >
-                        <Ionicons
-                          name="pencil-outline"
-                          size={18}
-                          color={colors.icon}
-                        />
-                      </Pressable>
-                    </View>
-                  );
-                })}
+                {isAdmin && <Text style={[styles.assetHint, { color: colors.muted }]}>
+                  Toca un campo para editar. Se guarda al salir.
+                </Text>}
+                {INFO_FIELDS.map((field, index) => (
+                  <InlineSettingInput key={field.key} label={field.label} value={form[field.key]}
+                    inputRef={(input) => { inputs.current[field.key] = input; }}
+                    state={fieldStates[field.key]} focused={focusedField === field.key}
+                    editable={isAdmin} placeholder={field.placeholder} maxLength={field.maxLength}
+                    keyboardType={field.keyboardType} autoCapitalize={field.autoCapitalize ?? 'sentences'}
+                    autoCorrect={field.key !== 'email' && field.key !== 'website'}
+                    onChangeText={(value) => inlineSaver.change(field.key, value)}
+                    onFocus={() => focusField(field.key)}
+                    onBlur={() => {
+                      if (focusedKey.current === field.key) { focusedKey.current = null; setFocusedField(null); }
+                      finishField(field.key);
+                    }}
+                    onEndEditing={() => finishField(field.key)}
+                    returnKeyType={index === INFO_FIELDS.length - 1 ? 'done' : 'next'}
+                    submitBehavior={index === INFO_FIELDS.length - 1 ? 'blurAndSubmit' : 'submit'}
+                    onSubmitEditing={() => {
+                      const next = INFO_FIELDS[index + 1];
+                      if (next) inputs.current[next.key]?.focus(); else blurFields();
+                    }}
+                    onRetry={() => { void inlineSaver.save(field.key); }}
+                  />
+                ))}
               </View>
 
               <View style={[styles.card, { borderColor: colors.border, backgroundColor: colors.surface }]}>
@@ -573,7 +594,8 @@ export function SettingsScreen() {
                 {selloUrl ? (
                   <View style={styles.selloPreviewWrap}>
                     <Image
-                      source={mediaSource(selloUrl, token)}
+                      source={mediaSource(previews.sello?.url === selloUrl ? previews.sello.uri : selloUrl, token)}
+                      onError={() => reportAssetError("sello", selloUrl)}
                       style={[styles.selloPreview, { backgroundColor: '#ffffff', borderRadius: 8 }]}
                       resizeMode="contain"
                     />
@@ -614,13 +636,12 @@ export function SettingsScreen() {
                 </Text>
               </View>
 
-              {isAdmin && <PrimaryButton title="Guardar" onPress={handleSave} loading={saving} />}
             </View>
 
             <TeamUsers onCreated={() => { void load(); }} />
             {!isAdmin && <Text style={{ color: colors.muted }}>La configuración de empresa la administra el administrador.</Text>}
             <Text style={[styles.section, { color: colors.muted }]}>Apariencia de mi cuenta</Text>
-            <SegmentedTabs options={MODES} value={mode} onChange={(next) => { void changeMode(next).catch((err) => Alert.alert('Error', err.message)); }} />
+            <SegmentedTabs options={MODES} value={mode} onChange={(next) => { void changeMode(next).catch((err) => feedback.alert('Error', err.message)); }} />
 
             <Text style={[styles.section, { color: colors.muted }]}>Cuenta</Text>
             <View style={[styles.card, { borderColor: colors.border, backgroundColor: colors.surface }]}>
@@ -639,7 +660,7 @@ export function SettingsScreen() {
               <Text style={[styles.userDetail, { color: colors.muted }]}>{BRAND.tagline}</Text>
             </View>
 
-            <Pressable style={[styles.logoutButton, { borderColor: colors.error }]} onPress={logout}>
+            <Pressable style={[styles.logoutButton, { borderColor: colors.error }]} onPress={() => { blurFields(); void inlineSaver.flush().then(logout); }}>
               <Text style={[styles.logoutText, { color: colors.error }]}>Cerrar sesión</Text>
             </Pressable>
           </>
@@ -647,38 +668,23 @@ export function SettingsScreen() {
           <>
             <View style={styles.block}>
               <View style={styles.wheelWrap}>
-                <ColorWheel color={color} size={248} onChange={setColor} />
+                <ColorWheel color={color} size={248} onChange={(next) => inlineSaver.change('color_primario', next)} />
               </View>
 
               <View style={styles.hexRow}>
-                {hexEditing ? (
-                  <View style={[styles.hexPill, { borderColor: colors.primary, backgroundColor: colors.surface }]}>
-                    <Text style={[styles.hexHash, { color: colors.text }]}>#</Text>
-                    <TextInput
-                      style={[styles.hexInput, { color: colors.text }]}
-                      value={hexDraft}
-                      onChangeText={setHexDraft}
-                      autoCapitalize="characters"
-                      autoCorrect={false}
-                      autoFocus
-                      maxLength={7}
-                      onSubmitEditing={commitHex}
-                      returnKeyType="done"
-                      onBlur={commitHex}
-                    />
-                    <Pressable onPress={commitHex} hitSlop={8}>
-                      <Ionicons name="checkmark" size={16} color={colors.primary} />
-                    </Pressable>
-                  </View>
-                ) : (
-                  <Pressable
-                    style={[styles.hexPill, { borderColor: colors.border, backgroundColor: colors.surface }]}
-                    onPress={startHexEdit}
-                  >
-                    <Ionicons name="pencil" size={13} color={colors.icon} />
-                    <Text style={[styles.hexText, { color: colors.text }]}>{color.toUpperCase()}</Text>
-                  </Pressable>
-                )}
+                <InlineSettingInput label="Color hexadecimal" value={form.color_primario.replace(/^#/, '').toUpperCase()}
+                  inputRef={(input) => { inputs.current.color_primario = input; }}
+                  state={fieldStates.color_primario} focused={focusedField === 'color_primario'}
+                  placeholder="5F5BF2" autoCapitalize="characters" autoCorrect={false} maxLength={6}
+                  onChangeText={(value) => inlineSaver.change('color_primario', '#' + value)}
+                  onFocus={() => focusField('color_primario')}
+                  onBlur={() => {
+                    if (focusedKey.current === 'color_primario') { focusedKey.current = null; setFocusedField(null); }
+                    finishField('color_primario');
+                  }}
+                  onEndEditing={() => finishField('color_primario')}
+                  returnKeyType="done" submitBehavior="blurAndSubmit"
+                  onRetry={() => { void inlineSaver.save('color_primario'); }} />
                 <View style={[styles.hexSwatch, { backgroundColor: color, borderColor: colors.border }]} />
               </View>
 
@@ -688,7 +694,7 @@ export function SettingsScreen() {
                 </View>
                 <View style={styles.shadeRow}>
                   {SHADE_KEYS.map((key) => (
-                    <Pressable key={key} onPress={() => setColor(palette[key])} hitSlop={6}>
+                    <Pressable key={key} onPress={() => { blurFields(); inlineSaver.change('color_primario', palette[key]); }} hitSlop={6}>
                       <View
                         style={[
                           styles.shadeDot,
@@ -719,7 +725,7 @@ export function SettingsScreen() {
                           backgroundColor: colors.surface,
                         },
                       ]}
-                      onPress={() => setColor(preset.hex)}
+                      onPress={() => { blurFields(); inlineSaver.change('color_primario', preset.hex); }}
                     >
                       <View style={styles.presetHeader}>
                         <Text style={[styles.presetName, { color: colors.text }]}>{preset.name}</Text>
@@ -738,74 +744,21 @@ export function SettingsScreen() {
                 })}
               </View>
 
-              <PrimaryButton title="Guardar" onPress={handleSave} loading={saving} />
+              <PrimaryButton title="Guardar color" onPress={handleSaveColor} loading={fieldStates.color_primario?.status === 'saving'} />
             </View>
           </>
         )}
       </ScrollView>
 
-      <FormModal visible={editingField !== null} title={INFO_FIELDS.find((field) => field.key === editingField)?.label ?? "Editar dato"}
-        onClose={() => { if (!saving) setEditingField(null); }}>
-        <TextInput value={fieldDraft} onChangeText={setFieldDraft} autoFocus editable={!saving}
-          accessibilityLabel={INFO_FIELDS.find((field) => field.key === editingField)?.label}
-          keyboardType={INFO_FIELDS.find((field) => field.key === editingField)?.keyboardType}
-          autoCapitalize={INFO_FIELDS.find((field) => field.key === editingField)?.autoCapitalize ?? "sentences"}
-          style={[styles.modalInput, { color: colors.text, borderColor: colors.border, minHeight: 50 }]}
-          onSubmitEditing={() => { void handleSave(); }} returnKeyType="done" />
-        <PrimaryButton title="Guardar" onPress={handleSave} loading={saving} />
+      <FormModal visible={nameEditor !== null} title={nameEditorTitle} onClose={() => { if (!nameSaving) closeNameEditor(); }}>
+        <TextInput style={[styles.modalInput, { color: colors.text, borderColor: nameError ? colors.error : colors.border, minHeight: 52 }]}
+          value={nameDraft} onChangeText={(value) => { setNameDraft(value); setNameError(null); }}
+          placeholder="Nombre" placeholderTextColor={colors.muted} autoFocus autoCapitalize="words" maxLength={150}
+          editable={!nameSaving} onSubmitEditing={() => { void submitName(); }} returnKeyType="done" />
+        {nameError && <Text style={{ color: colors.error }}>{nameError}</Text>}
+        <PrimaryButton title="Guardar" onPress={submitName} loading={nameSaving} />
       </FormModal>
-      <Modal
-        visible={nameEditor !== null}
-        transparent
-        animationType="fade"
-        onRequestClose={closeNameEditor}
-      >
-        <View style={styles.modalFill}>
-          <Pressable style={styles.modalBackdrop} onPress={closeNameEditor} />
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            style={styles.modalAnchor}
-          >
-            <View style={[styles.modalCard, { backgroundColor: colors.surface }]}>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>{nameEditorTitle}</Text>
-              <TextInput
-                style={[
-                  styles.modalInput,
-                  { color: colors.text, borderColor: nameError ? colors.error : colors.border },
-                ]}
-                value={nameDraft}
-                onChangeText={(v) => {
-                  setNameDraft(v);
-                  setNameError(null);
-                }}
-                placeholder="Nombre"
-                placeholderTextColor={colors.muted}
-                autoFocus
-                autoCapitalize="words"
-                maxLength={150}
-                onSubmitEditing={submitName}
-                returnKeyType="done"
-              />
-              {nameError && <Text style={[styles.modalError, { color: colors.error }]}>{nameError}</Text>}
-              <View style={styles.modalActions}>
-                <Pressable
-                  style={[styles.modalButton, { borderColor: colors.border }]}
-                  onPress={closeNameEditor}
-                >
-                  <Text style={[styles.modalButtonText, { color: colors.muted }]}>Cancelar</Text>
-                </Pressable>
-                <Pressable
-                  style={[styles.modalButton, styles.modalButtonPrimary, { backgroundColor: colors.primary }]}
-                  onPress={submitName}
-                >
-                  <Text style={[styles.modalButtonText, { color: colors.onPrimary }]}>Guardar</Text>
-                </Pressable>
-              </View>
-            </View>
-          </KeyboardAvoidingView>
-        </View>
-      </Modal>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

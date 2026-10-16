@@ -1,7 +1,7 @@
-import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { Animated, Pressable, StyleSheet, Text } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { usePressMotion } from '../hooks/usePressMotion';
 
 interface GradientCardProps {
   title: string;
@@ -12,18 +12,14 @@ interface GradientCardProps {
 }
 
 export function GradientCard({ title, gradient, onPress, children, textColor }: GradientCardProps) {
-  const [scale] = useState(() => new Animated.Value(1));
-
-  const press = (to: number) => {
-    Animated.timing(scale, { toValue: to, duration: 120, useNativeDriver: true }).start();
-  };
+  const { scale, onPressIn, onPressOut } = usePressMotion();
 
   return (
     <Pressable
       style={styles.press}
       onPress={onPress}
-      onPressIn={() => press(0.96)}
-      onPressOut={() => press(1)}
+      onPressIn={onPressIn}
+      onPressOut={onPressOut}
     >
       <Animated.View style={[styles.animated, { transform: [{ scale }] }]}>
         <LinearGradient

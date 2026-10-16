@@ -1,0 +1,173 @@
+
+// Se ejecuta exclusivamente dentro de la WebView. pdfjs es el módulo local del motor.
+const send = (message) => window.ReactNativeWebView.postMessage(JSON.stringify(message));
+const viewport = document.getElementById('viewport');
+const pagesElement = document.getElementById('pages');
+const countElement = document.getElementById('page-count');
+const status = document.getElementById('status');
+let pdf = null;
+let loadingTask = null;
+let documentId = null;
+let pageViews = [];
+let zoom = 1;
+let revision = 0;
+let rendering = false;
+let rerender = false;
+let announced = false;
+let disposed = false;
+const rendered = new Map();
+const MAX_CANVAS_PIXELS = 3000000;
+const MAX_RENDERED_PAGES = 4;
+
+function pageWidth() { return Math.max(120, viewport.clientWidth - 24) * zoom; }
+function visiblePages() {
+  const top = viewport.scrollTop;
+  const bottom = top + viewport.clientHeight;
+  const nearby = [];
+  for (const view of pageViews) {
+    const start = view.element.offsetTop;
+    const end = start + view.element.offsetHeight;
+    if (end >= top - viewport.clientHeight * .6 && start <= bottom + viewport.clientHeight * .6) {
+      nearby.push(view);
+    }
+  }
+  const middle = (top + bottom) / 2;
+  return nearby.sort((a, b) => Math.abs(a.element.offsetTop + a.element.offsetHeight / 2 - middle) -
+    Math.abs(b.element.offsetTop + b.element.offsetHeight / 2 - middle)).slice(0, MAX_RENDERED_PAGES);
+}
+function layout() {
+  const width = pageWidth();
+  pagesElement.style.width = Math.max(viewport.clientWidth, width + 24) + 'px';
+  for (const view of pageViews) {
+    view.element.style.width = width + 'px';
+    view.element.style.height = width * view.ratio + 'px';
+  }
+  document.getElementById('zoom').textContent = Math.round(zoom * 100) + '%';
+  document.getElementById('minus').disabled = zoom <= .5;
+  document.getElementById('plus').disabled = zoom >= 3;
+}
+function release(index) {
+  const entry = rendered.get(index);
+  if (entry) { entry.canvas.remove(); entry.canvas.width = 0; entry.canvas.height = 0; entry.page.cleanup(); rendered.delete(index); }
+}
+async function renderVisible() {
+  if (!pdf || disposed) return;
+  if (rendering) { rerender = true; return; }
+  rendering = true;
+  const started = revision;
+  try {
+    const selected = visiblePages();
+    if (selected[0]) countElement.textContent = 'Página ' + selected[0].number + ' de ' + pdf.numPages;
+    const wanted = new Set(selected.map((view) => view.number));
+    for (const [index] of rendered) if (!wanted.has(index)) release(index);
+    for (const view of selected) {
+      if (disposed || revision !== started) break;
+      if (rendered.get(view.number)?.revision === started) continue;
+      const page = await pdf.getPage(view.number);
+      const natural = page.getViewport({ scale: 1 });
+      const cssScale = pageWidth() / natural.width;
+      const ratio = Math.min(window.devicePixelRatio || 1, 2,
+        Math.sqrt(MAX_CANVAS_PIXELS / (natural.width * natural.height * cssScale * cssScale)));
+      const target = page.getViewport({ scale: cssScale * ratio });
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.floor(target.width));
+      canvas.height = Math.max(1, Math.floor(target.height));
+      const context = canvas.getContext('2d', { alpha: false });
+      await page.render({ canvasContext: context, canvas, viewport: target, background: 'rgb(255,255,255)' }).promise;
+      if (disposed || revision !== started) { canvas.width = 0; canvas.height = 0; break; }
+      release(view.number);
+      view.element.replaceChildren(canvas);
+      rendered.set(view.number, { canvas, page, revision: started });
+      if (!announced) {
+        announced = true;
+        status.hidden = true;
+        send({ type: 'rendered', id: documentId, pages: pdf.numPages });
+      }
+    }
+  } catch (error) {
+    if (!disposed) {
+      status.hidden = false;
+      status.textContent = 'No se pudo mostrar esta página.';
+      send({ type: 'error', message: String(error?.message || error) });
+    }
+  } finally {
+    rendering = false;
+    if (rerender && !disposed) { rerender = false; void renderVisible(); }
+  }
+}
+let scheduled = false;
+function schedule() {
+  if (scheduled) return;
+  scheduled = true;
+  requestAnimationFrame(() => { scheduled = false; void renderVisible(); });
+}
+function setZoom(value) {
+  const old = zoom;
+  zoom = Math.max(.5, Math.min(3, Math.round(value * 100) / 100));
+  if (zoom === old) return;
+  const oldTop = viewport.scrollTop;
+  revision++;
+  layout();
+  viewport.scrollTop = oldTop * zoom / old;
+  schedule();
+}
+document.getElementById('plus').addEventListener('click', () => setZoom(zoom + .25));
+document.getElementById('minus').addEventListener('click', () => setZoom(zoom - .25));
+document.getElementById('fit').addEventListener('click', () => { setZoom(1); viewport.scrollLeft = 0; });
+viewport.addEventListener('scroll', schedule, { passive: true });
+window.addEventListener('resize', () => { revision++; layout(); schedule(); });
+window.addEventListener('pagehide', () => {
+  disposed = true;
+  for (const [number] of rendered) release(number);
+  void loadingTask?.destroy();
+  URL.revokeObjectURL(engineUrl);
+  URL.revokeObjectURL(workerUrl);
+});
+async function receive(event) {
+  let message;
+  try { message = JSON.parse(event.data); } catch { return; }
+  if (message.type !== 'open' || typeof message.base64 !== 'string' || !message.id || message.id === documentId) return;
+  documentId = message.id;
+  try {
+    const raw = atob(message.base64);
+    const data = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) data[i] = raw.charCodeAt(i);
+    loadingTask = pdfjs.getDocument({
+      data, isEvalSupported: false, isOffscreenCanvasSupported: false, useSystemFonts: true,
+      // Las fuentes de nuestros documentos ya están incrustadas.
+      useWasm: false, enableXfa: false,
+    });
+    pdf = await loadingTask.promise;
+    if (disposed) { await loadingTask.destroy(); return; }
+    const first = await pdf.getPage(1);
+    const natural = first.getViewport({ scale: 1 });
+    status.textContent = 'Preparando páginas…';
+    const fragment = document.createDocumentFragment();
+    for (let number = 1; number <= pdf.numPages; number++) {
+      const element = document.createElement('div');
+      element.className = 'page';
+      element.dataset.label = 'Página ' + number;
+      element.setAttribute('role', 'img');
+      element.setAttribute('aria-label', 'Página ' + number + ' del documento PDF');
+      fragment.append(element);
+      pageViews.push({ number, element, ratio: natural.height / natural.width });
+    }
+    pagesElement.replaceChildren(fragment);
+    layout();
+    await renderVisible();
+    // Se ajustan los tamaños reales sin rasterizar las páginas que están fuera de pantalla.
+    for (const view of pageViews.slice(1)) {
+      if (disposed) break;
+      const page = await pdf.getPage(view.number);
+      const size = page.getViewport({ scale: 1 });
+      view.ratio = size.height / size.width;
+    }
+    layout();
+    schedule();
+  } catch (error) {
+    send({ type: 'error', message: String(error?.message || error) });
+  }
+}
+document.addEventListener('message', receive);
+window.addEventListener('message', receive);
+send({ type: 'ready' });

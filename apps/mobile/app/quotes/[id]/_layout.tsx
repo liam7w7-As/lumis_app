@@ -1,10 +1,12 @@
 import { Stack } from 'expo-router';
+import { useStackMotion } from '../../../src/hooks/useStackMotion';
 import { DraftProvider } from '../../../src/context/DraftContext';
 
 export default function QuoteDetailLayout() {
+  const screenOptions = useStackMotion();
   return (
     <DraftProvider>
-      <Stack screenOptions={{ headerShown: false, animation: 'slide_from_right' }} />
+      <Stack screenOptions={screenOptions} />
     </DraftProvider>
   );
 }

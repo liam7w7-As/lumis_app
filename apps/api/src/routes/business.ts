@@ -2,7 +2,7 @@ import { Router } from 'express';
 import type { RowDataPacket } from 'mysql2/promise';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { saveUpload } from '../lib/uploadStorage';
 import { z } from 'zod';
 import { config } from '../config';
 import { pool } from '../db/pool';
@@ -53,10 +53,7 @@ businessRouter.post('/assets', requireAdmin, async (req: AuthRequest, res, next)
     const column = tipo === 'logo' ? 'logo_url' : 'sello_url';
     const [rows] = await pool.query<RowDataPacket[]>('SELECT ' + column + ' FROM business WHERE id = ?', [req.businessId]);
     if (!rows[0]) throw notFound('Empresa no encontrada');
-    const fileName = 'business-' + req.businessId + '-' + randomUUID() + '.' + ext;
-    const filePath = path.join(config.uploadsDir, fileName);
-    await fs.writeFile(filePath, buffer);
-    const url = '/uploads/' + fileName;
+    const { filePath, url } = await saveUpload(buffer, ext, 'business-' + req.businessId);
     try { await pool.query('UPDATE business SET ' + column + ' = ? WHERE id = ?', [url, req.businessId]); }
     catch (err) { await fs.rm(filePath, { force: true }); throw err; }
     const previous = rows[0][column] as string | null;

@@ -1,7 +1,7 @@
 import { useRef } from 'react';
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { SwipeRow, type SwipeRowHandle } from './SwipeRow';
 import { useTheme } from '../theme/ThemeContext';
 

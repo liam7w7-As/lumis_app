@@ -14,7 +14,7 @@ export const config = {
   jwtSecret: required('JWT_SECRET'),
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? '7d',
   corsOrigin: process.env.CORS_ORIGIN ?? '*',
-  uploadsDir: process.env.UPLOADS_DIR ?? path.join(process.cwd(), 'uploads'),
+  uploadsDir: path.resolve(process.env.UPLOADS_DIR?.trim() || path.join(process.cwd(), 'uploads')),
   db: {
     host: process.env.DB_HOST ?? 'localhost',
     port: Number(process.env.DB_PORT ?? 3306),

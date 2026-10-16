@@ -1,7 +1,8 @@
-import { randomUUID } from 'node:crypto';
+import { saveUpload } from '../lib/uploadStorage';
 import { decodeImage } from '../lib/imageUpload';
 import { reconcileCreditSale } from '../lib/saleTotals';
 import { Router } from 'express';
+import { documentDateSchema } from '../lib/documentDate';
 import { registerItemActions } from './itemActions';
 import { PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import fs from 'node:fs/promises';
@@ -103,6 +104,7 @@ const itemInputSchema = z.object({
 });
 
 const createSaleSchema = z.object({
+  createdAt: documentDateSchema.optional(),
   clientId: z.number().int().positive().nullable().optional(),
   branchId: z.number().int().positive().nullable().optional(),
   agentId: z.number().int().positive().nullable().optional(),
@@ -468,10 +470,9 @@ salesRouter.post('/:id/receipt', requireAuth, async (req: AuthRequest, res, next
       throw conflict('La venta está anulada');
     }
 
-    const fileName = `receipt-${id}-${randomUUID()}.${ext}`;
-    await fs.writeFile(path.join(config.uploadsDir, fileName), buffer);
-    const url = `/uploads/${fileName}`;
-    await pool.query('UPDATE sales SET comprobante_url = ? WHERE id = ?', [url, id]);
+    const { url, filePath } = await saveUpload(buffer, ext, 'receipt-' + id);
+    try { await pool.query('UPDATE sales SET comprobante_url = ? WHERE id = ?', [url, id]); }
+    catch (err) { await fs.rm(filePath, { force: true }).catch(() => {}); throw err; }
 
     // El comprobante anterior se borra para no acumular archivos huérfanos.
     const previous = (sale.comprobante_url as string | null) ?? null;
@@ -630,6 +631,7 @@ salesRouter.post('/:id/duplicate', requireAuth, async (req: AuthRequest, res, ne
 });
 
 const updateSaleSchema = z.object({
+  createdAt: documentDateSchema.optional(),
   estadoPago: z.enum(['por_cobrar', 'pagado']).optional(),
   metodoPago: z.enum(['efectivo', 'qr', 'transferencia', 'por_pagar']).optional(),
   clientId: z.number().int().positive().nullable().optional(),
@@ -646,6 +648,7 @@ salesRouter.patch('/:id', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const id = parseId(req.params.id);
     const {
+      createdAt,
       estadoPago,
       metodoPago,
       clientId,
@@ -657,6 +660,7 @@ salesRouter.patch('/:id', requireAuth, async (req: AuthRequest, res, next) => {
       includeSello,
     } = updateSaleSchema.parse(req.body);
     if (
+      createdAt === undefined &&
       !estadoPago &&
       !metodoPago &&
       clientId === undefined &&
@@ -711,7 +715,8 @@ salesRouter.patch('/:id', requireAuth, async (req: AuthRequest, res, next) => {
 
     await conn.query(
       `UPDATE sales
-       SET estado_pago = COALESCE(?, estado_pago),
+       SET created_at = COALESCE(?, created_at),
+           estado_pago = COALESCE(?, estado_pago),
            metodo_pago = COALESCE(?, metodo_pago),
            client_id = CASE WHEN ? THEN ? ELSE client_id END,
            branch_id = CASE WHEN ? THEN ? ELSE branch_id END,
@@ -728,6 +733,7 @@ salesRouter.patch('/:id', requireAuth, async (req: AuthRequest, res, next) => {
            END
        WHERE id = ?`,
       [
+        createdAt === undefined ? null : new Date(createdAt),
         nextEstado ?? null,
         metodoPago ?? null,
         clientId !== undefined, clientId ?? null,
@@ -744,7 +750,8 @@ salesRouter.patch('/:id', requireAuth, async (req: AuthRequest, res, next) => {
     );
 
     await conn.commit();
-    res.json({ ok: true, estadoPago: nextEstado, metodoPago, sellerName });
+    res.json({ ok: true, estadoPago: nextEstado, metodoPago, sellerName,
+      createdAt: createdAt === undefined ? undefined : new Date(createdAt).toISOString() });
   } catch (err) {
     await rollbackQuiet(conn);
     next(err);
@@ -765,6 +772,7 @@ salesRouter.post('/', requireAuth, async (req: AuthRequest, res, next) => {
       notaPago = null,
       transferenciaNumero = null,
       pagoInicial,
+      createdAt,
     } = createSaleSchema.parse(req.body);
 
     await conn.beginTransaction();
@@ -777,8 +785,8 @@ salesRouter.post('/', requireAuth, async (req: AuthRequest, res, next) => {
 
     const [ins] = await conn.query<ResultSetHeader>(
       `INSERT INTO sales (business_id, user_id, client_id, branch_id, agent_id, seller_name, total, estado_pago,
-         metodo_pago, nota_pago, transferencia_numero, paid_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         metodo_pago, nota_pago, transferencia_numero, paid_at, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         req.businessId, req.userId,
         clientId,
@@ -791,6 +799,7 @@ salesRouter.post('/', requireAuth, async (req: AuthRequest, res, next) => {
         metodoPago === 'efectivo' ? notaPago : null,
         metodoPago === 'transferencia' ? transferenciaNumero : null,
         estadoPago === 'pagado' ? new Date() : null,
+        createdAt === undefined ? new Date() : new Date(createdAt),
       ],
     );
     for (const it of items) {

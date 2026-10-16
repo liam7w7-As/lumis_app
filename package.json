@@ -12,7 +12,8 @@
     "dev:mobile": "npm run start --workspace=apps/mobile",
     "dev:api": "npm run dev --workspace=apps/api",
     "migrate": "npm run migrate --workspace=apps/api",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test:mobile": "node --import tsx --test tests/mobile/*.test.ts"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

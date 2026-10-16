@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { ReactNode } from 'react';
 import { AppState } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
-import { File, Paths } from 'expo-file-system';
+import { loadRemoteImage } from '../lib/remoteImage';
 import { useAuth } from './AuthContext';
 import { useTheme, type ThemeMode } from '../theme/ThemeContext';
 import { api, mediaUrl, type Business } from '../lib/api';
@@ -14,7 +14,7 @@ interface BusinessValue {
   rememberedBrand: RememberedBrand | null;
   error: string | null;
   refresh: () => Promise<void>;
-  applyBusiness: (business: Business) => Promise<void>;
+  applyBusiness: (business: Business) => Promise<string | null>;
   changeMode: (mode: ThemeMode) => Promise<void>;
 }
 const BusinessContext = createContext<BusinessValue | null>(null);
@@ -39,23 +39,24 @@ function BusinessSession({ children }: { children: ReactNode }) {
     }).catch(() => {});
   }, []);
   const applyBusiness = useCallback(async (next: Business) => {
-    if (!token || token !== session.current) return;
+    if (!token || token !== session.current) return null;
     const appliedRevision = ++revision.current;
     setBusiness(next);
     await setBrandColor(next.color_primario);
     let logoUri: string | null = null;
+    let imageError: string | null = null;
     if (next.logo_url) {
       try {
         const url = mediaUrl(next.logo_url)!;
-        const file = new File(Paths.cache, 'brand-' + next.id + '-' + url.split('/').pop());
-        if (!file.exists) await File.downloadFileAsync(url, file, { headers: next.logo_url.startsWith('/uploads/') ? { Authorization: 'Bearer ' + token } : undefined });
-        logoUri = file.uri;
-      } catch { /* La marca sigue disponible aunque la imagen no pueda descargarse. */ }
+        logoUri = (await loadRemoteImage(url, token)).uri;
+      } catch (err) { imageError = err instanceof Error ? err.message : 'No se pudo cargar el logo.'; }
     }
-    if (token !== session.current || revision.current !== appliedRevision) return;
+    if (token !== session.current || revision.current !== appliedRevision) return null;
     const cached = { name: next.nombre, logoUri };
     setRememberedBrand(cached);
+    setError(imageError);
     await SecureStore.setItemAsync(BRAND_CACHE, JSON.stringify(cached)).catch(() => {});
+    return imageError;
   }, [token, setBrandColor]);
 
   const refresh = useCallback(async () => {
@@ -64,11 +65,11 @@ function BusinessSession({ children }: { children: ReactNode }) {
     try {
       const [{ business: next }, { user }] = await Promise.all([api.business(token), api.me(token)]);
       if (session.current !== token || started !== revision.current) return;
-      if (next) await applyBusiness(next);
+      const imageError = next ? await applyBusiness(next) : null;
       if (session.current !== token || revision.current !== started + (next ? 1 : 0)) return;
       updateUser(user);
       await setMode(user.themeMode ?? 'system');
-      setError(null);
+      setError(imageError);
     } catch (err) {
       if (session.current === token) setError(err instanceof Error ? err.message : 'No se pudo sincronizar la empresa');
     }

@@ -1,8 +1,9 @@
+import { FormModal } from '../components/FormModal';
+import { DatePickerModal } from '../components/DatePickerModal';
+import { feedback } from '../lib/feedback';
 import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -10,7 +11,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
@@ -46,12 +47,14 @@ export function QuoteDetailScreen() {
   const [includeSignature, setIncludeSignature] = useState(true);
   const [saving, setSaving] = useState(false);
   const [clientOpen, setClientOpen] = useState(false);
+  const [dateOpen, setDateOpen] = useState(false);
 
   const [expandedItem, setExpandedItem] = useState<number | null>(null);
   const [editQty, setEditQty] = useState('1');
   const [editPrice, setEditPrice] = useState('');
   const [itemBusy, setItemBusy] = useState(false);
   const requestId = useRef(0);
+  const loadedQuote = useRef<number | null>(null);
   const [ordering, setOrdering] = useState(false);
 
   const load = useCallback(async () => {
@@ -62,18 +65,22 @@ export function QuoteDetailScreen() {
       setLoading(false);
       return;
     }
-    setLoading(true);
+    if (loadedQuote.current !== quoteId) setLoading(true);
     setError(null);
     try {
       const { quote: data } = await api.quoteDetail(quoteId, token);
       if (request !== requestId.current) return;
+      loadedQuote.current = quoteId;
       setQuote(data);
       setNotes(data.notes ?? '');
       setIncludeSeal(data.includeSeal);
       setShowNotes(data.showNotes);
       setIncludeSignature(data.includeSignature);
     } catch (err) {
-      if (request === requestId.current) setError(err instanceof ApiError ? err.message : 'Ocurrió un error inesperado');
+      if (request === requestId.current) {
+        const message = err instanceof ApiError ? err.message : 'No se pudo cargar la cotización.';
+        setError(message); feedback.error('No se pudo abrir la cotización', message);
+      }
     } finally {
       if (request === requestId.current) setLoading(false);
     }
@@ -88,6 +95,14 @@ export function QuoteDetailScreen() {
 
   const editable = quote?.status === 'borrador';
   const saveable = quote != null && quote.status !== 'convertida';
+
+  const saveDate = async (createdAt: string) => {
+    if (!token || !quote || !saveable) throw new Error('Esta cotización no admite cambios.');
+    const request = requestId.current;
+    const result = await api.updateQuote(quote.id, { createdAt }, token);
+    if (request !== requestId.current) return;
+    setQuote((current) => current?.id === quote.id ? { ...current, createdAt: result.createdAt ?? createdAt } : current);
+  };
 
   const refreshItems = async () => {
     if (!token || !quote) return;
@@ -107,7 +122,7 @@ export function QuoteDetailScreen() {
     if (!token || !quote || itemBusy) return;
     setItemBusy(true);
     try { await persistItemDraft(); await api.duplicateItem('quotes', quote.id, item.id, token); await refreshItems(); }
-    catch (err) { Alert.alert('Error', err instanceof Error ? err.message : 'No se pudo duplicar'); }
+    catch (err) { feedback.alert('Error', err instanceof Error ? err.message : 'No se pudo duplicar'); }
     finally { setItemBusy(false); }
   };
   const reorderItems = async (ids: number[]) => {
@@ -129,10 +144,10 @@ export function QuoteDetailScreen() {
     try {
       await persistItemDraft();
       await persistDocumentOptions();
-      Alert.alert('Guardado', 'Cambios guardados');
+      feedback.alert('Guardado', 'Cambios guardados');
       await refreshItems();
     } catch (err) {
-      Alert.alert('Error', err instanceof Error ? err.message : 'No se pudo guardar');
+      feedback.alert('Error', err instanceof Error ? err.message : 'No se pudo guardar');
     } finally {
       setSaving(false);
     }
@@ -146,7 +161,7 @@ export function QuoteDetailScreen() {
       await persistDocumentOptions();
       router.push(`/quotes/${quote.id}/preview`);
     } catch (err) {
-      Alert.alert('Error', err instanceof Error ? err.message : 'No se pudieron guardar las opciones del documento');
+      feedback.alert('Error', err instanceof Error ? err.message : 'No se pudieron guardar las opciones del documento');
     } finally {
       setSaving(false);
     }
@@ -158,7 +173,7 @@ export function QuoteDetailScreen() {
       await api.updateQuote(quote.id, { status }, token);
       load();
     } catch (err) {
-      Alert.alert('Error', err instanceof ApiError ? err.message : 'No se pudo cambiar el estado');
+      feedback.alert('Error', err instanceof ApiError ? err.message : 'No se pudo cambiar el estado');
     }
   };
 
@@ -169,7 +184,7 @@ export function QuoteDetailScreen() {
       { label: 'Aprobada', value: 'aprobada' },
       { label: 'Rechazada', value: 'rechazada' },
     ];
-    Alert.alert('Estado', 'Cambia el estado de la cotización', [
+    feedback.alert('Estado', 'Cambia el estado de la cotización', [
       ...options
         .filter((o) => o.value !== quote.status)
         .map((o) => ({ text: o.label, onPress: () => applyStatus(o.value as 'borrador' | 'aprobada' | 'rechazada') })),
@@ -193,11 +208,11 @@ export function QuoteDetailScreen() {
     const qty = parseNum(editQty);
     const price = parseNum(editPrice);
     if (!Number.isFinite(qty) || qty <= 0) {
-      Alert.alert('Error', 'La cantidad debe ser mayor a 0');
+      feedback.alert('Error', 'La cantidad debe ser mayor a 0');
       return;
     }
     if (!Number.isFinite(price) || price < 0) {
-      Alert.alert('Error', 'El precio no puede ser negativo');
+      feedback.alert('Error', 'El precio no puede ser negativo');
       return;
     }
     setItemBusy(true);
@@ -206,7 +221,7 @@ export function QuoteDetailScreen() {
       setExpandedItem(null);
       await refreshItems();
     } catch (err) {
-      Alert.alert('Error', err instanceof ApiError ? err.message : 'No se pudo guardar');
+      feedback.alert('Error', err instanceof ApiError ? err.message : 'No se pudo guardar');
     } finally {
       setItemBusy(false);
     }
@@ -214,7 +229,7 @@ export function QuoteDetailScreen() {
 
   const removeItem = (item: QuoteItem) => {
     if (!token || !quote) return;
-    Alert.alert('Quitar artículo', `¿Quitar "${item.description}"?`, [
+    feedback.alert('Quitar artículo', `¿Quitar "${item.description}"?`, [
       { text: 'Cancelar', style: 'cancel' },
       {
         text: 'Quitar',
@@ -225,7 +240,7 @@ export function QuoteDetailScreen() {
             setExpandedItem(null);
             await refreshItems();
           } catch (err) {
-            Alert.alert('Error', err instanceof ApiError ? err.message : 'No se pudo quitar');
+            feedback.alert('Error', err instanceof ApiError ? err.message : 'No se pudo quitar');
           }
         },
       },
@@ -287,9 +302,13 @@ export function QuoteDetailScreen() {
         </View>
 
         <View style={styles.metaRow}>
-          <Text style={[styles.metaText, { color: colors.muted }]}>
-            Fecha {formatDate(quote.createdAt)}
-          </Text>
+          <Pressable style={styles.dateWrap} onPress={() => setDateOpen(true)}
+            accessibilityRole="button" accessibilityLabel="Editar fecha de la cotización" disabled={!saveable || saving || itemBusy}>
+            <Text style={[styles.metaText, { color: colors.muted }]}>
+              Fecha {formatDate(quote.createdAt)}
+            </Text>
+            {saveable && <Ionicons name="pencil-outline" size={13} color={colors.muted} />}
+          </Pressable>
           <Text style={[styles.metaText, { color: colors.muted }]}>
             COTIZACIÓN Nº {quote.id}
           </Text>
@@ -524,15 +543,11 @@ export function QuoteDetailScreen() {
         />
       </ScrollView>
 
+      {dateOpen && <DatePickerModal title="Fecha de la cotización" value={quote.createdAt}
+        onClose={() => setDateOpen(false)} onSave={saveDate} />}
       <ReorderItemsModal visible={ordering} items={quote.items} onClose={() => setOrdering(false)} onSave={reorderItems} />
-      <Modal
-        visible={clientOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setClientOpen(false)}
-      >
-        <Pressable style={styles.overlay} onPress={() => setClientOpen(false)}>
-          <Pressable style={[styles.clientCard, { backgroundColor: colors.surface }]}>
+      <FormModal visible={clientOpen} title="Datos del cliente" icon="person-outline" onClose={() => setClientOpen(false)}>
+
             <Text style={[styles.clientCardName, { color: colors.text }]}>
               {quote.client?.name}
             </Text>
@@ -545,9 +560,7 @@ export function QuoteDetailScreen() {
             <View style={styles.clientCardButton}>
               <PrimaryButton title="Cerrar" onPress={() => setClientOpen(false)} />
             </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
+      </FormModal>
     </View>
   );
 }
@@ -598,7 +611,9 @@ const styles = StyleSheet.create({
   circleSpacer: {
     width: 44,
   },
+  dateWrap: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44 },
   metaRow: {
+    alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
   },

@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react';
 import { Animated, StyleSheet, TextInput, useAnimatedValue, View } from 'react-native';
 import type { TextInputProps } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTheme } from '../theme/ThemeContext';
+import { useReducedMotion } from '../context/MotionContext';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -29,9 +30,12 @@ export function AnimatedInput({
 }: AnimatedInputProps) {
   const { colors } = useTheme();
   const focus = useAnimatedValue(0);
+  const reducedMotion = useReducedMotion();
 
   const animateTo = (to: number) => {
-    Animated.timing(focus, { toValue: to, duration: 220, useNativeDriver: false }).start();
+    focus.stopAnimation();
+    if (reducedMotion) { focus.setValue(to); return; }
+    Animated.timing(focus, { toValue: to, duration: 180, useNativeDriver: false, isInteraction: false }).start();
   };
 
   const borderColor = focus.interpolate({

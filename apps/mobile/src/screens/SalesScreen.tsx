@@ -1,8 +1,7 @@
+import { feedback } from '../lib/feedback';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
-  Animated,
   FlatList,
   Pressable,
   RefreshControl,
@@ -11,7 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
@@ -47,15 +46,10 @@ export function SalesScreen() {
   const [error, setError] = useState<string | null>(null);
   const openRow = useRef<SwipeRowHandle | null>(null);
 
-  const [fade] = useState(() => new Animated.Value(0));
-  useEffect(() => {
-    Animated.timing(fade, { toValue: 1, duration: 400, useNativeDriver: true }).start();
-  }, [fade]);
-
   const query = search.trim();
 
   const load = useCallback(
-    async (isRefresh = false) => {
+    async (isRefresh = false, silent = false) => {
       if (!token) {
         setLoading(false);
         setRefreshing(false);
@@ -63,7 +57,7 @@ export function SalesScreen() {
       }
       if (isRefresh) {
         setRefreshing(true);
-      } else {
+      } else if (!silent) {
         setLoading(true);
       }
       setError(null);
@@ -75,7 +69,8 @@ export function SalesScreen() {
         });
         setSales(data);
       } catch (err) {
-        setError(err instanceof ApiError ? err.message : 'Ocurrió un error inesperado');
+        { const message = err instanceof ApiError ? err.message : 'No se pudo cargar el historial.';
+          setError(message); feedback.error('No se pudo cargar el historial', message); }
       } finally {
         setLoading(false);
         setRefreshing(false);
@@ -96,7 +91,7 @@ export function SalesScreen() {
   // useEffect adicional (evita el doble fetch inicial).
   useFocusEffect(
     useCallback(() => {
-      load(true);
+      void load(false, true);
     }, [load]),
   );
 
@@ -118,13 +113,13 @@ export function SalesScreen() {
   };
 
   const showApiError = (err: unknown, fallback: string) => {
-    Alert.alert('Error', err instanceof ApiError ? err.message : fallback);
+    feedback.alert('Error', err instanceof ApiError ? err.message : fallback);
   };
 
   const handleVoid = (sale: Sale) => {
     if (!token) return;
     closeRow();
-    Alert.alert(
+    feedback.alert(
       'Anular venta',
       `La venta #${sale.id} quedará anulada y dejará de aparecer en el punto de venta.`,
       [
@@ -148,7 +143,7 @@ export function SalesScreen() {
   const handleDelete = (sale: Sale) => {
     if (!token) return;
     closeRow();
-    Alert.alert('Borrar venta', `¿Borrar la venta #${sale.id}? No se puede deshacer.`, [
+    feedback.alert('Borrar venta', `¿Borrar la venta #${sale.id}? No se puede deshacer.`, [
       { text: 'Cancelar', style: 'cancel' },
       {
         text: 'Borrar',
@@ -171,7 +166,7 @@ export function SalesScreen() {
     (async () => {
       try {
         const { sale: created } = await api.duplicateSale(sale.id, token);
-        Alert.alert('Venta copiada', `Se creó la venta #${created.id} por cobrar.`, [
+        feedback.alert('Venta copiada', `Se creó la venta #${created.id} por cobrar.`, [
           { text: 'OK', onPress: () => load(true) },
         ]);
       } catch (err) {
@@ -185,7 +180,7 @@ export function SalesScreen() {
   };
 
   return (
-    <Animated.View style={[styles.screen, { backgroundColor: colors.background, opacity: fade }]}>
+    <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <Pressable onPress={() => router.back()} hitSlop={10}>
           <Ionicons name="arrow-back" size={24} color={colors.text} />
@@ -341,7 +336,7 @@ export function SalesScreen() {
         }}
         onClose={() => setSheetOpen(false)}
       />
-    </Animated.View>
+    </View>
   );
 }
 

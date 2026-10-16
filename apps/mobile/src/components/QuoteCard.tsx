@@ -1,11 +1,12 @@
-import { useRef, useState } from 'react';
+import { useRef } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SwipeRow, type SwipeRowHandle } from './SwipeRow';
 import { useTheme } from '../theme/ThemeContext';
+import { usePressMotion } from '../hooks/usePressMotion';
 import { gradientFor } from '../lib/brandColors';
-import { avatarColor, formatDate, initials } from '../lib/format';
+import { formatDate } from '../lib/format';
 import { useMoney } from '../context/BusinessContext';
 import type { Quote, QuoteStatus } from '../lib/api';
 
@@ -67,13 +68,9 @@ export function QuoteCard({
 }: QuoteCardProps) {
   const { colors } = useTheme();
   const formatMoney = useMoney();
-  const [scale] = useState(() => new Animated.Value(1));
+  const { scale, onPressIn, onPressOut } = usePressMotion();
   const swipeRef = useRef<SwipeRowHandle>(null);
   const statusColor = quote.status === 'convertida' ? colors.primary : STATUS_COLOR[quote.status];
-
-  const press = (to: number) => {
-    Animated.timing(scale, { toValue: to, duration: 120, useNativeDriver: true }).start();
-  };
 
   const renderRightActions = () => (
     <LinearGradient
@@ -107,8 +104,8 @@ export function QuoteCard({
       <Pressable
         onPress={onPress}
         disabled={!onPress}
-        onPressIn={() => press(0.98)}
-        onPressOut={() => press(1)}
+        onPressIn={onPressIn}
+        onPressOut={onPressOut}
       >
         <Animated.View
           style={[
@@ -122,12 +119,6 @@ export function QuoteCard({
               <Text style={[styles.client, { color: colors.text }]} numberOfLines={1}>
                 {quote.clientName ?? 'Sin Cliente'}
               </Text>
-              <View style={[styles.statusPill, { backgroundColor: `${statusColor}1A` }]}>
-                <View style={[styles.dot, { backgroundColor: statusColor }]} />
-                <Text style={[styles.statusText, { color: statusColor }]}>
-                  {STATUS_LABEL[quote.status]}
-                </Text>
-              </View>
               <Ionicons name="chevron-forward" size={18} color={colors.icon} />
             </View>
             <View style={styles.row2}>
@@ -146,8 +137,11 @@ export function QuoteCard({
                 </Text>
               </View>
               <View style={styles.seller}>
-                <View style={[styles.avatar, { backgroundColor: avatarColor(quote.sellerName) }]}>
-                  <Text style={styles.avatarText}>{initials(quote.sellerName)}</Text>
+                <View style={[styles.statusPill, { backgroundColor: `${statusColor}1A` }]}>
+                  <View style={[styles.dot, { backgroundColor: statusColor }]} />
+                  <Text style={[styles.statusText, { color: statusColor }]}>
+                    {STATUS_LABEL[quote.status]}
+                  </Text>
                 </View>
                 <Text style={[styles.sellerName, { color: colors.muted }]} numberOfLines={1}>
                   {quote.sellerName.toUpperCase()}
@@ -215,6 +209,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   statusPill: {
+    flexShrink: 0,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
@@ -257,26 +252,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  avatar: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: {
-    color: '#fff',
-    fontSize: 10,
-    fontFamily: 'Poppins',
-    fontWeight: '700',
+    marginLeft: 'auto',
+    maxWidth: '100%',
+    flexShrink: 1,
   },
   sellerName: {
     fontSize: 12,
     fontFamily: 'Poppins',
     fontWeight: '600',
-    maxWidth: 90,
+    maxWidth: 150,
+    flexShrink: 1,
   },
 });

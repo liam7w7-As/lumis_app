@@ -1,8 +1,9 @@
+import { FormModal } from '../components/FormModal';
+import { DatePickerModal } from '../components/DatePickerModal';
+import { feedback } from '../lib/feedback';
 import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -10,7 +11,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
@@ -56,10 +57,6 @@ function dayMonthYear(iso: string): string {
   return `${dd}.${mm}.${String(d.getFullYear()).slice(2)}`;
 }
 
-function todayLabel(): string {
-  return dayMonthYear(new Date().toISOString());
-}
-
 function parseNum(raw: string): number | null {
   const n = Number.parseFloat(raw.replace(',', '.'));
   return Number.isFinite(n) ? n : null;
@@ -83,6 +80,8 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
   const [docTab, setDocTab] = useState<DocTab>('venta');
   const [metodo, setMetodo] = useState<SaleMetodoPago>('efectivo');
   const [branchesOpen, setBranchesOpen] = useState(false);
+  const [dateOpen, setDateOpen] = useState(false);
+  const [draftCreatedAt, setDraftCreatedAt] = useState<string | null>(null);
   const [clientsOpen, setClientsOpen] = useState(false);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [agentsOpen, setAgentsOpen] = useState(false);
@@ -146,7 +145,8 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
         setTotalPagado(0);
       }
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'No se pudo cargar');
+      const message = err instanceof ApiError ? err.message : 'No se pudo cargar la venta.';
+      setError(message); feedback.error('No se pudo abrir la venta', message);
     } finally {
       setLoading(false);
     }
@@ -180,7 +180,7 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
       : 'pagado';
 
   const showApiError = (err: unknown, fallback: string) =>
-    Alert.alert('Error', err instanceof ApiError ? err.message : fallback);
+    feedback.alert('Error', err instanceof ApiError ? err.message : fallback);
 
   const toInput = (line: {
     productId: number | null;
@@ -211,7 +211,7 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
     const quantity = parseNum(editQty);
     const unitPrice = parseNum(editPrice);
     if (quantity == null || quantity <= 0 || unitPrice == null || unitPrice < 0) {
-      Alert.alert('Datos inválidos', 'Revisa la cantidad y el precio.');
+      feedback.alert('Datos inválidos', 'Revisa la cantidad y el precio.');
       return;
     }
     try {
@@ -301,7 +301,7 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
     if (!token || saleId == null || busyPayment) return;
     const monto = parseNum(payAmount);
     if (monto == null || monto <= 0) {
-      Alert.alert('Datos inválidos', 'Escribe un monto mayor a 0.');
+      feedback.alert('Datos inválidos', 'Escribe un monto mayor a 0.');
       return;
     }
     setBusyPayment(true);
@@ -314,7 +314,7 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
       );
       setPayAmount('');
       if (res.estadoPago === 'pagado') {
-        Alert.alert('Venta pagada', 'Los abonos completaron el total de la venta.');
+        feedback.alert('Venta pagada', 'Los abonos completaron el total de la venta.');
       }
     } catch (err) {
       showApiError(err, 'No se pudo registrar el pago');
@@ -324,7 +324,7 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
   };
 
   const handleDeletePayment = (paymentId: number) => {
-    Alert.alert('Borrar pago', '¿Quieres eliminar este abono del historial?', [
+    feedback.alert('Borrar pago', '¿Quieres eliminar este abono del historial?', [
       { text: 'Cancelar', style: 'cancel' },
       {
         text: 'Borrar',
@@ -388,6 +388,16 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
     }
   };
 
+  const saveDate = async (createdAt: string) => {
+    if (!isDetail) {
+      setDraftCreatedAt(createdAt);
+      return;
+    }
+    if (!token || saleId == null || isVoided) throw new Error('Esta venta no admite cambios.');
+    const result = await api.updateSale(saleId, { createdAt }, token);
+    setSale((prev) => prev ? { ...prev, createdAt: result.createdAt ?? createdAt } : prev);
+  };
+
   const pickAgent = async (picked: Agent | null) => {
     setAgentsOpen(false);
     if (!isDetail) {
@@ -428,7 +438,7 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
   };
 
   const discardDraft = () => {
-    Alert.alert('Descartar nota de venta', 'Se perderá lo que agregaste.', [
+    feedback.alert('Descartar nota de venta', 'Se perderá lo que agregaste.', [
       { text: 'Cancelar', style: 'cancel' },
       {
         text: 'Descartar',
@@ -446,7 +456,7 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
   const handleDeliver = async () => {
     if (!token || saleId == null) return;
     if (isVoided) {
-      Alert.alert('Venta anulada', 'No se puede entregar una venta anulada.');
+      feedback.alert('Venta anulada', 'No se puede entregar una venta anulada.');
       return;
     }
     setSaving(true);
@@ -481,11 +491,11 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
     if (!token) return;
 
     if (metodo === 'qr' && !hasReceipt) {
-      Alert.alert('Falta la boleta', 'Adjunta la boleta de pago para registrar la venta.');
+      feedback.alert('Falta la boleta', 'Adjunta la boleta de pago para registrar la venta.');
       return;
     }
     if (metodo === 'transferencia' && transferenciaNumero.trim().length === 0) {
-      Alert.alert(
+      feedback.alert(
         'Falta el N° de transferencia',
         'Escribe el número de transferencia para registrar la venta.',
       );
@@ -493,7 +503,7 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
     }
     const pagoInicialNum = parseNum(payInicial);
     if (metodo === 'por_pagar' && payInicial.trim() && (pagoInicialNum == null || pagoInicialNum <= 0)) {
-      Alert.alert('Datos inválidos', 'El pago inicial debe ser mayor a 0.');
+      feedback.alert('Datos inválidos', 'El pago inicial debe ser mayor a 0.');
       return;
     }
 
@@ -529,7 +539,7 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
               }
             : prev,
         );
-        Alert.alert('Venta realizada', `Se registró el pago de la venta #${saleId}.`, [
+        feedback.alert('Venta realizada', `Se registró el pago de la venta #${saleId}.`, [
           { text: 'OK', onPress: () => router.back() },
         ]);
       } catch (err) {
@@ -541,7 +551,7 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
     }
 
     if (items.length === 0) {
-      Alert.alert('Venta vacía', 'Agrega al menos un producto.');
+      feedback.alert('Venta vacía', 'Agrega al menos un producto.');
       return;
     }
     setSaving(true);
@@ -549,6 +559,7 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
       const { sale: created } = await api.createSale(
         {
           clientId: client?.id ?? null,
+          createdAt: draftCreatedAt ?? undefined,
           branchId,
           agentId,
           metodoPago: metodo,
@@ -571,7 +582,7 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
         }
       }
       clear();
-      Alert.alert(
+      feedback.alert(
         'Venta realizada',
         receiptWarning
           ? `Se generó la venta #${created.id}, pero el comprobante no se pudo subir. Adjúntalo desde el detalle.`
@@ -650,7 +661,7 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
     if (isDetail) {
       return (sale?.items ?? []).map((it, index) => (
         <ItemSwipe key={it.id} disabled={isVoided || lineBusy} onEdit={() => openEditor(it.id, it.quantity, it.unitPrice)}
-          onDelete={() => Alert.alert("Quitar producto", it.description, [{ text: "Cancelar", style: "cancel" }, { text: "Eliminar", style: "destructive", onPress: () => { void removeSavedItem(it.id); } }])}
+          onDelete={() => feedback.alert("Quitar producto", it.description, [{ text: "Cancelar", style: "cancel" }, { text: "Eliminar", style: "destructive", onPress: () => { void removeSavedItem(it.id); } }])}
           onDuplicate={() => { void duplicateLine(it.id); }} onMove={() => setOrdering(true)}>
         <View style={[styles.itemCard, { backgroundColor: colors.surface }]}>
           <View style={styles.itemHead}>
@@ -838,11 +849,12 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
         </View>
 
         <View style={styles.metaRow}>
-          <Pressable style={styles.dateWrap} onPress={() => Alert.alert('Fecha', 'Próximamente')}>
+          <Pressable style={styles.dateWrap} onPress={() => setDateOpen(true)}
+            accessibilityRole="button" accessibilityLabel="Editar fecha de la venta" disabled={isVoided || loading}>
             <Text style={[styles.metaMuted, { color: colors.muted }]}>
-              Fecha {isDetail && sale ? dayMonthYear(sale.createdAt) : todayLabel()}
+              Fecha {dayMonthYear(sale?.createdAt ?? draftCreatedAt ?? new Date().toISOString())}
             </Text>
-            <Ionicons name="pencil-outline" size={13} color={colors.muted} />
+            {!isVoided && <Ionicons name="pencil-outline" size={13} color={colors.muted} />}
           </Pressable>
           <Text style={[styles.metaDoc, { color: colors.muted }]}>
             {docTab === 'entrega'
@@ -850,6 +862,25 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
               : `NOTA DE VENTA N° ${isDetail ? (sale?.id ?? '') : (nextNumber ?? '—')}`}
           </Text>
         </View>
+
+        <SegmentedTabs<DocTab>
+          fullWidth
+          options={[
+            { key: 'venta', label: 'Nota de Venta' },
+            { key: 'entrega', label: 'Nota de entrega' },
+          ]}
+          value={docTab}
+          onChange={(key) => {
+            if (key === 'entrega' && !isDetail) {
+              feedback.alert(
+                'Nota de entrega',
+                'Registra la venta para generar su nota de entrega.',
+              );
+              return;
+            }
+            setDocTab(key);
+          }}
+        />
 
         {isVoided && (
           <View style={[styles.voidBanner, { backgroundColor: '#ef444414' }]}>
@@ -896,24 +927,6 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
             </View>
           </Pressable>
         </View>
-
-        <SegmentedTabs<DocTab>
-          options={[
-            { key: 'venta', label: 'Nota de Venta' },
-            { key: 'entrega', label: 'Nota de entrega' },
-          ]}
-          value={docTab}
-          onChange={(key) => {
-            if (key === 'entrega' && !isDetail) {
-              Alert.alert(
-                'Nota de entrega',
-                'Registra la venta para generar su nota de entrega.',
-              );
-              return;
-            }
-            setDocTab(key);
-          }}
-        />
 
         <View>
           <Text style={[styles.fieldLabel, { color: colors.muted }]}>Cliente / Empresa</Text>
@@ -1011,16 +1024,11 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
         )}
       </ScrollView>
 
+      {dateOpen && <DatePickerModal value={sale?.createdAt ?? draftCreatedAt ?? new Date().toISOString()}
+        onClose={() => setDateOpen(false)} onSave={saveDate} />}
       <ReorderItemsModal visible={ordering} items={sale?.items ?? []} onClose={() => setOrdering(false)} onSave={reorderLines} />
-      <Modal
-        visible={branchesOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setBranchesOpen(false)}
-      >
-        <Pressable style={styles.overlay} onPress={() => setBranchesOpen(false)}>
-          <Pressable style={[styles.optionsCard, { backgroundColor: colors.surface }]}>
-            <Text style={[styles.optionsTitle, { color: colors.text }]}>Sucursal</Text>
+      <FormModal visible={branchesOpen} title="Elegir sucursal" icon="storefront-outline" onClose={() => setBranchesOpen(false)}>
+
             {branches.map((b) => (
               <Pressable key={b.id} style={styles.optionRow} onPress={() => pickBranch(b)}>
                 <Text
@@ -1036,19 +1044,10 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
                 {b.id === branchId && <Ionicons name="checkmark" size={18} color={colors.primary} />}
               </Pressable>
             ))}
-          </Pressable>
-        </Pressable>
-      </Modal>
+      </FormModal>
 
-      <Modal
-        visible={agentsOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setAgentsOpen(false)}
-      >
-        <Pressable style={styles.overlay} onPress={() => setAgentsOpen(false)}>
-          <Pressable style={[styles.optionsCard, { backgroundColor: colors.surface }]}>
-            <Text style={[styles.optionsTitle, { color: colors.text }]}>Vendedor</Text>
+      <FormModal visible={agentsOpen} title="Elegir vendedor" icon="person-outline" onClose={() => setAgentsOpen(false)}>
+
             <Pressable style={styles.optionRow} onPress={() => pickAgent(null)}>
               <Text
                 style={[
@@ -1082,19 +1081,10 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
                 Agrega agentes de venta en Configuración para asignarlos a las ventas.
               </Text>
             )}
-          </Pressable>
-        </Pressable>
-      </Modal>
+      </FormModal>
 
-      <Modal
-        visible={clientsOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setClientsOpen(false)}
-      >
-        <Pressable style={styles.overlay} onPress={() => setClientsOpen(false)}>
-          <Pressable style={[styles.optionsCard, { backgroundColor: colors.surface }]}>
-            <Text style={[styles.optionsTitle, { color: colors.text }]}>Cliente</Text>
+      <FormModal visible={clientsOpen} title="Elegir cliente" icon="people-outline" onClose={() => setClientsOpen(false)}>
+
             <Pressable style={styles.optionRow} onPress={() => setClientsOpen(false)}>
               <Text style={[styles.optionText, { color: colors.text }]}>Sin Cliente</Text>
               {clientId == null && <Ionicons name="checkmark" size={18} color={colors.primary} />}
@@ -1114,9 +1104,7 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
                 {c.id === clientId && <Ionicons name="checkmark" size={18} color={colors.primary} />}
               </Pressable>
             ))}
-          </Pressable>
-        </Pressable>
-      </Modal>
+      </FormModal>
     </View>
   );
 }
@@ -1153,6 +1141,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   dateWrap: {
+    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,

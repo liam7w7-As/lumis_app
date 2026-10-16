@@ -5,19 +5,22 @@ interface SegmentedTabsProps<T extends string> {
   options: { key: T; label: string }[];
   value: T;
   onChange: (key: T) => void;
+  fullWidth?: boolean;
 }
 
-export function SegmentedTabs<T extends string>({ options, value, onChange }: SegmentedTabsProps<T>) {
+export function SegmentedTabs<T extends string>({ options, value, onChange, fullWidth = false }: SegmentedTabsProps<T>) {
   const { colors } = useTheme();
 
   return (
-    <View style={[styles.group, { backgroundColor: colors.background }]}>
+    <View style={[styles.group, fullWidth && styles.fullGroup, { backgroundColor: fullWidth ? colors.surface : colors.background }]}>
       {options.map((opt) => {
         const selected = opt.key === value;
         return (
           <Pressable
             key={opt.key}
-            style={[styles.tab, selected && { backgroundColor: colors.primary }]}
+            accessibilityRole="tab"
+            accessibilityState={{ selected }}
+            style={[styles.tab, fullWidth && styles.fullTab, selected && { backgroundColor: colors.primary }]}
             onPress={() => onChange(opt.key)}
           >
             <Text
@@ -48,6 +51,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 7,
   },
+  fullGroup: { width: '100%' },
+  fullTab: { flex: 1, minHeight: 48, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
   label: {
     fontSize: 13,
     fontFamily: 'Poppins',
