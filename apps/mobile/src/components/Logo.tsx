@@ -3,7 +3,7 @@ import { Image, StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { useBusiness } from '../context/BusinessContext';
 import { useAuth } from '../context/AuthContext';
-import { mediaSource } from '../lib/api';
+import { StoredImage } from './StoredImage';
 
 const LUMIS_LOGO = require('../../assets/brand/lumis-logo.png');
 
@@ -21,13 +21,15 @@ export function Logo({ size = 34, showTagline = true, imageOnly = false }: {
   return (
     <View style={styles.wrap}>
       <View style={styles.imageWrap}>
-        <Image
-          source={companyLogo ? mediaSource(logo, token) : LUMIS_LOGO}
-          onError={companyLogo ? () => setFailedLogo(logo) : undefined}
+        {companyLogo ? <StoredImage
+          uri={logo!} token={token}
+          onLoadError={() => setFailedLogo(logo)}
           resizeMode="contain"
-          accessibilityLabel={companyLogo && name ? 'Logo de ' + name : 'Lumis · Cotiza y vende'}
-          style={{ width, height: companyLogo ? size * 1.7 : width * 342 / 768 }}
-        />
+          accessibilityLabel={name ? 'Logo de ' + name : 'Logo de la empresa'}
+          style={{ width, height: size * 1.7 }}
+        /> : <Image source={LUMIS_LOGO} resizeMode="contain"
+          accessibilityLabel="Lumis · Cotiza y vende"
+          style={{ width, height: width * 342 / 768 }} />}
       </View>
       {showTagline && !imageOnly && companyLogo && !!name &&
         <Text numberOfLines={1} style={[styles.sub, { color: colors.muted }]}>{name}</Text>}

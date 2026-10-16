@@ -1,7 +1,7 @@
-import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useAuth } from '../context/AuthContext';
-import { mediaSource } from '../lib/api';
+import { StoredImage } from './StoredImage';
 import { useTheme } from '../theme/ThemeContext';
 import { formatDate } from '../lib/format';
 import { useMoney } from '../context/BusinessContext';
@@ -130,7 +130,7 @@ export function SalePaymentSection({
           {receiptUri ? <ReadyPill /> : <RequiredPill />}
         </View>
         {receiptUri ? (
-          <Image source={mediaSource(receiptUri, token)} style={styles.thumb} resizeMode="cover" />
+          <StoredImage uri={receiptUri} token={token} style={styles.thumb} resizeMode="cover" />
         ) : null}
         {receiptButtons(
           receiptUri ? { library: 'Cambiar', camera: 'Otra foto' } : { library: 'Galería', camera: 'Cámara' },
@@ -168,7 +168,7 @@ export function SalePaymentSection({
           Foto del comprobante (opcional)
         </Text>
         {receiptUri ? (
-          <Image source={mediaSource(receiptUri, token)} style={styles.thumb} resizeMode="cover" />
+          <StoredImage uri={receiptUri} token={token} style={styles.thumb} resizeMode="cover" />
         ) : null}
         <View style={styles.receiptRow}>
           <Pressable

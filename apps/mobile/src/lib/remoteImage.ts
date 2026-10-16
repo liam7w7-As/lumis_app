@@ -1,4 +1,5 @@
 import { File, Paths } from 'expo-file-system';
+import { Image } from 'react-native';
 import { mediaSource } from './api';
 
 export class ImageLoadError extends Error {
@@ -20,7 +21,8 @@ export function imageMime(base64: string): string | null {
 }
 /** La validación HTTP distingue archivos ausentes de problemas de conexión. */
 async function readRemoteImage(url: string, token: string | null, validate = false) {
-  const file = new File(Paths.cache, 'lumis-image-' + cacheKey(url) + '-' + cacheKey(token ?? 'public') + '.img');
+  const extension = /\.(png|jpe?g|webp)(?:[?#]|$)/i.exec(url)?.[1]?.toLowerCase() ?? 'img';
+  const file = new File(Paths.cache, 'lumis-image-' + cacheKey(url) + '-' + cacheKey(token ?? 'public') + '.' + extension);
   const headers = mediaSource(url, token).headers;
   try {
     if (validate || !file.exists || file.size === 0) {
@@ -45,6 +47,14 @@ async function readRemoteImage(url: string, token: string | null, validate = fal
     if (!mime) {
       file.delete();
       throw new ImageLoadError('invalid', 'El archivo no es una imagen válida. Sube nuevamente un PNG, JPEG o WebP.');
+    }
+    try {
+      const { width, height } = await Image.getSize(file.uri);
+      if (width <= 0 || height <= 0) throw new Error('Dimensiones inválidas');
+    } catch {
+      file.delete();
+      throw new ImageLoadError('invalid',
+        'El archivo no se puede abrir como imagen. Selecciona otro PNG, JPEG o WebP e inténtalo de nuevo.');
     }
     return { uri: file.uri, dataUri: 'data:' + mime + ';base64,' + base64 };
   } catch (err) {

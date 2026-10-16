@@ -3,7 +3,7 @@
 export const BRAND = {
   name: 'lumis',
   tagline: 'COTIZA Y VENDE',
-  version: '1.2.0',
+  version: '1.2.1',
   title: 'Lumis',
 };
 

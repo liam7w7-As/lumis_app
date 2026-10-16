@@ -1,12 +1,12 @@
 import { loadRemoteImage } from '../lib/remoteImage';
 import { NoticeCard } from '../components/NoticeCard';
+import { StoredImage } from '../components/StoredImage';
 import { feedback } from '../lib/feedback';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { InlineSettingInput } from '../components/InlineSettingInput';
 import { createInlineAutosave, type InlineSaveState } from '../lib/inlineAutosave';
 import {
   ActivityIndicator,
-  Image,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -29,7 +29,6 @@ import { PrimaryButton } from '../components/PrimaryButton';
 import {
   ApiError,
   api,
-  mediaSource,
   mediaUrl,
   type Business,
   type Agent,
@@ -143,7 +142,6 @@ export function SettingsScreen() {
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [selloUrl, setSelloUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState<'logo' | 'sello' | null>(null);
-  const [previews, setPreviews] = useState<Partial<Record<'logo' | 'sello', {url: string; uri: string}>>>({});
   const failedAssets = useRef(new Set<string>());
   const [nameSaving, setNameSaving] = useState(false);
 
@@ -278,10 +276,9 @@ export function SettingsScreen() {
       if (!picked) return;
       const { url } = await api.uploadBusinessAsset({ tipo, base64: picked.base64, ext: picked.ext }, token);
       sent = true;
-      const image = await loadRemoteImage(mediaUrl(url)!, token, true);
+      await loadRemoteImage(mediaUrl(url)!, token, true);
       const updated = (await api.business(token)).business;
       if (!updated) throw new Error('No se pudo confirmar la configuración de la empresa. Vuelve a abrir Configuración.');
-      setPreviews((current) => ({ ...current, [tipo]: { url, uri: image.uri } }));
       if (tipo === 'logo') setLogoUrl(url); else setSelloUrl(url);
       const warning = await applyBusiness(updated);
       if (warning) feedback.warning('Imagen guardada con observaciones', warning);
@@ -293,11 +290,11 @@ export function SettingsScreen() {
         sent ? 'El servidor recibió el archivo, pero no pudimos confirmar que se pueda mostrar. ' + detail : detail);
     } finally { setUploading(null); }
   };
-  const reportAssetError = (tipo: 'logo' | 'sello', url: string | null) => {
+  const reportAssetError = (tipo: 'logo' | 'sello', url: string | null, error: Error) => {
     if (!url || failedAssets.current.has(url)) return;
     failedAssets.current.add(url);
     feedback.error(tipo === 'logo' ? 'No se pudo mostrar el logo' : 'No se pudo mostrar el sello',
-      'La imagen guardada no está disponible o no se puede leer. Vuelve a subir el archivo original desde esta pantalla.');
+      error.message);
   };
 
   const openNameEditor = (kind: 'agent' | 'branch', id: number | null, initial: string) => {
@@ -432,9 +429,9 @@ export function SettingsScreen() {
                 </View>
                 {logoUrl ? (
                   <View style={styles.logoPreviewWrap}>
-                    <Image
-                      source={mediaSource(previews.logo?.url === logoUrl ? previews.logo.uri : logoUrl, token)}
-                      onError={() => reportAssetError("logo", logoUrl)}
+                    <StoredImage
+                      uri={logoUrl} token={token}
+                      onLoadError={(error) => reportAssetError("logo", logoUrl, error)}
                       style={[styles.logoPreview, { backgroundColor: '#ffffff', borderRadius: 8 }]}
                       resizeMode="contain"
                     />
@@ -593,9 +590,9 @@ export function SettingsScreen() {
                 </View>
                 {selloUrl ? (
                   <View style={styles.selloPreviewWrap}>
-                    <Image
-                      source={mediaSource(previews.sello?.url === selloUrl ? previews.sello.uri : selloUrl, token)}
-                      onError={() => reportAssetError("sello", selloUrl)}
+                    <StoredImage
+                      uri={selloUrl} token={token}
+                      onLoadError={(error) => reportAssetError("sello", selloUrl, error)}
                       style={[styles.selloPreview, { backgroundColor: '#ffffff', borderRadius: 8 }]}
                       resizeMode="contain"
                     />
