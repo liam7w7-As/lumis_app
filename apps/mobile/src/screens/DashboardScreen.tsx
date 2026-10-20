@@ -1,6 +1,8 @@
+import { TutorialTarget, TutorialScrollView, TutorialHelpButton, useTutorialAvailability, withTutorial } from '../tutorials/TutorialElements';
+import { useTutorial } from '../tutorials/TutorialContext';
 import { feedback } from '../lib/feedback';
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -43,7 +45,8 @@ function StatCard({
   );
 }
 
-export function DashboardScreen() {
+function DashboardScreenContent() {
+  const tutorial = useTutorial();
   const { user, token } = useAuth();
   const { colors, dark } = useTheme();
   const { changeMode } = useBusiness();
@@ -59,6 +62,8 @@ export function DashboardScreen() {
   const [period, setPeriod] = useState<DashboardPeriod>('semana');
   const [data, setData] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
+  useTutorialAvailability({ ready: !loading });
+
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const requestId = useRef(0);
@@ -101,7 +106,7 @@ export function DashboardScreen() {
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      <ScrollView
+      <TutorialScrollView
         contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 8 }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
@@ -110,7 +115,7 @@ export function DashboardScreen() {
       >
         <View style={styles.header}>
           <Logo size={26} imageOnly />
-          <View style={styles.headerActions}>
+          <View style={styles.headerActions}><TutorialHelpButton />
             <Pressable
               onPress={toggle}
               disabled={changingMode}
@@ -124,23 +129,23 @@ export function DashboardScreen() {
                 color={colors.text}
               />
             </Pressable>
-            <Pressable onPress={() => router.push('/settings')} hitSlop={10}>
+            <TutorialTarget id="settings" ><Pressable onPress={() => router.push('/settings')} hitSlop={10}>
               <Ionicons name="settings-outline" size={24} color={colors.text} />
-            </Pressable>
+            </Pressable></TutorialTarget>
           </View>
         </View>
 
         <Text style={[styles.greeting, { color: colors.text }]}>Hola, {firstName}!</Text>
 
-        <View style={styles.cards}>
-          <GradientCard
+        <TutorialTarget id="modules" ><View style={styles.cards}>
+          <TutorialTarget id="quotes" style={{ flex: 1 }}><GradientCard
             title="Cotizaciones"
             gradient={gradient}
             textColor={colors.onPrimary}
-            onPress={() => router.push('/quotes')}
+            onPress={() => { tutorial.notify('open-quotes'); router.push('/quotes'); }}
           >
             <Ionicons name="cart-outline" size={30} color={colors.onPrimary} />
-          </GradientCard>
+          </GradientCard></TutorialTarget>
           <GradientCard
             title="Punto de venta"
             gradient={gradient}
@@ -149,7 +154,7 @@ export function DashboardScreen() {
           >
             <Text style={[styles.dollar, { color: colors.onPrimary }]}>$</Text>
           </GradientCard>
-        </View>
+        </View></TutorialTarget>
 
         <View
           style={[
@@ -157,10 +162,10 @@ export function DashboardScreen() {
             { backgroundColor: colors.surface, paddingBottom: 24 + insets.bottom },
           ]}
         >
-          <View style={styles.sheetHead}>
+          <TutorialTarget id="statistics" ><View style={styles.sheetHead}>
             <Text style={[styles.sheetTitle, { color: colors.text }]}>Estadísticas</Text>
             <SegmentedTabs<DashboardPeriod> options={PERIODS} value={period} onChange={setPeriod} />
-          </View>
+          </View></TutorialTarget>
 
           {error && (
             <View style={styles.feedback}>
@@ -191,7 +196,7 @@ export function DashboardScreen() {
             </>
           )}
         </View>
-      </ScrollView>
+      </TutorialScrollView>
     </View>
   );
 }
@@ -293,3 +298,5 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
 });
+
+export const DashboardScreen = withTutorial(DashboardScreenContent, 'dashboard');

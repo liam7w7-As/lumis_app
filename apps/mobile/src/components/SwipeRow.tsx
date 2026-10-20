@@ -1,8 +1,10 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { Animated, PanResponder, StyleSheet, useAnimatedValue, View } from 'react-native';
+import { useReducedMotion } from '../context/MotionContext';
 
 export interface SwipeRowHandle {
+  open: () => void;
   close: () => void;
 }
 
@@ -20,6 +22,7 @@ export const SwipeRow = forwardRef<SwipeRowHandle, SwipeRowProps>(function Swipe
   ref,
 ) {
   const translateX = useAnimatedValue(0);
+  const reduced = useReducedMotion();
   const settled = useRef(0);
   const callbacks = useRef({ onOpen });
   useEffect(() => {
@@ -28,6 +31,12 @@ export const SwipeRow = forwardRef<SwipeRowHandle, SwipeRowProps>(function Swipe
 
   const animateTo = useCallback((to: number) => {
     settled.current = to;
+    translateX.stopAnimation();
+    if (reduced) {
+      translateX.setValue(to);
+      if (to !== 0) callbacks.current.onOpen?.();
+      return;
+    }
     Animated.spring(translateX, {
       toValue: to,
       useNativeDriver: true,
@@ -38,18 +47,19 @@ export const SwipeRow = forwardRef<SwipeRowHandle, SwipeRowProps>(function Swipe
         callbacks.current.onOpen?.();
       }
     });
-  }, [translateX]);
+  }, [translateX, reduced]);
 
   useImperativeHandle(
     ref,
     () => ({
+      open: () => animateTo(-actionsWidth),
       close: () => {
         if (settled.current !== 0) {
           animateTo(0);
         }
       },
     }),
-    [animateTo],
+    [animateTo, actionsWidth],
   );
 
   const responder = useMemo(

@@ -17,6 +17,14 @@ export class ApiError extends Error {
   }
 }
 
+export interface TutorialProgress {
+  guide: string;
+  version: number;
+  status: 'in_progress' | 'completed' | 'skipped';
+  stepId: string | null;
+  updatedAt: string;
+}
+
 export interface User {
   id: number;
   name: string;
@@ -279,6 +287,9 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 }
 
 export const api = {
+  tutorials: (token: string) => request<{ progress: TutorialProgress[] }>('/api/tutorials', { token }),
+  saveTutorial: (guide: string, input: Pick<TutorialProgress, 'version' | 'status' | 'stepId'>, token: string) =>
+    request<{ progress: TutorialProgress }>('/api/tutorials/' + encodeURIComponent(guide), { method: 'PUT', body: input, token }),
   users: (token: string) => request<{ users: User[] }>('/api/auth/users', { token }),
   createUser: (input: { username: string; name: string; password: string }, token: string) =>
     request<{ user: User }>('/api/auth/users', { method: 'POST', body: input, token }),

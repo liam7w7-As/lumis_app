@@ -122,21 +122,38 @@ export function generatePalette(hex: string): Record<string, string> {
   return palette;
 }
 
+function luminance(hex: string): number {
+  const rgb = hexToRgb(hex).map((value) => {
+    const c = value / 255;
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  return rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722;
+}
+
+export function contrastRatio(a: string, b: string): number {
+  const x = luminance(a), y = luminance(b);
+  return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+}
+
 export function contrastText(hex: string): string {
-  const clean = hex.replace(/^#/, '');
-  if (clean.length !== 6) {
-    return '#ffffff';
+  const white = contrastRatio(hex, '#ffffff'), dark = contrastRatio(hex, '#111111');
+  if (white >= dark && white >= 4.5) return '#ffffff';
+  return dark >= 4.5 ? '#111111' : '#000000';
+}
+
+function ensureContrast(background: string, foreground: string, minimum = 4.8): string {
+  if (contrastRatio(background, foreground) >= minimum) return background;
+  const rgb = hexToRgb(background);
+  const destination = foreground === '#ffffff' ? 0 : 255;
+  let low = 0, high = 1;
+  const blend = (amount: number) => toHex(...rgb.map((value) =>
+    Math.round(value + (destination - value) * amount)) as [number, number, number]);
+  for (let attempt = 0; attempt < 24; attempt++) {
+    const middle = (low + high) / 2;
+    if (contrastRatio(blend(middle), foreground) >= minimum) high = middle;
+    else low = middle;
   }
-  const r = parseInt(clean.slice(0, 2), 16) / 255;
-  const g = parseInt(clean.slice(2, 4), 16) / 255;
-  const b = parseInt(clean.slice(4, 6), 16) / 255;
-
-  const linearize = (c: number): number =>
-    c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-
-  const luminance = 0.2126 * linearize(r) + 0.7152 * linearize(g) + 0.0722 * linearize(b);
-
-  return luminance >= 0.35 ? '#111111' : '#ffffff';
+  return blend(high);
 }
 
 export function readable(hex: string): string {
@@ -175,7 +192,7 @@ export function forDarkBackground(hex: string): string {
 export function gradientFor(hex: string): [string, string] {
   const clean = hex.replace(/^#/, '');
   if (clean.length !== 6 || !/^[0-9a-fA-F]{6}$/.test(clean)) {
-    return ['#9d8cff', '#5a2ff0'];
+    return gradientFor('#5842f4');
   }
 
   const [r, g, b] = hexToRgb(clean);
@@ -184,7 +201,8 @@ export function gradientFor(hex: string): [string, string] {
   const light = hslToHex(h * 360, Math.min(1, Math.max(s, 0.45)), Math.min(0.8, Math.max(0.7, l + 0.18)));
   const dark = hslToHex(h * 360, Math.min(1, s * 1.05), Math.min(0.6, Math.max(0.4, l - 0.08)));
 
-  return [light, dark];
+  const foreground = contrastText(hex);
+  return [ensureContrast(light, foreground), ensureContrast(dark, foreground)];
 }
 
 export function forBackground(hex: string): string {

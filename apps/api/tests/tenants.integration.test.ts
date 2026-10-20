@@ -87,6 +87,37 @@ test('empresas, permisos, sincronización, archivos y orden de documentos', {
   assert.notEqual((await request('/api/business',b.token)).business.nombre,'Empresa A');
   await request('/api/auth/preferences',a.token,'PATCH',{themeMode:'dark'});
   assert.equal((await request('/api/auth/me',secondLogin.token)).user.themeMode,'dark');
+  await t.test('tutoriales: avance por usuario, otra sesión, roles y aislamiento de empresa', async () => {
+    await request('/api/tutorials',undefined,'GET',undefined,401);
+    assert.deepEqual((await request('/api/tutorials',a.token)).progress,[]);
+    const first = await request('/api/tutorials/dashboard',a.token,'PUT',{
+      version:1,status:'in_progress',stepId:'statistics',
+    });
+    assert.equal(first.progress.guide,'dashboard');
+    assert.equal(first.progress.stepId,'statistics');
+    assert.ok(Number.isFinite(Date.parse(first.progress.updatedAt)));
+    assert.equal((await request('/api/tutorials',secondLogin.token)).progress[0].stepId,'statistics');
+    assert.deepEqual((await request('/api/tutorials',st)).progress,[], 'Otro vendedor de la misma empresa tiene su propio recorrido');
+    assert.deepEqual((await request('/api/tutorials',b.token)).progress,[]);
+    await request('/api/tutorials/settings',st,'PUT',{version:1,status:'skipped',stepId:'appearance'});
+    assert.equal((await request('/api/tutorials',a.token)).progress.length,1);
+    await request('/api/tutorials/dashboard',a.token,'PUT',{version:1,status:'completed',stepId:null});
+    const again = (await request('/api/tutorials',secondLogin.token)).progress;
+    assert.equal(again.length,1);
+    assert.equal(again[0].status,'completed');
+    await request('/api/tutorials/dashboard',b.token,'PUT',{version:1,status:'in_progress',stepId:'modules'});
+    assert.equal((await request('/api/tutorials?userId='+a.user.id,b.token)).progress[0].stepId,'modules');
+    await request('/api/tutorials/dashboard',b.token,'PUT',{
+      version:1,status:'completed',stepId:null,userId:a.user.id,businessId:a.user.businessId,
+    },400);
+    assert.equal((await request('/api/tutorials',a.token)).progress[0].status,'completed');
+    await request('/api/tutorials/dashboard',a.token,'PUT',{version:2,status:'completed',stepId:null},400);
+    await request('/api/tutorials/dashboard',a.token,'PUT',{version:1,status:'invalid',stepId:null},400);
+    await request('/api/tutorials/not-a-guide',a.token,'PUT',{version:1,status:'completed',stepId:null},400);
+    const ids=['dashboard','quotes','quote-create','quote-detail','sales','sale-editor','sale-detail','settings','clients','products','pdf'];
+    for (const id of ids) await request('/api/tutorials/'+id,st,'PUT',{version:1,status:'in_progress',stepId:'first'});
+    assert.equal((await request('/api/tutorials',st)).progress.length,ids.length);
+  });
   const productA=(await request('/api/products',a.token,'POST',{name:'Solo A',price:10,unit:'Unidad'},201)).product;
   assert.equal((await request('/api/products',st)).products[0].id,productA.id);
   assert.equal((await request('/api/products',b.token)).products.length,0);

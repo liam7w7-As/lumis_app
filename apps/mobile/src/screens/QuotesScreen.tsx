@@ -1,3 +1,5 @@
+import { TutorialTarget, TutorialHelpButton, useTutorialAvailability, withTutorial } from '../tutorials/TutorialElements';
+import { useTutorial } from '../tutorials/TutorialContext';
 import { feedback } from '../lib/feedback';
 import { useCallback, useRef, useState } from 'react';
 import {
@@ -19,12 +21,15 @@ import { useTheme } from '../theme/ThemeContext';
 import { ApiError, api, type Quote } from '../lib/api';
 import { QuoteCard } from '../components/QuoteCard';
 
-export function QuotesScreen() {
+function QuotesScreenContent() {
+  const tutorial = useTutorial();
   const { colors } = useTheme();
   const { token } = useAuth();
   const insets = useSafeAreaInsets();
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [loading, setLoading] = useState(true);
+  useTutorialAvailability({ ready: !loading, hasItems: quotes.length > 0 });
+
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -139,9 +144,9 @@ export function QuotesScreen() {
           <Ionicons name="arrow-back" size={24} color={colors.text} />
         </Pressable>
         <Text style={[styles.title, { color: colors.text }]}>Cotizaciones</Text>
-        <Pressable
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}><TutorialHelpButton  /><TutorialTarget id="search" ><Pressable
           onPress={() => {
-            setSearchOpen(!searchOpen);
+            setSearchOpen(!searchOpen); tutorial.notify('search');
             if (searchOpen) setQuery('');
           }}
           hitSlop={10}
@@ -151,7 +156,7 @@ export function QuotesScreen() {
             size={24}
             color={colors.text}
           />
-        </Pressable>
+        </Pressable></TutorialTarget></View>
       </View>
 
       {searchOpen && (
@@ -206,8 +211,8 @@ export function QuotesScreen() {
               tintColor={colors.primary}
             />
           }
-          renderItem={({ item }) => (
-            <QuoteCard
+          renderItem={({ item, index }) => (
+            <QuoteCard tutorialRow={index === 0}
               quote={item}
               onPress={() => router.push(`/quotes/${item.id}`)}
               onOpened={handleOpened}
@@ -233,12 +238,12 @@ export function QuotesScreen() {
         />
       )}
 
-      <Pressable
-        style={[styles.fab, { backgroundColor: colors.primary, bottom: 24 + insets.bottom }]}
-        onPress={() => router.push('/quotes/new')}
+      <TutorialTarget id="create" style={[styles.fab, { backgroundColor: colors.primary, bottom: 24 + insets.bottom }]}><Pressable
+        style={{ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }}
+        onPress={() => { tutorial.notify('create'); router.push('/quotes/new'); }}
       >
         <Ionicons name="add" size={30} color={colors.onPrimary} />
-      </Pressable>
+      </Pressable></TutorialTarget>
     </View>
   );
 }
@@ -330,3 +335,5 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
   },
 });
+
+export const QuotesScreen = withTutorial(QuotesScreenContent, "quotes");

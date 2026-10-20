@@ -1,3 +1,5 @@
+import { TutorialTarget, TutorialScrollView, TutorialHelpButton, useTutorialAvailability, withTutorial } from '../tutorials/TutorialElements';
+import { useTutorial } from '../tutorials/TutorialContext';
 import { FormModal } from '../components/FormModal';
 import { DatePickerModal } from '../components/DatePickerModal';
 import { feedback } from '../lib/feedback';
@@ -5,7 +7,6 @@ import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -28,7 +29,7 @@ function parseNum(raw: string): number {
   return Number.parseFloat(raw.replace(',', '.'));
 }
 
-export function QuoteDetailScreen() {
+function QuoteDetailScreenContent() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const quoteId = Number(id);
   const { token } = useAuth();
@@ -39,6 +40,9 @@ export function QuoteDetailScreen() {
 
   const [quote, setQuote] = useState<QuoteDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  useTutorialAvailability({ ready: !loading && !!quote, hasItems: (quote?.items.length ?? 0) > 0 });
+  const tutorial = useTutorial();
+
   const [error, setError] = useState<string | null>(null);
 
   const [notes, setNotes] = useState('');
@@ -272,7 +276,7 @@ export function QuoteDetailScreen() {
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      <ScrollView
+      <TutorialScrollView
         contentContainerStyle={[
           styles.scroll,
           { paddingTop: insets.top + 8, paddingBottom: 32 + insets.bottom },
@@ -282,7 +286,7 @@ export function QuoteDetailScreen() {
           <Pressable onPress={() => router.back()} hitSlop={10}>
             <Ionicons name="arrow-back" size={24} color={colors.text} />
           </Pressable>
-          <Text style={[styles.title, { color: colors.text }]}>Cotización</Text>
+          <Text numberOfLines={1} style={[styles.title, { color: colors.text }]}>Cotización</Text><TutorialHelpButton />
           {saveable ? (
             <Pressable
               style={[styles.circleButton, { backgroundColor: colors.primary }]}
@@ -302,13 +306,13 @@ export function QuoteDetailScreen() {
         </View>
 
         <View style={styles.metaRow}>
-          <Pressable style={styles.dateWrap} onPress={() => setDateOpen(true)}
+          <TutorialTarget id="date" ><Pressable style={styles.dateWrap} onPress={() => setDateOpen(true)}
             accessibilityRole="button" accessibilityLabel="Editar fecha de la cotización" disabled={!saveable || saving || itemBusy}>
             <Text style={[styles.metaText, { color: colors.muted }]}>
               Fecha {formatDate(quote.createdAt)}
             </Text>
             {saveable && <Ionicons name="pencil-outline" size={13} color={colors.muted} />}
-          </Pressable>
+          </Pressable></TutorialTarget>
           <Text style={[styles.metaText, { color: colors.muted }]}>
             COTIZACIÓN Nº {quote.id}
           </Text>
@@ -350,7 +354,7 @@ export function QuoteDetailScreen() {
           )}
         </View>
 
-        <View>
+        <TutorialTarget id="client" ><View>
           <Text style={[styles.fieldLabel, { color: colors.muted }]}>Cliente / Empresa</Text>
           <Pressable
             style={styles.clientRow}
@@ -362,12 +366,12 @@ export function QuoteDetailScreen() {
             </Text>
             {quote.client && <Ionicons name="chevron-forward" size={20} color={colors.muted} />}
           </Pressable>
-        </View>
+        </View></TutorialTarget>
 
         {quote.items.map((item, index) => {
           const expanded = expandedItem === item.id;
           return (
-            <ItemSwipe key={item.id} disabled={!editable || itemBusy} onEdit={() => { if (!expanded) toggleItem(item); }}
+            <ItemSwipe tutorialRow={index === 0} key={item.id} disabled={!editable || itemBusy} onEdit={() => { if (!expanded) toggleItem(item); }}
               onDelete={() => removeItem(item)} onDuplicate={() => { void duplicateItem(item); }} onMove={() => setOrdering(true)}>
             <View style={[styles.itemCard, { backgroundColor: colors.surface }]}>
               <Pressable onPress={() => toggleItem(item)} disabled={!editable}>
@@ -476,7 +480,7 @@ export function QuoteDetailScreen() {
 
         {saveable && (
           <>
-            <Pressable style={styles.toggleRow} onPress={() => setIncludeSeal(!includeSeal)}>
+            <TutorialTarget id="options" ><Pressable style={styles.toggleRow} onPress={() => setIncludeSeal(!includeSeal)}>
               <Text style={[styles.toggleLabel, { color: colors.text }]}>Incluir sello</Text>
               <View
                 style={[
@@ -487,7 +491,7 @@ export function QuoteDetailScreen() {
               >
                 {includeSeal && <Ionicons name="checkmark" size={14} color={colors.onPrimary} />}
               </View>
-            </Pressable>
+            </Pressable></TutorialTarget>
             <Pressable style={styles.toggleRow} onPress={() => setShowNotes(!showNotes)}>
               <Text style={[styles.toggleLabel, { color: colors.text }]}>Notas adicionales</Text>
               <View
@@ -535,13 +539,13 @@ export function QuoteDetailScreen() {
           />
         )}
 
-        <PrimaryButton
+        <TutorialTarget id="preview" ><PrimaryButton
           title="Generar vista previa"
-          onPress={openPreview}
+          onPress={() => { tutorial.notify('preview'); void openPreview(); }}
           loading={saving}
           disabled={itemBusy}
-        />
-      </ScrollView>
+        /></TutorialTarget>
+      </TutorialScrollView>
 
       {dateOpen && <DatePickerModal title="Fecha de la cotización" value={quote.createdAt}
         onClose={() => setDateOpen(false)} onSave={saveDate} />}
@@ -596,7 +600,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   title: {
-    fontSize: 20,
+    flex: 1,
+    minWidth: 0,
+    paddingHorizontal: 10,
+    textAlign: 'center',
+    fontSize: 18,
     fontFamily: 'Poppins',
     fontWeight: '700',
   },
@@ -863,3 +871,5 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
 });
+
+export const QuoteDetailScreen = withTutorial(QuoteDetailScreenContent, 'quote-detail');

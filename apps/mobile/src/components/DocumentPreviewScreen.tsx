@@ -1,3 +1,4 @@
+import { TutorialTarget, TutorialHelpButton, useTutorialAvailability, withTutorial } from '../tutorials/TutorialElements';
 import { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -14,7 +15,7 @@ import { PdfViewer } from './PdfViewer';
 
 export interface DocumentSource { html: string; fileName: string; title: string; warnings: string[] }
 type Action = 'print' | 'download' | 'share';
-export function DocumentPreviewScreen({ loadDocument }: {
+function DocumentPreviewScreenContent({ loadDocument }: {
   loadDocument: (token: string) => Promise<DocumentSource>;
 }) {
   const { token } = useAuth();
@@ -71,16 +72,18 @@ export function DocumentPreviewScreen({ loadDocument }: {
     feedback.error('No se pudo mostrar la vista previa', message);
   }, []);
   const disabled = !document || loading || busy !== null;
+  useTutorialAvailability({ ready: !loading && !!document && !error && !viewerError });
+
   return <View style={[styles.root, { backgroundColor: colors.background }]}>
     <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
       <Pressable onPress={() => router.back()} hitSlop={10} accessibilityLabel="Volver">
         <Ionicons name="arrow-back" size={24} color={colors.text} />
       </Pressable>
       <Text style={[styles.title, { color: colors.text }]}>Vista previa</Text>
-      <Pressable onPress={() => { void action('print'); }} disabled={disabled} hitSlop={10} accessibilityLabel="Imprimir PDF">
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><TutorialHelpButton /><TutorialTarget id="print" ><Pressable onPress={() => { void action('print'); }} disabled={disabled} hitSlop={10} accessibilityLabel="Imprimir PDF">
         {busy === 'print' ? <ActivityIndicator color={colors.primary} /> :
           <Ionicons name="print-outline" size={24} color={disabled ? colors.muted : colors.text} />}
-      </Pressable>
+      </Pressable></TutorialTarget></View>
     </View>
     {loading ? <View style={styles.center}>
       <ActivityIndicator size="large" color={colors.primary} />
@@ -98,9 +101,9 @@ export function DocumentPreviewScreen({ loadDocument }: {
       {viewerError ? <View style={styles.center}><View style={styles.notice}>
         <NoticeCard tone="error" title="El PDF está generado, pero no se pudo mostrar" message={viewerError}
           action="Reabrir visor" onPress={() => { setViewerError(null); setViewerRevision((value) => value + 1); }} />
-      </View></View> : <PdfViewer key={document.pdf.uri + ':' + viewerRevision} pdf={document.pdf} onError={showViewerError} />}
+      </View></View> : <TutorialTarget id="paper" style={{ flex: 1 }}><PdfViewer key={document.pdf.uri + ':' + viewerRevision} pdf={document.pdf} onError={showViewerError} /></TutorialTarget>}
     </>}
-    <View style={[styles.actions, { paddingBottom: insets.bottom + 10, borderColor: colors.border }]}>
+    <TutorialTarget id="share" ><View style={[styles.actions, { paddingBottom: insets.bottom + 10, borderColor: colors.border }]}>
       {(['download', 'share'] as const).map((kind) =>
         <Pressable key={kind} accessibilityRole="button" disabled={disabled}
           onPress={() => { void action(kind); }}
@@ -109,7 +112,7 @@ export function DocumentPreviewScreen({ loadDocument }: {
             <Ionicons name={kind === 'download' ? 'download-outline' : 'share-social-outline'} size={22} color={colors.primary} />}
           <Text style={[styles.actionText, { color: colors.text }]}>{kind === 'download' ? 'Descargar' : 'Compartir'}</Text>
         </Pressable>)}
-    </View>
+    </View></TutorialTarget>
   </View>;
 }
 const styles = StyleSheet.create({
@@ -125,3 +128,5 @@ const styles = StyleSheet.create({
   action: { flex: 1, minHeight: 50, borderRadius: 16, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center' },
   actionText: { fontFamily: 'Poppins-SemiBold', fontSize: 13 },
 });
+
+export const DocumentPreviewScreen = withTutorial(DocumentPreviewScreenContent, 'pdf');

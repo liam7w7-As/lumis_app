@@ -1,10 +1,11 @@
+import { TutorialTarget, TutorialScrollView, TutorialHelpButton, useTutorialAvailability, withTutorial } from '../tutorials/TutorialElements';
+import { useTutorial } from '../tutorials/TutorialContext';
 import { FormModal } from '../components/FormModal';
 import { feedback } from '../lib/feedback';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -27,7 +28,10 @@ function todayLabel(): string {
   return `${dd}.${mm}.${yy}`;
 }
 
-export function NewQuoteScreen() {
+function NewQuoteScreenContent() {
+  useTutorialAvailability({ ready: true });
+  const tutorial = useTutorial();
+
   const { user, token } = useAuth();
   const { colors } = useTheme();
   const formatMoney = useMoney();
@@ -102,7 +106,7 @@ export function NewQuoteScreen() {
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      <ScrollView
+      <TutorialScrollView
         contentContainerStyle={[
           styles.scroll,
           { paddingTop: insets.top + 8, paddingBottom: 32 + insets.bottom },
@@ -112,9 +116,9 @@ export function NewQuoteScreen() {
           <Pressable onPress={() => router.back()} hitSlop={10}>
             <Ionicons name="arrow-back" size={24} color={colors.text} />
           </Pressable>
-          <Text style={[styles.title, { color: colors.text }]}>Nueva cotización</Text>
-          <View style={styles.headerActions}>
-            <Pressable
+          <Text numberOfLines={1} style={[styles.title, { color: colors.text }]}>Nueva cotización</Text>
+          <View style={styles.headerActions}><TutorialHelpButton />
+            <TutorialTarget id="save" ><Pressable
               style={[styles.circleButton, { backgroundColor: colors.primary }]}
               onPress={save}
               disabled={saving}
@@ -125,7 +129,7 @@ export function NewQuoteScreen() {
               ) : (
                 <Text style={{ color: colors.onPrimary, fontWeight: "700" }}>Guardar</Text>
               )}
-            </Pressable>
+            </Pressable></TutorialTarget>
           </View>
         </View>
 
@@ -143,7 +147,7 @@ export function NewQuoteScreen() {
           )}
         </View>
 
-        <View style={[styles.vendorCard, { backgroundColor: colors.surface }]}>
+        <TutorialTarget id="seller" ><View style={[styles.vendorCard, { backgroundColor: colors.surface }]}>
           <View style={styles.vendorBlock}>
             <Text style={[styles.vendorLabel, { color: colors.text }]}>Vendedor</Text>
             <View style={styles.vendorValue}>
@@ -164,10 +168,10 @@ export function NewQuoteScreen() {
               <Ionicons name="chevron-down" size={16} color={colors.muted} />
             </View>
           </Pressable>
-        </View>
+        </View></TutorialTarget>
 
         {client ? (
-          <View style={[styles.clientCard, { backgroundColor: colors.surface }]}>
+          <TutorialTarget id="client" ><View style={[styles.clientCard, { backgroundColor: colors.surface }]}>
             <View style={styles.clientInfo}>
               <Text style={[styles.clientName, { color: colors.text }]} numberOfLines={1}>
                 {client.name}
@@ -181,12 +185,12 @@ export function NewQuoteScreen() {
             <Pressable onPress={() => setClient(null)} hitSlop={10}>
               <Ionicons name="close-outline" size={22} color={colors.muted} />
             </Pressable>
-          </View>
+          </View></TutorialTarget>
         ) : (
-          <PrimaryButton
+          <TutorialTarget id="client" ><PrimaryButton
             title="+  Añadir cliente"
-            onPress={() => router.push('/quotes/new/client')}
-          />
+            onPress={() => { tutorial.notify('client'); router.push('/quotes/new/client'); }}
+          /></TutorialTarget>
         )}
 
         {items.map((item) => (
@@ -208,12 +212,12 @@ export function NewQuoteScreen() {
           </View>
         ))}
 
-        <Pressable
+        <TutorialTarget id="products" ><Pressable
           style={[styles.outlineButton, { borderColor: colors.primary }]}
-          onPress={() => router.push('/quotes/new/item')}
+          onPress={() => { tutorial.notify('product'); router.push('/quotes/new/item'); }}
         >
           <Text style={[styles.outlineText, { color: colors.primary }]}>+  Añadir artículo</Text>
-        </Pressable>
+        </Pressable></TutorialTarget>
 
         {items.length > 0 && (
           <View style={styles.totalRow}>
@@ -223,7 +227,7 @@ export function NewQuoteScreen() {
             </Text>
           </View>
         )}
-      </ScrollView>
+      </TutorialScrollView>
 
       <FormModal visible={branchesOpen} title="Elegir sucursal" icon="storefront-outline" onClose={() => setBranchesOpen(false)}>
 
@@ -276,12 +280,17 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   title: {
-    fontSize: 20,
+    flex: 1,
+    minWidth: 0,
+    paddingHorizontal: 10,
+    textAlign: 'center',
+    fontSize: 18,
     fontFamily: 'Poppins',
     fontWeight: '700',
   },
   headerActions: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 10,
   },
   circleButton: {
@@ -453,3 +462,5 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 });
+
+export const NewQuoteScreen = withTutorial(NewQuoteScreenContent, 'quote-create');

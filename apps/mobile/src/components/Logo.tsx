@@ -11,7 +11,7 @@ export function Logo({ size = 34, showTagline = true, imageOnly = false }: {
   size?: number; showTagline?: boolean; imageOnly?: boolean;
 }) {
   const [failedLogo, setFailedLogo] = useState<string | null>(null);
-  const { colors } = useTheme();
+  const { colors, dark } = useTheme();
   const { business, rememberedBrand } = useBusiness();
   const { token } = useAuth();
   const name = token ? business?.nombre : rememberedBrand?.name;
@@ -29,7 +29,7 @@ export function Logo({ size = 34, showTagline = true, imageOnly = false }: {
           style={{ width, height: size * 1.7 }}
         /> : <Image source={LUMIS_LOGO} resizeMode="contain"
           accessibilityLabel="Lumis · Cotiza y vende"
-          style={{ width, height: width * 342 / 768 }} />}
+          style={{ width, height: width * 342 / 768, tintColor: dark ? colors.logoInk : undefined }} />}
       </View>
       {showTagline && !imageOnly && companyLogo && !!name &&
         <Text numberOfLines={1} style={[styles.sub, { color: colors.muted }]}>{name}</Text>}
@@ -38,6 +38,6 @@ export function Logo({ size = 34, showTagline = true, imageOnly = false }: {
 }
 const styles = StyleSheet.create({
   wrap: { alignItems: 'center', maxWidth: 206 },
-  imageWrap: { backgroundColor: '#ffffff', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 5 },
+  imageWrap: { backgroundColor: 'transparent', paddingVertical: 5 },
   sub: { fontSize: 9, fontFamily: 'Poppins', marginTop: 3 },
 });

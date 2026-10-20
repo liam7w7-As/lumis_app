@@ -1,11 +1,11 @@
+import { TutorialTarget } from '../tutorials/TutorialElements';
 import { useRef } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { LinearGradient } from 'expo-linear-gradient';
+import { SwipeActions, SWIPE_ACTIONS_WIDTH } from './SwipeActions';
 import { SwipeRow, type SwipeRowHandle } from './SwipeRow';
 import { useTheme } from '../theme/ThemeContext';
 import { usePressMotion } from '../hooks/usePressMotion';
-import { gradientFor } from '../lib/brandColors';
 import { formatDate } from '../lib/format';
 import { useMoney } from '../context/BusinessContext';
 import type { Quote, QuoteStatus } from '../lib/api';
@@ -24,9 +24,10 @@ export const STATUS_COLOR: Record<QuoteStatus, string> = {
   convertida: '#5b3df5',
 };
 
-const ACTIONS_WIDTH = 260;
+const ACTIONS_WIDTH = SWIPE_ACTIONS_WIDTH;
 
 interface QuoteCardProps {
+  tutorialRow?: boolean;
   quote: Quote;
   onPress?: () => void;
   onOpened?: (ref: SwipeRowHandle | null) => void;
@@ -36,29 +37,9 @@ interface QuoteCardProps {
   onDuplicate: () => void;
 }
 
-function ActionButton({
-  label,
-  onPress,
-  color,
-  children,
-}: {
-  label: string;
-  onPress: () => void;
-  color?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <Pressable style={styles.action} onPress={onPress}>
-      {children}
-      <Text style={[styles.actionLabel, color ? { color } : null]} numberOfLines={2}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
 export function QuoteCard({
   quote,
+  tutorialRow = false,
   onPress,
   onOpened,
   onGenerateSale,
@@ -72,29 +53,12 @@ export function QuoteCard({
   const swipeRef = useRef<SwipeRowHandle>(null);
   const statusColor = quote.status === 'convertida' ? colors.primary : STATUS_COLOR[quote.status];
 
-  const renderRightActions = () => (
-    <LinearGradient
-      colors={gradientFor(colors.primary)}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      style={styles.actions}
-    >
-      <ActionButton label="Generar venta" onPress={onGenerateSale} color={colors.onPrimary}>
-        <Text style={[styles.dollar, { color: colors.onPrimary }]}>$</Text>
-      </ActionButton>
-      <ActionButton label="Vista previa" onPress={onPreview} color={colors.onPrimary}>
-        <Ionicons name="document-text-outline" size={24} color={colors.onPrimary} />
-      </ActionButton>
-      <ActionButton label="Borrar" onPress={onDelete} color={colors.onPrimary}>
-        <Ionicons name="trash-outline" size={24} color={colors.onPrimary} />
-      </ActionButton>
-      <ActionButton label="Copiar" onPress={onDuplicate} color={colors.onPrimary}>
-        <Ionicons name="copy-outline" size={24} color={colors.onPrimary} />
-      </ActionButton>
-    </LinearGradient>
-  );
+  const renderRightActions = () => <SwipeActions actions={[{ label: 'Generar venta', icon: 'cash-outline', onPress: onGenerateSale },
+      { label: 'Vista previa', icon: 'document-text-outline', onPress: onPreview },
+      { label: 'Borrar', icon: 'trash-outline', onPress: onDelete },
+      { label: 'Copiar', icon: 'copy-outline', onPress: onDuplicate }]} />;
 
-  return (
+  const content = (
     <SwipeRow
       ref={swipeRef}
       actionsWidth={ACTIONS_WIDTH}
@@ -153,6 +117,7 @@ export function QuoteCard({
       </Pressable>
     </SwipeRow>
   );
+  return tutorialRow ? <TutorialTarget id="row" onShow={() => swipeRef.current?.open()} onHide={() => swipeRef.current?.close()}>{content}</TutorialTarget> : content;
 }
 
 const styles = StyleSheet.create({
@@ -160,33 +125,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     borderRadius: 16,
     padding: 14,
-  },
-  actions: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    borderRadius: 16,
-    paddingHorizontal: 6,
-  },
-  action: {
-    width: 62,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-    paddingVertical: 10,
-  },
-  actionLabel: {
-    color: '#fff',
-    fontSize: 10,
-    fontFamily: 'Poppins',
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  dollar: {
-    color: '#fff',
-    fontSize: 24,
-    fontFamily: 'Poppins',
-    fontWeight: '700',
   },
   accent: {
     width: 4,

@@ -1,3 +1,4 @@
+import { TutorialTarget, TutorialScrollView, TutorialHelpButton, useTutorialAvailability, withTutorial } from '../tutorials/TutorialElements';
 import { feedback } from '../lib/feedback';
 import { useState } from 'react';
 import {
@@ -5,7 +6,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -19,7 +19,8 @@ import { useTheme } from '../theme/ThemeContext';
 import { ApiError, api } from '../lib/api';
 import { AnimatedInput } from '../components/AnimatedInput';
 
-export function AddClientScreen() {
+function AddClientScreenContent() {
+  useTutorialAvailability({ ready: true });
   const { token } = useAuth();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
@@ -64,7 +65,7 @@ export function AddClientScreen() {
       style={[styles.screen, { backgroundColor: colors.background }]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView
+      <TutorialScrollView
         contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 8 }]}
         keyboardShouldPersistTaps="handled"
       >
@@ -72,8 +73,8 @@ export function AddClientScreen() {
           <Pressable onPress={() => router.back()} hitSlop={10}>
             <Ionicons name="arrow-back" size={24} color={colors.text} />
           </Pressable>
-          <Text style={[styles.title, { color: colors.text }]}>Añadir cliente</Text>
-          <Pressable
+          <Text numberOfLines={1} style={[styles.title, { color: colors.text }]}>Añadir cliente</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}><TutorialHelpButton  /><TutorialTarget id="save" ><Pressable
             style={[styles.circleButton, { backgroundColor: colors.primary }]}
             onPress={save}
             disabled={saving}
@@ -84,16 +85,16 @@ export function AddClientScreen() {
             ) : (
               <Text style={{ color: colors.onPrimary, fontWeight: "700" }}>Guardar</Text>
             )}
-          </Pressable>
+          </Pressable></TutorialTarget></View>
         </View>
 
-        <AnimatedInput
+        <TutorialTarget id="fields" ><AnimatedInput
           icon="person-outline"
           placeholder="Cliente / Empresa"
           value={name}
           onChangeText={setName}
           autoCapitalize="words"
-        />
+        /></TutorialTarget>
         <AnimatedInput
           icon="call-outline"
           placeholder="Celular"
@@ -110,7 +111,7 @@ export function AddClientScreen() {
         />
 
         {error && <Text style={[styles.error, { color: colors.error }]}>{error}</Text>}
-      </ScrollView>
+      </TutorialScrollView>
     </KeyboardAvoidingView>
   );
 }
@@ -129,7 +130,11 @@ const styles = StyleSheet.create({
     marginBottom: 36,
   },
   title: {
-    fontSize: 20,
+    flex: 1,
+    minWidth: 0,
+    paddingHorizontal: 10,
+    textAlign: 'center',
+    fontSize: 18,
     fontFamily: 'Poppins',
     fontWeight: '700',
   },
@@ -146,3 +151,5 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
 });
+
+export const AddClientScreen = withTutorial(AddClientScreenContent, "clients");

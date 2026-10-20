@@ -15,6 +15,7 @@ import { quotesRouter } from './routes/quotes';
 import { salesRouter } from './routes/sales';
 
 import { uploadsRouter } from './routes/uploads';
+import { tutorialsRouter } from './routes/tutorials';
 
 export function createApp() {
   const app = express();
@@ -30,6 +31,7 @@ export function createApp() {
   app.use('/uploads', uploadsRouter);
   app.use('/health', healthRouter);
   app.use('/api/auth', authRouter);
+  app.use('/api/tutorials', tutorialsRouter);
   app.use('/api/agents', agentsRouter);
   app.use('/api/business', businessRouter);
   app.use('/api/branches', branchesRouter);

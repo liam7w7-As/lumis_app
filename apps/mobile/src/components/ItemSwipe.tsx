@@ -1,40 +1,31 @@
+import { TutorialTarget } from '../tutorials/TutorialElements';
 import { useRef } from 'react';
 import type { ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import { StyleSheet, View } from 'react-native';
+import { SwipeActions, SWIPE_ACTIONS_WIDTH } from './SwipeActions';
 import { SwipeRow, type SwipeRowHandle } from './SwipeRow';
-import { useTheme } from '../theme/ThemeContext';
 
-export function ItemSwipe({ children, disabled, onEdit, onDelete, onDuplicate, onMove }: {
-  children: ReactNode; disabled?: boolean;
+export function ItemSwipe({ children, disabled, tutorialRow = false, onEdit, onDelete, onDuplicate, onMove }: {
+  children: ReactNode; disabled?: boolean; tutorialRow?: boolean;
   onEdit: () => void; onDelete: () => void; onDuplicate: () => void; onMove: () => void;
 }) {
-  const { colors } = useTheme();
   const ref = useRef<SwipeRowHandle>(null);
-  if (disabled) return <View>{children}</View>;
   const actions = [
     { label: 'Editar', icon: 'pencil-outline', run: onEdit },
     { label: 'Eliminar', icon: 'trash-outline', run: onDelete },
     { label: 'Duplicar', icon: 'copy-outline', run: onDuplicate },
     { label: 'Mover', icon: 'move-outline', run: onMove },
   ] as const;
-  return <View style={styles.clip}>
-    <SwipeRow ref={ref} actionsWidth={248} renderRightActions={() =>
-      <View style={[styles.actions, { backgroundColor: colors.primary }]}>
-        {actions.map((action) => <Pressable key={action.label} accessibilityRole="button"
-          accessibilityLabel={action.label + ' producto'} style={styles.action}
-          onPress={() => { ref.current?.close(); action.run(); }}>
-          <Ionicons name={action.icon} size={21} color={colors.onPrimary} />
-          <Text style={[styles.label, { color: colors.onPrimary }]}>{action.label}</Text>
-        </Pressable>)}
-      </View>}>
+  const content = disabled ? <View>{children}</View> : <View style={styles.clip}>
+    <SwipeRow ref={ref} actionsWidth={SWIPE_ACTIONS_WIDTH} renderRightActions={() =>
+      <SwipeActions actions={actions.map((action) => ({ label: action.label, icon: action.icon,
+        onPress: () => { ref.current?.close(); action.run(); } }))} />}>
       {children}
     </SwipeRow>
   </View>;
+  return tutorialRow ? <TutorialTarget id="row" onShow={() => { if (!disabled) ref.current?.open(); }}
+    onHide={() => ref.current?.close()}>{content}</TutorialTarget> : content;
 }
 const styles = StyleSheet.create({
   clip: { borderRadius: 14, overflow: 'hidden' },
-  actions: { flex: 1, flexDirection: 'row', borderRadius: 14 },
-  action: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6 },
-  label: { fontSize: 10, fontWeight: '600' },
 });

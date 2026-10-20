@@ -1,3 +1,5 @@
+import { TutorialTarget, TutorialScrollView, TutorialHelpButton, useTutorialAvailability, withTutorial } from '../tutorials/TutorialElements';
+import { useTutorial } from '../tutorials/TutorialContext';
 import { FormModal } from '../components/FormModal';
 import { DatePickerModal } from '../components/DatePickerModal';
 import { feedback } from '../lib/feedback';
@@ -5,7 +7,6 @@ import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -62,7 +63,7 @@ function parseNum(raw: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-export function SaleEditorScreen({ saleId }: { saleId?: number }) {
+function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
   const { colors } = useTheme();
   const formatMoney = useMoney();
   const { token, user } = useAuth();
@@ -170,6 +171,9 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
   const clientId = isDetail ? (sale?.clientId ?? null) : (client?.id ?? null);
   const total = isDetail ? (sale?.total ?? 0) : round2(items.reduce((s, it) => s + it.quantity * it.unitPrice, 0));
   const hasItems = isDetail ? (sale?.items.length ?? 0) > 0 : items.length > 0;
+  useTutorialAvailability({ ready: !loading && !error, hasItems });
+  const tutorial = useTutorial();
+
   const isPaid = isDetail && sale?.estadoPago === 'pagado';
   const isVoided = isDetail && sale?.estado === 'anulada';
   const hasReceipt = receiptUri != null;
@@ -660,7 +664,7 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
   const renderLines = () => {
     if (isDetail) {
       return (sale?.items ?? []).map((it, index) => (
-        <ItemSwipe key={it.id} disabled={isVoided || lineBusy} onEdit={() => openEditor(it.id, it.quantity, it.unitPrice)}
+        <ItemSwipe tutorialRow={index === 0} key={it.id} disabled={isVoided || lineBusy} onEdit={() => openEditor(it.id, it.quantity, it.unitPrice)}
           onDelete={() => feedback.alert("Quitar producto", it.description, [{ text: "Cancelar", style: "cancel" }, { text: "Eliminar", style: "destructive", onPress: () => { void removeSavedItem(it.id); } }])}
           onDuplicate={() => { void duplicateLine(it.id); }} onMove={() => setOrdering(true)}>
         <View style={[styles.itemCard, { backgroundColor: colors.surface }]}>
@@ -735,7 +739,7 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
   };
 
   const metodoSelector = (
-    <View style={styles.metodoRow}>
+    <TutorialTarget id="payment" ><View style={styles.metodoRow}>
       {METODOS.map((m) => {
         const selected = m.key === metodo;
         return (
@@ -762,7 +766,7 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
           </Pressable>
         );
       })}
-    </View>
+    </View></TutorialTarget>
   );
 
   const paymentSection = (
@@ -820,7 +824,7 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      <ScrollView
+      <TutorialScrollView
         contentContainerStyle={[
           styles.scroll,
           { paddingTop: insets.top + 8, paddingBottom: 32 + insets.bottom },
@@ -831,10 +835,10 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
           <Pressable onPress={() => isDetail ? router.back() : discardDraft()} hitSlop={10}>
             <Ionicons name="arrow-back" size={24} color={colors.text} />
           </Pressable>
-          <Text style={[styles.title, { color: colors.text }]}>
+          <Text numberOfLines={1} style={[styles.title, { color: colors.text }]}>
             {docTab === 'entrega' ? 'Nota de entrega' : 'Nota de Venta'}
           </Text>
-          <Pressable
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><TutorialHelpButton /><TutorialTarget id="save" ><Pressable
             style={[styles.circleButton, { backgroundColor: colors.primary }]}
             onPress={handleHeaderCheck}
             disabled={saving}
@@ -845,17 +849,17 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
             ) : (
               <Text style={{ color: colors.onPrimary, fontWeight: "700" }}>Guardar</Text>
             )}
-          </Pressable>
+          </Pressable></TutorialTarget></View>
         </View>
 
         <View style={styles.metaRow}>
-          <Pressable style={styles.dateWrap} onPress={() => setDateOpen(true)}
+          <TutorialTarget id="date" ><Pressable style={styles.dateWrap} onPress={() => setDateOpen(true)}
             accessibilityRole="button" accessibilityLabel="Editar fecha de la venta" disabled={isVoided || loading}>
             <Text style={[styles.metaMuted, { color: colors.muted }]}>
               Fecha {dayMonthYear(sale?.createdAt ?? draftCreatedAt ?? new Date().toISOString())}
             </Text>
             {!isVoided && <Ionicons name="pencil-outline" size={13} color={colors.muted} />}
-          </Pressable>
+          </Pressable></TutorialTarget>
           <Text style={[styles.metaDoc, { color: colors.muted }]}>
             {docTab === 'entrega'
               ? `NOTA DE ENTREGA N° ${sale?.id ?? ''}`
@@ -863,7 +867,7 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
           </Text>
         </View>
 
-        <SegmentedTabs<DocTab>
+        <TutorialTarget id="document" ><SegmentedTabs<DocTab>
           fullWidth
           options={[
             { key: 'venta', label: 'Nota de Venta' },
@@ -880,7 +884,7 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
             }
             setDocTab(key);
           }}
-        />
+        /></TutorialTarget>
 
         {isVoided && (
           <View style={[styles.voidBanner, { backgroundColor: '#ef444414' }]}>
@@ -900,7 +904,7 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
           </View>
         )}
 
-        <View style={[styles.vendorCard, { backgroundColor: colors.surface }]}>
+        <TutorialTarget id="seller" ><View style={[styles.vendorCard, { backgroundColor: colors.surface }]}>
           <Pressable
             style={styles.vendorBlock}
             onPress={() => setAgentsOpen(true)}
@@ -926,9 +930,9 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
               <Ionicons name="chevron-down" size={13} color={colors.muted} />
             </View>
           </Pressable>
-        </View>
+        </View></TutorialTarget>
 
-        <View>
+        <TutorialTarget id="client" ><View>
           <Text style={[styles.fieldLabel, { color: colors.muted }]}>Cliente / Empresa</Text>
           {clientName ? (
             <Pressable style={styles.clientRow} onPress={() => setClientsOpen(true)}>
@@ -938,7 +942,7 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
           ) : (
             <PrimaryButton
               title="+  Añadir cliente"
-              onPress={() => router.push(`${basePath}/client`)}
+              onPress={() => (tutorial.notify('client'), router.push(`${basePath}/client`))}
             />
           )}
           {clientName && (
@@ -947,24 +951,24 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
               <Text style={[styles.clientPickText, { color: colors.primary }]}>Cambiar</Text>
             </Pressable>
           )}
-        </View>
+        </View></TutorialTarget>
 
         {renderLines()}
 
         {hasItems ? (
-          <PrimaryButton
+          <TutorialTarget id="products"><PrimaryButton
             title="+  Añadir producto"
             onPress={() =>
-              router.push(isDetail ? `${basePath}/item` : `${basePath}/item`)
+              (tutorial.notify('product'), router.push(isDetail ? `${basePath}/item` : `${basePath}/item`))
             }
-          />
+          /></TutorialTarget>
         ) : (
-          <Pressable
+          <TutorialTarget id="products"><Pressable
             style={[styles.outlineButton, { borderColor: colors.primary }]}
-            onPress={() => router.push(`${basePath}/item`)}
+            onPress={() => (tutorial.notify('product'), router.push(`${basePath}/item`))}
           >
             <Text style={[styles.outlineText, { color: colors.primary }]}>+  Añadir artículo</Text>
-          </Pressable>
+          </Pressable></TutorialTarget>
         )}
 
         {hasItems && (
@@ -1022,7 +1026,7 @@ export function SaleEditorScreen({ saleId }: { saleId?: number }) {
             )}
           </>
         )}
-      </ScrollView>
+      </TutorialScrollView>
 
       {dateOpen && <DatePickerModal value={sale?.createdAt ?? draftCreatedAt ?? new Date().toISOString()}
         onClose={() => setDateOpen(false)} onSave={saveDate} />}
@@ -1123,7 +1127,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   title: {
-    fontSize: 20,
+    flex: 1,
+    minWidth: 0,
+    paddingHorizontal: 10,
+    textAlign: 'center',
+    fontSize: 18,
     fontFamily: 'Poppins',
     fontWeight: '700',
   },
@@ -1415,3 +1423,5 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 });
+
+export const SaleEditorScreen = withTutorial(SaleEditorScreenContent, (props) => props.saleId != null ? 'sale-detail' : 'sale-editor');

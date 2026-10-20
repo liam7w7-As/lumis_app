@@ -1,11 +1,11 @@
+import { TutorialTarget } from '../tutorials/TutorialElements';
 import { useRef } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { LinearGradient } from 'expo-linear-gradient';
+import { SwipeActions, SWIPE_ACTIONS_WIDTH } from './SwipeActions';
 import { SwipeRow, type SwipeRowHandle } from './SwipeRow';
 import { useTheme } from '../theme/ThemeContext';
 import { usePressMotion } from '../hooks/usePressMotion';
-import { gradientFor } from '../lib/brandColors';
 import { formatDate } from '../lib/format';
 import { useMoney } from '../context/BusinessContext';
 import type { Sale, SaleEstadoPago } from '../lib/api';
@@ -20,9 +20,10 @@ export const SALE_STATUS_COLOR: Record<SaleEstadoPago, string> = {
   pagado: '#22c55e',
 };
 
-const ACTIONS_WIDTH = 258;
+const ACTIONS_WIDTH = SWIPE_ACTIONS_WIDTH;
 
 interface SaleCardProps {
+  tutorialRow?: boolean;
   sale: Sale;
   onPress?: () => void;
   onOpened?: (ref: SwipeRowHandle | null) => void;
@@ -32,29 +33,9 @@ interface SaleCardProps {
   onDuplicate: () => void;
 }
 
-function ActionButton({
-  label,
-  onPress,
-  color,
-  children,
-}: {
-  label: string;
-  onPress: () => void;
-  color?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <Pressable style={styles.action} onPress={onPress}>
-      {children}
-      <Text style={[styles.actionLabel, color ? { color } : null]} numberOfLines={2}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
 export function SaleCard({
   sale,
+  tutorialRow = false,
   onPress,
   onOpened,
   onVoid,
@@ -69,29 +50,12 @@ export function SaleCard({
   const statusColor = SALE_STATUS_COLOR[sale.estadoPago];
   const voided = sale.estado === 'anulada';
 
-  const renderRightActions = () => (
-    <LinearGradient
-      colors={gradientFor(colors.primary)}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      style={styles.actions}
-    >
-      <ActionButton label="Vista previa" onPress={onPreview} color={colors.onPrimary}>
-        <Ionicons name="document-text-outline" size={24} color={colors.onPrimary} />
-      </ActionButton>
-      <ActionButton label="Anular venta" onPress={onVoid} color={colors.onPrimary}>
-        <Text style={[styles.dollar, { color: colors.onPrimary }]}>$</Text>
-      </ActionButton>
-      <ActionButton label="Borrar" onPress={onDelete} color={colors.onPrimary}>
-        <Ionicons name="trash-outline" size={24} color={colors.onPrimary} />
-      </ActionButton>
-      <ActionButton label="Copiar" onPress={onDuplicate} color={colors.onPrimary}>
-        <Ionicons name="copy-outline" size={24} color={colors.onPrimary} />
-      </ActionButton>
-    </LinearGradient>
-  );
+  const renderRightActions = () => <SwipeActions actions={[{ label: 'Vista previa', icon: 'document-text-outline', onPress: onPreview },
+      { label: 'Anular venta', icon: 'close-circle-outline', onPress: onVoid },
+      { label: 'Borrar', icon: 'trash-outline', onPress: onDelete },
+      { label: 'Copiar', icon: 'copy-outline', onPress: onDuplicate }]} />;
 
-  return (
+  const content = (
     <SwipeRow
       ref={swipeRef}
       actionsWidth={ACTIONS_WIDTH}
@@ -166,6 +130,7 @@ export function SaleCard({
       </Pressable>
     </SwipeRow>
   );
+  return tutorialRow ? <TutorialTarget id="row" onShow={() => swipeRef.current?.open()} onHide={() => swipeRef.current?.close()}>{content}</TutorialTarget> : content;
 }
 
 const styles = StyleSheet.create({
@@ -173,33 +138,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     borderRadius: 16,
     padding: 14,
-  },
-  actions: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    borderRadius: 16,
-    paddingHorizontal: 6,
-  },
-  action: {
-    width: 82,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-    paddingVertical: 10,
-  },
-  actionLabel: {
-    color: '#ffffff',
-    fontSize: 10,
-    fontFamily: 'Poppins',
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  dollar: {
-    color: '#ffffff',
-    fontSize: 24,
-    fontFamily: 'Poppins',
-    fontWeight: '700',
   },
   accent: {
     width: 4,

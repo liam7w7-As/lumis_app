@@ -1,3 +1,4 @@
+import { TutorialTarget, TutorialScrollView, TutorialHelpButton, useTutorialAvailability, withTutorial } from '../tutorials/TutorialElements';
 import { loadRemoteImage } from '../lib/remoteImage';
 import { NoticeCard } from '../components/NoticeCard';
 import { StoredImage } from '../components/StoredImage';
@@ -122,7 +123,7 @@ interface NameEditor {
   id: number | null;
 }
 
-export function SettingsScreen() {
+function SettingsScreenContent() {
   const { user, token, logout } = useAuth();
   const { colors, mode, brandColor } = useTheme();
   const insets = useSafeAreaInsets();
@@ -131,6 +132,8 @@ export function SettingsScreen() {
 
   const [tab, setTab] = useState<SettingsTab>('info');
   const [loading, setLoading] = useState(true);
+  useTutorialAvailability({ ready: !loading && tab === 'info' });
+
 
   const [form, setForm] = useState({ ...EMPTY_FIELDS });
   const [fieldStates, setFieldStates] = useState<Partial<Record<SettingsFieldKey, InlineSaveState>>>({});
@@ -393,7 +396,7 @@ export function SettingsScreen() {
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={[styles.screen, { backgroundColor: colors.background }]}>
-      <ScrollView
+      <TutorialScrollView
         ref={scroll}
         onScroll={(event) => { scrollY.current = event.nativeEvent.contentOffset.y; }}
         scrollEventThrottle={16}
@@ -410,10 +413,10 @@ export function SettingsScreen() {
             <Ionicons name="arrow-back" size={24} color={colors.text} />
           </Pressable>
           <Text style={[styles.title, { color: colors.text }]}>Configuración</Text>
-          <View style={styles.headerSpacer} />
+          <TutorialHelpButton beforeStart={() => { blurFields(); setTab('info'); }} />
         </View>
 
-        <SegmentedTabs<SettingsTab> options={isAdmin ? TABS : TABS.filter((item) => item.key === 'info')} value={tab} onChange={(next) => { blurFields(); setTab(next); }} />
+        <TutorialTarget id="tabs" ><SegmentedTabs<SettingsTab> options={isAdmin ? TABS : TABS.filter((item) => item.key === 'info')} value={tab} onChange={(next) => { blurFields(); setTab(next); }} /></TutorialTarget>
 
         {syncError && <NoticeCard tone="error" title="Hay un problema de sincronización" message={syncError} action="Reintentar" onPress={() => { void refreshBusiness(); void load(); }} />}
         {loading ? (
@@ -423,7 +426,7 @@ export function SettingsScreen() {
         ) : tab === 'info' ? (
           <>
             <View style={styles.block}>
-              <View style={[styles.card, { borderColor: colors.border, backgroundColor: colors.surface }]}>
+              <TutorialTarget id="logo" ><View style={[styles.card, { borderColor: colors.border, backgroundColor: colors.surface }]}>
                 <View style={styles.cardHeader}>
                   <Text style={[styles.cardTitle, { color: colors.text }]}>Logo</Text>
                 </View>
@@ -465,9 +468,9 @@ export function SettingsScreen() {
                     )}
                   </Pressable>
                 )}
-              </View>
+              </View></TutorialTarget>
 
-              <View style={[styles.card, { borderColor: colors.border, backgroundColor: colors.surface }]}>
+              <TutorialTarget id="info" ><View style={[styles.card, { borderColor: colors.border, backgroundColor: colors.surface }]}>
                 <View style={styles.cardHeader}>
                   <Text style={[styles.cardTitle, { color: colors.text }]}>Información</Text>
                 </View>
@@ -497,7 +500,7 @@ export function SettingsScreen() {
                     onRetry={() => { void inlineSaver.save(field.key); }}
                   />
                 ))}
-              </View>
+              </View></TutorialTarget>
 
               <View style={[styles.card, { borderColor: colors.border, backgroundColor: colors.surface }]}>
                 <View style={styles.cardHeader}>
@@ -635,11 +638,20 @@ export function SettingsScreen() {
 
             </View>
 
-            <TeamUsers onCreated={() => { void load(); }} />
+            <TutorialTarget id="users" ><TeamUsers onCreated={() => { void load(); }} /></TutorialTarget>
             {!isAdmin && <Text style={{ color: colors.muted }}>La configuración de empresa la administra el administrador.</Text>}
             <Text style={[styles.section, { color: colors.muted }]}>Apariencia de mi cuenta</Text>
-            <SegmentedTabs options={MODES} value={mode} onChange={(next) => { void changeMode(next).catch((err) => feedback.alert('Error', err.message)); }} />
+            <TutorialTarget id="appearance" ><SegmentedTabs options={MODES} value={mode} onChange={(next) => { void changeMode(next).catch((err) => feedback.alert('Error', err.message)); }} /></TutorialTarget>
 
+            <TutorialTarget id="help"><Pressable accessibilityRole="button" accessibilityLabel="Abrir centro de ayuda"
+              onPress={() => { blurFields(); router.push('/help'); }}
+              style={[styles.card, { marginTop: 20, borderColor: colors.border, backgroundColor: colors.surface,
+                flexDirection: 'row', alignItems: 'center', gap: 14 }]}>
+              <Ionicons name="help-buoy-outline" size={28} color={colors.primary} />
+              <View style={{ flex: 1 }}><Text style={[styles.userName, { color: colors.text }]}>Centro de ayuda</Text>
+                <Text style={[styles.userDetail, { color: colors.muted }]}>Continúa o repite los tutoriales de Lumis</Text></View>
+              <Ionicons name="chevron-forward" size={21} color={colors.muted} />
+            </Pressable></TutorialTarget>
             <Text style={[styles.section, { color: colors.muted }]}>Cuenta</Text>
             <View style={[styles.card, { borderColor: colors.border, backgroundColor: colors.surface }]}>
               <Text style={[styles.userName, { color: colors.text }]}>{user?.name}</Text>
@@ -745,7 +757,7 @@ export function SettingsScreen() {
             </View>
           </>
         )}
-      </ScrollView>
+      </TutorialScrollView>
 
       <FormModal visible={nameEditor !== null} title={nameEditorTitle} onClose={() => { if (!nameSaving) closeNameEditor(); }}>
         <TextInput style={[styles.modalInput, { color: colors.text, borderColor: nameError ? colors.error : colors.border, minHeight: 52 }]}
@@ -1071,3 +1083,5 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 });
+
+export const SettingsScreen = withTutorial(SettingsScreenContent, 'settings');

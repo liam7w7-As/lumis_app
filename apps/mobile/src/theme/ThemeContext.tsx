@@ -125,7 +125,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const colors = useMemo(() => {
     const base = dark ? darkColors : lightColors;
-    if (!brandColor) return base;
+    if (!brandColor) return { ...base, onPrimary: contrastText(base.primary) };
     const primary = dark ? forDarkBackground(brandColor) : forBackground(brandColor);
     return { ...base, primary, onPrimary: contrastText(primary) };
   }, [dark, brandColor]);

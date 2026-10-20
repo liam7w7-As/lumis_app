@@ -1,3 +1,4 @@
+import { TutorialProvider } from '../src/tutorials/TutorialProvider';
 import { FeedbackDialogHost } from '../src/components/FeedbackDialog';
 import { useEffect, useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
@@ -71,7 +72,7 @@ export default function RootLayout() {
     <ThemeProvider>
       <MotionProvider>
         <AuthProvider>
-          <BusinessProvider><ThemedNavigator /></BusinessProvider>
+          <BusinessProvider><TutorialProvider><ThemedNavigator /></TutorialProvider></BusinessProvider>
         </AuthProvider>
       </MotionProvider>
     </ThemeProvider>

@@ -1,3 +1,4 @@
+import { TutorialTarget, TutorialScrollView, TutorialHelpButton, useTutorialAvailability, withTutorial } from '../tutorials/TutorialElements';
 import { feedback } from '../lib/feedback';
 import { useCallback, useEffect, useState } from 'react';
 import {
@@ -5,7 +6,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -27,7 +27,8 @@ function parseNumber(raw: string): number {
   return Number.parseFloat(raw.replace(',', '.'));
 }
 
-export function AddItemScreen({ quoteId, saleId }: { quoteId?: number; saleId?: number }) {
+function AddItemScreenContent({ quoteId, saleId }: { quoteId?: number; saleId?: number }) {
+  useTutorialAvailability({ ready: true });
   const { token, user } = useAuth();
   const { colors } = useTheme();
   const formatMoney = useMoney();
@@ -219,7 +220,7 @@ export function AddItemScreen({ quoteId, saleId }: { quoteId?: number; saleId?: 
       style={[styles.screen, { backgroundColor: colors.background }]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView
+      <TutorialScrollView
         contentContainerStyle={[
           styles.scroll,
           { paddingTop: insets.top + 8, paddingBottom: 32 + insets.bottom },
@@ -230,8 +231,8 @@ export function AddItemScreen({ quoteId, saleId }: { quoteId?: number; saleId?: 
           <Pressable onPress={() => router.back()} hitSlop={10}>
             <Ionicons name="arrow-back" size={24} color={colors.text} />
           </Pressable>
-          <Text style={[styles.title, { color: colors.text }]}>Añadir producto</Text>
-          <Pressable
+          <Text numberOfLines={1} style={[styles.title, { color: colors.text }]}>Añadir producto</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}><TutorialHelpButton  /><TutorialTarget id="save" ><Pressable
             style={[styles.circleButton, { backgroundColor: colors.primary }]}
             onPress={saveLine}
             disabled={saving}
@@ -242,16 +243,16 @@ export function AddItemScreen({ quoteId, saleId }: { quoteId?: number; saleId?: 
             ) : (
               <Text style={{ color: colors.onPrimary, fontWeight: "700" }}>Guardar</Text>
             )}
-          </Pressable>
+          </Pressable></TutorialTarget></View>
         </View>
 
-        <AnimatedInput
+        <TutorialTarget id="fields" ><AnimatedInput
           icon="cube-outline"
           placeholder="Nombre del artículo"
           value={name}
           onChangeText={setName}
           autoCapitalize="words"
-        />
+        /></TutorialTarget>
 
         <View style={styles.formRow}>
           <View style={styles.priceWrap}>
@@ -324,7 +325,7 @@ export function AddItemScreen({ quoteId, saleId }: { quoteId?: number; saleId?: 
             </View>
           </Pressable>
         ))}
-      </ScrollView>
+      </TutorialScrollView>
 
       <UnitSheet
         visible={unitsOpen}
@@ -355,7 +356,11 @@ const styles = StyleSheet.create({
     marginBottom: 28,
   },
   title: {
-    fontSize: 20,
+    flex: 1,
+    minWidth: 0,
+    paddingHorizontal: 10,
+    textAlign: 'center',
+    fontSize: 18,
     fontFamily: 'Poppins',
     fontWeight: '700',
   },
@@ -437,3 +442,5 @@ const styles = StyleSheet.create({
     fontFamily: 'Poppins',
   },
 });
+
+export const AddItemScreen = withTutorial(AddItemScreenContent, "products");

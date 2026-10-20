@@ -1,3 +1,5 @@
+import { TutorialTarget, TutorialHelpButton, useTutorialAvailability, withTutorial } from '../tutorials/TutorialElements';
+import { useTutorial } from '../tutorials/TutorialContext';
 import { feedback } from '../lib/feedback';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -29,7 +31,8 @@ const TAB_ESTADO: Record<StatusTab, SaleEstadoPago | undefined> = {
   por_cobrar: 'por_cobrar',
 };
 
-export function SalesScreen() {
+function SalesScreenContent() {
+  const tutorial = useTutorial();
   const { colors } = useTheme();
   const { token } = useAuth();
   const insets = useSafeAreaInsets();
@@ -42,6 +45,8 @@ export function SalesScreen() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
+  useTutorialAvailability({ ready: !loading, hasItems: sales.length > 0 });
+
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const openRow = useRef<SwipeRowHandle | null>(null);
@@ -186,9 +191,9 @@ export function SalesScreen() {
           <Ionicons name="arrow-back" size={24} color={colors.text} />
         </Pressable>
         <Text style={[styles.title, { color: colors.text }]}>Punto de venta</Text>
-        <Pressable
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}><TutorialHelpButton  /><TutorialTarget id="search" ><Pressable
           onPress={() => {
-            setSearchOpen((v) => !v);
+            setSearchOpen((v) => !v); tutorial.notify('search');
             if (searchOpen) setSearch('');
           }}
           hitSlop={10}
@@ -198,10 +203,10 @@ export function SalesScreen() {
             size={24}
             color={colors.text}
           />
-        </Pressable>
+        </Pressable></TutorialTarget></View>
       </View>
 
-      <View style={styles.filtersRow}>
+      <TutorialTarget id="filters" ><View style={styles.filtersRow}>
         <View style={styles.tabsWrap}>
           <SegmentedTabs<StatusTab>
             options={[
@@ -224,7 +229,7 @@ export function SalesScreen() {
             color={selectedBranch ? colors.primary : colors.text}
           />
         </Pressable>
-      </View>
+      </View></TutorialTarget>
 
       {selectedBranch && (
         <View style={styles.activeFilterRow}>
@@ -292,8 +297,8 @@ export function SalesScreen() {
               tintColor={colors.primary}
             />
           }
-          renderItem={({ item }) => (
-            <SaleCard
+          renderItem={({ item, index }) => (
+            <SaleCard tutorialRow={index === 0}
               sale={item}
               onPress={() => handleSelect(item)}
               onOpened={handleOpened}
@@ -319,12 +324,12 @@ export function SalesScreen() {
         />
       )}
 
-      <Pressable
-        style={[styles.fab, { backgroundColor: colors.primary, bottom: 24 + insets.bottom }]}
-        onPress={() => router.push('/pos/new')}
+      <TutorialTarget id="create" style={[styles.fab, { backgroundColor: colors.primary, bottom: 24 + insets.bottom }]}><Pressable
+        style={{ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }}
+        onPress={() => { tutorial.notify('create'); router.push('/pos/new'); }}
       >
         <Ionicons name="add" size={30} color={colors.onPrimary} />
-      </Pressable>
+      </Pressable></TutorialTarget>
 
       <BranchFilterSheet
         visible={sheetOpen}
@@ -464,3 +469,5 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
   },
 });
+
+export const SalesScreen = withTutorial(SalesScreenContent, "sales");

@@ -151,7 +151,7 @@ El navbar y los PDF usan la marca de la empresa. El login recuerda en ese dispos
 
 Los PDF solo usan el logo y sello subidos por la empresa; se retiraron los respaldos de firma y sello de la plantilla anterior para no mostrar la marca de otra empresa. Si usabas ese sello, súbelo desde Configuración.
 
-Los PNG nuevos se conservan sin convertirlos a JPEG; los soportes de logo son blancos para mantenerlos legibles en oscuro. Si un archivo anterior ya quedó negro al convertirlo, vuelve a subir el PNG original.
+Los PNG nuevos se conservan sin convertirlos a JPEG. En Configuración y en el PDF se usa un soporte claro para revisarlos; en navbar y login el contenedor es transparente. Si un archivo anterior ya quedó negro al convertirlo, vuelve a subir el PNG original.
 
 En el detalle de cotizaciones en borrador y ventas activas, desliza un producto para Editar, Eliminar, Duplicar o Mover. Mover abre una lista con flechas para elegir el orden; «Guardar orden» lo conserva en el servidor y en el PDF. En las listas, el swipe permite abrir la vista previa de cotización o nota de venta sin marcar una entrega.
 
@@ -203,3 +203,16 @@ deben desplegarse también en Hostinger antes de probar en producción el guarda
 y el nuevo manejo de archivos.
 
 La versión 1.2 usa importaciones directas de Ionicons para no empaquetar las otras 18 familias de iconos que no utiliza. El export Android pasó de 60 a 42 recursos. El visor PDF muestra y comparte exactamente el mismo archivo generado; las fechas de cotizaciones y ventas se editan desde un calendario y se guardan en la API.
+
+
+## Actualización 1.3: guías personales y contraste
+
+La versión 1.3 incorpora once guías interactivas, el botón ? en cada pantalla y Configuración → Centro de ayuda. Se puede continuar o repetir un recorrido, y cada usuario conserva su propio progreso aunque comparta empresa con otros vendedores. La app adapta los pasos a los permisos y al contenido disponible.
+
+Antes de probar la APK contra producción, desplegar en Hostinger el commit que contiene la ruta /api/tutorials y la migración 020_user_tutorials. El arranque crea una tabla nueva para los avances; no modifica los documentos ni los datos de empresa. Sin esta actualización, la API anterior responde 404 y el progreso no puede sincronizarse.
+
+Comprobar /health y, sin sesión, /api/tutorials: el segundo debe responder 401 JSON en lugar de 404. Después, con una cuenta real, verificar que una guía completada permanece al volver a iniciar sesión y que otra cuenta tiene sus propios avances.
+
+Los logos del navbar y login conservan la transparencia del archivo original. Los swipes de cotizaciones, ventas y sus artículos usan el mismo panel de cuatro acciones, ajustando el degradado y el texto para mantener contraste con colores claros u oscuros.
+
+Compilar desde apps/mobile con npx eas-cli@latest build --platform android --profile apk. El perfil mantiene la API HTTPS de producción, ARM de 32/64 bits, R8 y recursos reducidos. El versionCode se incrementa en EAS.
