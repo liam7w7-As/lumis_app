@@ -7,6 +7,7 @@ import { useAuth } from './AuthContext';
 import { useTheme, type ThemeMode } from '../theme/ThemeContext';
 import { api, mediaUrl, type Business } from '../lib/api';
 import { formatMoney as formatAmount } from '../lib/format';
+import { STORAGE_NAMESPACE } from '../lib/backend';
 
 type RememberedBrand = { name: string; logoUri: string | null };
 interface BusinessValue {
@@ -18,7 +19,7 @@ interface BusinessValue {
   changeMode: (mode: ThemeMode) => Promise<void>;
 }
 const BusinessContext = createContext<BusinessValue | null>(null);
-const BRAND_CACHE = 'lumis_last_business_brand';
+const BRAND_CACHE = STORAGE_NAMESPACE + '_last_business_brand';
 export function BusinessProvider({ children }: { children: ReactNode }) {
   const { token } = useAuth();
   return <BusinessSession key={token ?? "guest"}>{children}</BusinessSession>;

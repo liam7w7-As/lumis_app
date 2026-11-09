@@ -12,8 +12,10 @@ import { generatePdfFile, assertPdfAvailable, type PreparedPdf } from '../lib/pd
 import { feedback } from '../lib/feedback';
 import { NoticeCard } from './NoticeCard';
 import { PdfViewer } from './PdfViewer';
+import { IS_NOVALED } from '../lib/backend';
 
-export interface DocumentSource { html: string; fileName: string; title: string; warnings: string[] }
+export type DocumentSource = { fileName: string; title: string; warnings: string[] } &
+  ({ html: string; pdf?: never } | { pdf: PreparedPdf; html?: never });
 type Action = 'print' | 'download' | 'share';
 function DocumentPreviewScreenContent({ loadDocument }: {
   loadDocument: (token: string) => Promise<DocumentSource>;
@@ -37,7 +39,7 @@ function DocumentPreviewScreenContent({ loadDocument }: {
       if (!token) throw new Error('Inicia sesión para abrir este documento.');
       const source = await loadDocument(token);
       if (request !== requestId.current) return;
-      const pdf = await generatePdfFile(source.html, source.fileName);
+      const pdf = source.pdf ?? await generatePdfFile(source.html, source.fileName);
       if (request !== requestId.current) return;
       setDocument({ pdf, title: source.title, warnings: source.warnings });
     } catch (err) {
@@ -80,7 +82,7 @@ function DocumentPreviewScreenContent({ loadDocument }: {
         <Ionicons name="arrow-back" size={24} color={colors.text} />
       </Pressable>
       <Text style={[styles.title, { color: colors.text }]}>Vista previa</Text>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><TutorialHelpButton /><TutorialTarget id="print" ><Pressable onPress={() => { void action('print'); }} disabled={disabled} hitSlop={10} accessibilityLabel="Imprimir PDF">
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>{!IS_NOVALED && <TutorialHelpButton />}<TutorialTarget id="print" ><Pressable onPress={() => { void action('print'); }} disabled={disabled} hitSlop={10} accessibilityLabel="Imprimir PDF">
         {busy === 'print' ? <ActivityIndicator color={colors.primary} /> :
           <Ionicons name="print-outline" size={24} color={disabled ? colors.muted : colors.text} />}
       </Pressable></TutorialTarget></View>

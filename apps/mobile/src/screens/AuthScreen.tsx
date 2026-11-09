@@ -23,6 +23,7 @@ import { BRAND } from '../config';
 import { AnimatedInput } from '../components/AnimatedInput';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { Logo } from '../components/Logo';
+import { IS_NOVALED } from '../lib/backend';
 
 export function AuthScreen() {
   const { login, register } = useAuth();
@@ -192,13 +193,13 @@ export function AuthScreen() {
         </Animated.View>
 
         <Animated.View style={animFor(6)}>
-          <Pressable onPress={switchMode}>
+          {IS_NOVALED ? <Text style={[styles.switch, { color: colors.muted }]}>Conéctate con tu usuario de Novaled.</Text> : <Pressable onPress={switchMode}>
             <Text style={[styles.switch, { color: colors.primary }]}>
               {mode === 'login'
                 ? '¿No tienes cuenta? Regístrate'
                 : '¿Ya tienes cuenta? Inicia sesión'}
             </Text>
-          </Pressable>
+          </Pressable>}
         </Animated.View>
       </ScrollView>
 

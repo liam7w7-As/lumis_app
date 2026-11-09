@@ -1,4 +1,6 @@
-export const API_URL = (process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000').replace(/\/+$/, '');
+import { API_URL, backendPath, IS_NOVALED } from './backend';
+import { notifySessionExpiry } from './authEvents';
+export { API_URL } from './backend';
 
 export function mediaUrl(path: string | null): string | null {
   if (!path) return null;
@@ -33,6 +35,9 @@ export interface User {
   businessId: number;
   role: 'admin' | 'seller';
   themeMode: 'system' | 'light' | 'dark';
+  branchId?: number;
+  permissions?: { viewQuotes: boolean; createQuotes: boolean; editQuoteDates: boolean;
+    viewSales: boolean; createSales: boolean; takePayments: boolean; viewStock: boolean; manualEntry: boolean };
 }
 
 export type DashboardPeriod = 'hoy' | 'semana' | 'mes';
@@ -263,19 +268,22 @@ interface RequestOptions {
   token?: string;
 }
 
-async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const resolvedPath = backendPath(path);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 30000);
   try {
-    const res = await fetch(API_URL + path, {
+    const res = await fetch(API_URL + resolvedPath, {
       method: options.method ?? 'GET', signal: controller.signal,
-      headers: { 'Content-Type': 'application/json', ...(options.token ? { Authorization: 'Bearer ' + options.token } : {}) },
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...(options.token ? { Authorization: 'Bearer ' + options.token } : {}) },
       ...(options.body !== undefined ? { body: JSON.stringify(options.body) } : {}),
     });
-    const data = await res.json().catch(() => null) as { error?: string; code?: string; details?: Record<string, string[]> } | null;
+    const data = await res.json().catch(() => null) as { error?: string; message?: string; code?: string; errors?: Record<string, string[]>; details?: Record<string, string[]> } | null;
     if (!res.ok) {
-      const detail = data?.details ? Object.values(data.details).flat().filter(Boolean)[0] : undefined;
-      throw new ApiError(res.status, detail ?? data?.error ?? 'El servidor no pudo completar la solicitud. Inténtalo de nuevo.', data?.code);
+      if (IS_NOVALED && res.status === 401 && options.token) notifySessionExpiry(options.token);
+      const errors = data?.errors ?? data?.details;
+      const detail = errors ? Object.values(errors).flat().filter(Boolean)[0] : undefined;
+      throw new ApiError(res.status, detail ?? data?.message ?? data?.error ?? 'El servidor no pudo completar la solicitud. Inténtalo de nuevo.', data?.code);
     }
     if (data == null) throw new ApiError(502, 'El servidor respondió de forma inesperada. Inténtalo de nuevo.', 'INVALID_RESPONSE');
     return data as T;

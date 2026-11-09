@@ -36,6 +36,7 @@
   },
   "scripts": {
     "start": "expo start",
+    "start:novaled": "node scripts/start-novaled.cjs",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",

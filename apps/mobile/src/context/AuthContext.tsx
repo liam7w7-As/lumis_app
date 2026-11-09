@@ -2,8 +2,11 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import type { ReactNode } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import { ApiError, api, type User } from '../lib/api';
+import { IS_NOVALED, STORAGE_NAMESPACE } from '../lib/backend';
+import { novaled } from '../lib/novaled';
+import { subscribeSessionExpiry } from '../lib/authEvents';
 
-const TOKEN_KEY = 'lumis_token';
+const TOKEN_KEY = STORAGE_NAMESPACE + '_token';
 
 interface AuthContextValue {
   user: User | null;
@@ -34,6 +37,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  useEffect(() => subscribeSessionExpiry(expiredToken => {
+    if (expiredToken !== token) return;
+    setToken(null); setUser(null);
+    void saveToken(null);
+  }), [token]);
+
   useEffect(() => {
     (async () => {
       try {
@@ -43,8 +52,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setToken(stored);
           setUser(me);
         }
-      } catch {
-        await saveToken(null);
+      } catch (err) {
+        if (!(err instanceof ApiError) || [401, 403].includes(err.status)) await saveToken(null);
       } finally {
         setLoading(false);
       }
@@ -69,7 +78,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(null);
     setUser(null);
     await saveToken(null);
-  }, []);
+    if (IS_NOVALED && token) {
+      // La revocación remota no debe retrasar ni impedir el cierre local.
+      void novaled.logout(token).catch(() => {});
+    }
+  }, [token]);
 
   const value = useMemo(
     () => ({ user, token, loading, login, register, logout, updateUser: setUser }),

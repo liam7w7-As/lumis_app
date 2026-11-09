@@ -8,11 +8,23 @@ import { api } from '../lib/api';
 import { feedback, getFeedbackSnapshot, subscribeFeedback } from '../lib/feedback';
 import { GUIDE_KEYS, GUIDES, GUIDE_VERSION, stepPosition, stepsFor, type GuideKey } from './catalog';
 import { createProgressStore, type LocalProgress } from './progressStore';
-import { TutorialContext, type TutorialAnchor, type TutorialPageState, type TutorialRun } from './TutorialContext';
+import { TutorialContext, type TutorialAnchor, type TutorialPageState, type TutorialRun, type TutorialValue } from './TutorialContext';
 import { TutorialLayer } from './TutorialLayer';
+import { IS_NOVALED } from '../lib/backend';
+
+const noTutorial = () => {};
+const connectedTutorials: TutorialValue = {
+  page: null, run: null, admin: false,
+  progress: { records: {}, ready: true, online: false, syncing: false, error: null },
+  activate: noTutorial, updatePage: noTutorial, deactivate: noTutorial,
+  register: () => noTutorial, anchor: () => undefined,
+  startCurrent: noTutorial, launch: async () => {}, begin: noTutorial,
+  next: noTutorial, previous: noTutorial, close: noTutorial, notify: noTutorial, sync: async () => {},
+};
 
 export function TutorialProvider({ children }: { children: ReactNode }) {
   const { user, token } = useAuth();
+  if (IS_NOVALED) return <TutorialContext.Provider value={connectedTutorials}>{children}</TutorialContext.Provider>;
   if (!user || !token) return children;
   return <TutorialSession key={user.businessId + ':' + user.id + ':' + token} userId={user.id}
     businessId={user.businessId} token={token} admin={user.role === 'admin'}>{children}</TutorialSession>;
