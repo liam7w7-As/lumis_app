@@ -1,5 +1,6 @@
 import { TutorialProvider } from '../src/tutorials/TutorialProvider';
 import { FeedbackDialogHost } from '../src/components/FeedbackDialog';
+import { StockSelectionHost } from '../src/components/StockSelectionHost';
 import { useEffect, useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider as NavigationThemeProvider } from 'expo-router';
@@ -58,6 +59,7 @@ function ThemedNavigator() {
       <View style={[styles.root, { backgroundColor: colors.background }]} onLayout={SplashScreen.hide}>
         <StatusBar style={dark ? 'light' : 'dark'} />
         <FeedbackDialogHost />
+        <StockSelectionHost />
         <Stack screenOptions={screenOptions}>
           <Stack.Screen name="login" options={{ animation: reducedMotion ? 'none' : 'fade', animationDuration: 220 }} />
           <Stack.Screen name="dashboard" options={{ animation: reducedMotion ? 'none' : 'fade', animationDuration: 220 }} />

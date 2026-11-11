@@ -11,6 +11,9 @@ test('conexión Novaled: rutas aisladas, errores de validación y descarga del P
   const server = createServer(async (req, res) => {
     let raw = ''; for await (const chunk of req) raw += chunk;
     requests.push({ path: req.url!, auth: req.headers.authorization, accept: req.headers.accept, body: raw ? JSON.parse(raw) : null });
+    if (req.method === 'GET' && req.url?.startsWith('/api/v1/lumis/ui/')) {
+      res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ quotes: [{ id: 1203, number: 42 }], sales: [], products: [{ id: 1001 }], clients: [{ id: 1001 }], meta: { currentPage: 2, lastPage: 3, total: 101 } })); return;
+    }
     if (req.url?.startsWith('/api/v1/lumis/sales/42/') && req.url.includes('/pdf')) {
       res.writeHead(200, { 'Content-Type': 'application/pdf' }).end(pdf); return;
     }
@@ -73,20 +76,37 @@ test('conexión Novaled: rutas aisladas, errores de validación y descarga del P
   const { novaled, decimalValue, validDate, addDays, newOperationUuid } = await import('../../apps/mobile/src/lib/novaled');
   const { downloadNovaledQuotePdf, downloadNovaledPdf } = await import('../../apps/mobile/src/lib/pdfFile');
   const { subscribeSessionExpiry } = await import('../../apps/mobile/src/lib/authEvents');
+  await t.test('las listas restauradas envían búsqueda, página e identidad del cliente a Novaled', async () => {
+    const quotes = await api.quotes('mobile-token', { search: '42', page: 2 });
+    assert.equal(requests.at(-1)!.path, '/api/v1/lumis/ui/quotes?search=42&page=2');
+    assert.equal(quotes.quotes[0].number, 42); assert.equal(quotes.meta?.lastPage, 3);
+    await api.products('mobile-token', 'LED & negro', 2);
+    const productsUrl = new URL(requests.at(-1)!.path, 'http://test');
+    assert.equal(productsUrl.pathname, '/api/v1/lumis/ui/products');
+    assert.equal(productsUrl.searchParams.get('search'), 'LED & negro'); assert.equal(productsUrl.searchParams.get('page'), '2');
+    await api.clients('mobile-token', { id: 1001 });
+    assert.equal(requests.at(-1)!.path, '/api/v1/lumis/ui/clients?id=1001');
+    await api.clients('mobile-token', { search: 'Cliente', page: 3 });
+    assert.equal(requests.at(-1)!.path, '/api/v1/lumis/ui/clients?search=Cliente&page=3');
+    await api.sales('mobile-token', { search: '22', page: 2 });
+    assert.equal(requests.at(-1)!.path, '/api/v1/lumis/ui/sales?search=22&page=2');
+    assert.equal(requests.at(-1)!.auth, 'Bearer mobile-token');
+  });
   await t.test('auth va al dominio conectado y ninguna función pendiente usa el backend anterior', async () => {
     assert.equal(backendPath('/api/auth/login'), '/api/v1/lumis/auth/login');
     assert.equal(backendPath('/api/sales', false), '/api/sales');
     assert.match(STORAGE_NAMESPACE, /^novaled_[a-zA-Z0-9._-]+$/);
     assert.equal(isConnectedRoute('/quotes/7/preview'), true);
     assert.equal(isConnectedRoute('/pos/7'), true);
-    assert.equal(isConnectedRoute('/pos/7/item'), false);
+    assert.equal(isConnectedRoute('/pos/7/item'), true);
+    assert.equal(isConnectedRoute('/quotes/new/item'), true);
     assert.equal(isConnectedRoute('/quotes/new/add-item'), false);
     await api.login({ username: 'asesor', password: 'password' });
     await api.me('mobile-token');
     assert.equal(requests.at(-1)!.auth, 'Bearer mobile-token');
-    const count = requests.length;
-    await assert.rejects(() => api.sales('mobile-token'), /todavía no está disponible/);
-    assert.equal(requests.length, count);
+    await api.sales('mobile-token');
+    assert.equal(requests.at(-1)!.path, '/api/v1/lumis/ui/sales');
+    assert.equal(requests.at(-1)!.auth, 'Bearer mobile-token');
   });
   await t.test('catálogos conservan la búsqueda paginada y Laravel muestra el error concreto', async () => {
     await novaled.products('mobile-token', 'Aplique & LED', 2);

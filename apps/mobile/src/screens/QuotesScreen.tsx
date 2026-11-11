@@ -13,12 +13,16 @@ import {
   View,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { router, useFocusEffect } from 'expo-router';
+import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import type { SwipeRowHandle } from '../components/SwipeRow';
 import { useTheme } from '../theme/ThemeContext';
 import { ApiError, api, type Quote } from '../lib/api';
+import { IS_NOVALED } from '../lib/backend';
+import { matchesQuoteSearch, searchTerm } from '../lib/documentSearch';
+import { usePagedCollection } from '../hooks/usePagedCollection';
+import { CollectionFooter } from '../components/CollectionFooter';
 import { QuoteCard } from '../components/QuoteCard';
 
 function QuotesScreenContent() {
@@ -26,49 +30,17 @@ function QuotesScreenContent() {
   const { colors } = useTheme();
   const { token } = useAuth();
   const insets = useSafeAreaInsets();
-  const [quotes, setQuotes] = useState<Quote[]>([]);
-  const [loading, setLoading] = useState(true);
-  useTutorialAvailability({ ready: !loading, hasItems: quotes.length > 0 });
-
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState('');
-
+  const remoteQuery = IS_NOVALED ? searchTerm(query) : '';
+  const fetchPage = useCallback(async (page: number) => {
+    if (!token) return { items: [] };
+    const result = await api.quotes(token, { search: remoteQuery, page });
+    return { items: result.quotes, meta: result.meta };
+  }, [token, remoteQuery]);
+  const { items: quotes, setItems: setQuotes, loading, refreshing, loadingMore, hasMore, error, load, loadMore } = usePagedCollection(fetchPage);
+  useTutorialAvailability({ ready: !loading, hasItems: quotes.length > 0 });
   const openRow = useRef<SwipeRowHandle | null>(null);
-
-  const load = useCallback(
-    async (isRefresh = false, silent = false) => {
-      if (!token) {
-        setLoading(false);
-        setRefreshing(false);
-        return;
-      }
-      if (isRefresh) {
-        setRefreshing(true);
-      } else if (!silent) {
-        setLoading(true);
-      }
-      setError(null);
-      try {
-        const { quotes: data } = await api.quotes(token);
-        setQuotes(data);
-      } catch (err) {
-        { const message = err instanceof ApiError ? err.message : 'No se pudo cargar el historial.';
-          setError(message); feedback.error('No se pudo cargar el historial', message); }
-      } finally {
-        setLoading(false);
-        setRefreshing(false);
-      }
-    },
-    [token],
-  );
-
-  useFocusEffect(
-    useCallback(() => {
-      void load(false, true);
-    }, [load]),
-  );
 
   const closeRow = () => {
     openRow.current?.close();
@@ -122,20 +94,15 @@ function QuotesScreenContent() {
     closeRow();
     try {
       const { sale } = await api.saleFromQuote(quote.id, token);
-      feedback.alert('Venta generada', `Se generó la venta #${sale.id}`);
+      feedback.alert('Venta generada', `Se generó la venta #${sale.number ?? sale.id}`);
       load(true);
     } catch (err) {
       showApiError(err, 'No se pudo generar la venta');
     }
   };
 
-  const q = query.trim().toLowerCase();
-  const filtered = q
-    ? quotes.filter(
-        (item) =>
-          item.clientName?.toLowerCase().includes(q) || String(item.id).includes(q),
-      )
-    : quotes;
+  const q = searchTerm(query);
+  const filtered = IS_NOVALED ? quotes : quotes.filter(item => matchesQuoteSearch(item, query));
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
@@ -169,6 +136,7 @@ function QuotesScreenContent() {
               placeholderTextColor={colors.muted}
               value={query}
               onChangeText={setQuery}
+              maxLength={100}
               autoFocus
               autoCapitalize="none"
               autoCorrect={false}
@@ -181,7 +149,7 @@ function QuotesScreenContent() {
         <View style={styles.center}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
-      ) : error ? (
+      ) : error && quotes.length === 0 ? (
         <View style={styles.center}>
           <Ionicons name="cloud-offline-outline" size={48} color={colors.icon} />
           <Text style={[styles.emptyText, { color: colors.muted }]}>{error}</Text>
@@ -195,6 +163,10 @@ function QuotesScreenContent() {
       ) : (
         <FlatList
           data={filtered}
+          onEndReached={() => { void loadMore(); }}
+          onEndReachedThreshold={0.3}
+          ListFooterComponent={<CollectionFooter loading={loadingMore} hasMore={hasMore} error={error}
+            onMore={() => { void loadMore(); }} onRetry={() => { void loadMore(true); }} />}
           keyExtractor={(item) => String(item.id)}
           onScrollBeginDrag={closeRow}
           contentContainerStyle={[

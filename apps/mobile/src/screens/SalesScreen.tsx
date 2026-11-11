@@ -13,12 +13,15 @@ import {
   View,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { router, useFocusEffect } from 'expo-router';
+import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import type { SwipeRowHandle } from '../components/SwipeRow';
 import { useTheme } from '../theme/ThemeContext';
 import { ApiError, api, type Branch, type Sale, type SaleEstadoPago } from '../lib/api';
+import { searchTerm } from '../lib/documentSearch';
+import { usePagedCollection } from '../hooks/usePagedCollection';
+import { CollectionFooter } from '../components/CollectionFooter';
 import { SaleCard } from '../components/SaleCard';
 import { SegmentedTabs } from '../components/SegmentedTabs';
 import { BranchFilterSheet } from '../components/BranchFilterSheet';
@@ -37,52 +40,22 @@ function SalesScreenContent() {
   const { token } = useAuth();
   const insets = useSafeAreaInsets();
 
-  const [sales, setSales] = useState<Sale[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [tab, setTab] = useState<StatusTab>('todos');
   const [branchId, setBranchId] = useState<number | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [search, setSearch] = useState('');
-  const [loading, setLoading] = useState(true);
-  useTutorialAvailability({ ready: !loading, hasItems: sales.length > 0 });
-
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const openRow = useRef<SwipeRowHandle | null>(null);
 
-  const query = search.trim();
-
-  const load = useCallback(
-    async (isRefresh = false, silent = false) => {
-      if (!token) {
-        setLoading(false);
-        setRefreshing(false);
-        return;
-      }
-      if (isRefresh) {
-        setRefreshing(true);
-      } else if (!silent) {
-        setLoading(true);
-      }
-      setError(null);
-      try {
-        const { sales: data } = await api.sales(token, {
-          estadoPago: TAB_ESTADO[tab],
-          branchId,
-          search: query || undefined,
-        });
-        setSales(data);
-      } catch (err) {
-        { const message = err instanceof ApiError ? err.message : 'No se pudo cargar el historial.';
-          setError(message); feedback.error('No se pudo cargar el historial', message); }
-      } finally {
-        setLoading(false);
-        setRefreshing(false);
-      }
-    },
-    [token, tab, branchId, query],
-  );
+  const query = searchTerm(search);
+  const fetchPage = useCallback(async (page: number) => {
+    if (!token) return { items: [] };
+    const result = await api.sales(token, { estadoPago: TAB_ESTADO[tab], branchId, search: query || undefined, page });
+    return { items: result.sales, meta: result.meta };
+  }, [token, tab, branchId, query]);
+  const { items: sales, setItems: setSales, loading, refreshing, loadingMore, hasMore, error, load, loadMore } = usePagedCollection(fetchPage);
+  useTutorialAvailability({ ready: !loading, hasItems: sales.length > 0 });
 
   useEffect(() => {
     if (!token) return;
@@ -91,14 +64,6 @@ function SalesScreenContent() {
       .then(({ branches: data }) => setBranches(data))
       .catch(() => setBranches([]));
   }, [token]);
-
-  // useFocusEffect corre también en el montaje, así que no hace falta un
-  // useEffect adicional (evita el doble fetch inicial).
-  useFocusEffect(
-    useCallback(() => {
-      void load(false, true);
-    }, [load]),
-  );
 
   const selectedBranch = useMemo(
     () => branches.find((b) => b.id === branchId) ?? null,
@@ -255,6 +220,7 @@ function SalesScreenContent() {
               placeholderTextColor={colors.muted}
               value={search}
               onChangeText={setSearch}
+              maxLength={100}
               autoFocus
               autoCapitalize="none"
               autoCorrect={false}
@@ -267,7 +233,7 @@ function SalesScreenContent() {
         <View style={styles.center}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
-      ) : error ? (
+      ) : error && sales.length === 0 ? (
         <View style={styles.center}>
           <Ionicons name="cloud-offline-outline" size={48} color={colors.icon} />
           <Text style={[styles.emptyText, { color: colors.muted }]}>{error}</Text>
@@ -281,6 +247,10 @@ function SalesScreenContent() {
       ) : (
         <FlatList
           data={sales}
+          onEndReached={() => { void loadMore(); }}
+          onEndReachedThreshold={0.3}
+          ListFooterComponent={<CollectionFooter loading={loadingMore} hasMore={hasMore} error={error}
+            onMore={() => { void loadMore(); }} onRetry={() => { void loadMore(true); }} />}
           keyExtractor={(item) => String(item.id)}
           onScrollBeginDrag={closeRow}
           contentContainerStyle={[

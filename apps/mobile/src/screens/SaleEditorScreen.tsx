@@ -3,7 +3,9 @@ import { useTutorial } from '../tutorials/TutorialContext';
 import { FormModal } from '../components/FormModal';
 import { DatePickerModal } from '../components/DatePickerModal';
 import { feedback } from '../lib/feedback';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { IS_NOVALED } from '../lib/backend';
+import { useLegacyPending } from '../hooks/useLegacyPending';
 import {
   ActivityIndicator,
   Pressable,
@@ -38,6 +40,7 @@ import { ReorderItemsModal } from '../components/ReorderItemsModal';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { SegmentedTabs } from '../components/SegmentedTabs';
 import { SalePaymentSection } from '../components/SalePaymentSection';
+import { ClientPickerModal } from '../components/ClientPickerModal';
 
 type DocTab = 'venta' | 'entrega';
 type LineKey = string | number;
@@ -68,18 +71,17 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
   const formatMoney = useMoney();
   const { token, user } = useAuth();
   const insets = useSafeAreaInsets();
-  const { client, setClient, items, updateItem, removeItem, clear } = useDraft();
+  const { client, setClient, items, addItem, updateItem, removeItem, clear } = useDraft();
 
   const isDetail = saleId != null;
   const basePath = isDetail ? `/pos/${saleId}` : '/pos/new';
 
   const [sale, setSale] = useState<SaleDetail | null>(null);
   const [branches, setBranches] = useState<Branch[]>([]);
-  const [clients, setClients] = useState<Client[]>([]);
   const [branchId, setBranchId] = useState<number | null>(null);
   const [nextNumber, setNextNumber] = useState<number | null>(null);
   const [docTab, setDocTab] = useState<DocTab>('venta');
-  const [metodo, setMetodo] = useState<SaleMetodoPago>('efectivo');
+  const [metodo, setMetodo] = useState<SaleMetodoPago>(IS_NOVALED && !user?.permissions?.takePayments ? 'por_pagar' : 'efectivo');
   const [branchesOpen, setBranchesOpen] = useState(false);
   const [dateOpen, setDateOpen] = useState(false);
   const [draftCreatedAt, setDraftCreatedAt] = useState<string | null>(null);
@@ -108,6 +110,20 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
   const [payAmount, setPayAmount] = useState('');
   const [busyPayment, setBusyPayment] = useState(false);
   const [includeSello, setIncludeSello] = useState(true);
+  const pending = useLegacyPending('/api/sales');
+  const restored = useRef<unknown>(null);
+  const canEditLines = !isDetail || sale?.canEditItems !== false;
+  useEffect(() => {
+    if (isDetail || !pending || saving || !token || restored.current === pending.body.solicitud_id) return;
+    restored.current = pending.body.solicitud_id;
+    const body = pending.body as unknown as Parameters<typeof api.createSale>[0];
+    void Promise.resolve().then(async () => {
+      clear(); setBranchId(body.branchId ?? null); setAgentId(body.agentId ?? null); setMetodo(body.metodoPago ?? 'por_pagar');
+      setNotaPago(body.notaPago ?? ''); setTransferenciaNumero(body.transferenciaNumero ?? ''); setPayInicial(body.pagoInicial ? String(body.pagoInicial) : '');
+      for (const item of body.items) addItem({ productId: item.productId ?? null, name: item.description, quantity: item.quantity, unit: item.unit, unitPrice: item.unitPrice, marca: item.marca ?? null, procedencia: item.procedencia ?? null });
+      if (body.clientId) { const result = await api.clients(token, { id: body.clientId }); setClient(result.clients.find(item => item.id === body.clientId) ?? null); }
+    }).catch(() => {});
+  }, [isDetail, pending, saving, token, clear, addItem, setClient]);
 
   const load = useCallback(async () => {
     if (!token) {
@@ -116,15 +132,13 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
     }
     setError(null);
     try {
-      const [details, br, cls, ags, nxt] = await Promise.all([
+      const [details, br, ags, nxt] = await Promise.all([
         isDetail ? api.saleDetail(saleId as number, token) : Promise.resolve(null),
         api.branches(token),
-        api.clients(token),
         api.agents(token).catch(() => ({ agents: [] })),
-        api.nextSaleNumber(token),
+        api.nextSaleNumber(token).catch(() => ({ nextNumber: null })),
       ]);
       setBranches(br.branches);
-      setClients(cls.clients);
       setAgents(ags.agents);
       setNextNumber(nxt.nextNumber);
       if (details) {
@@ -139,11 +153,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
         setTotalPagado(details.sale.totalPagado);
         setIncludeSello(details.sale.includeSello);
       } else {
-        setBranchId(br.branches[0]?.id ?? null);
-        setAgentId(null);
-        setPendingReceipt(null);
-        setPayments([]);
-        setTotalPagado(0);
+        setBranchId(current => current ?? br.branches[0]?.id ?? null);
       }
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'No se pudo cargar la venta.';
@@ -167,7 +177,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
     : agentId != null
       ? (agents.find((a) => a.id === agentId)?.name ?? user?.name ?? '')
       : (user?.name ?? '');
-  const clientName = isDetail ? (sale?.client?.name ?? null) : (client?.name ?? null);
+  const clientName = isDetail ? (sale?.client?.name ?? sale?.clientName ?? null) : (client?.name ?? null);
   const clientId = isDetail ? (sale?.clientId ?? null) : (client?.id ?? null);
   const total = isDetail ? (sale?.total ?? 0) : round2(items.reduce((s, it) => s + it.quantity * it.unitPrice, 0));
   const hasItems = isDetail ? (sale?.items.length ?? 0) > 0 : items.length > 0;
@@ -205,6 +215,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
   });
 
   const openEditor = (key: LineKey, quantity: number, unitPrice: number) => {
+    if (!canEditLines) return;
     setExpanded(key);
     setEditQty(String(quantity));
     setEditPrice(String(unitPrice));
@@ -432,7 +443,8 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
       setSaving(true);
       try {
         await persistLineDraft();
-        await api.updateSale(saleId, { notaPago: notaPago.trim() || null, transferenciaNumero: transferenciaNumero.trim() || null }, token);
+        await api.updateSale(saleId, { notaPago: notaPago.trim() || null, transferenciaNumero: transferenciaNumero.trim() || null,
+          ...(IS_NOVALED && sale?.canEditItems ? { confirmDraft: true } : {}) }, token);
         router.back();
       } catch (err) { showApiError(err, 'No se pudo guardar la venta'); }
       finally { setSaving(false); }
@@ -543,7 +555,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
               }
             : prev,
         );
-        feedback.alert('Venta realizada', `Se registró el pago de la venta #${saleId}.`, [
+        feedback.alert('Venta realizada', `Se registró el pago de la venta #${sale?.number ?? saleId}.`, [
           { text: 'OK', onPress: () => router.back() },
         ]);
       } catch (err) {
@@ -561,7 +573,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
     setSaving(true);
     try {
       const { sale: created } = await api.createSale(
-        {
+        pending ? { ...pending.body, solicitud_id: undefined } as unknown as Parameters<typeof api.createSale>[0] : {
           clientId: client?.id ?? null,
           createdAt: draftCreatedAt ?? undefined,
           branchId,
@@ -589,8 +601,8 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
       feedback.alert(
         'Venta realizada',
         receiptWarning
-          ? `Se generó la venta #${created.id}, pero el comprobante no se pudo subir. Adjúntalo desde el detalle.`
-          : `Se generó la venta #${created.id}.`,
+          ? `Se generó la venta #${created.number ?? created.id}, pero el comprobante no se pudo subir. Adjúntalo desde el detalle.`
+          : `Se generó la venta #${created.number ?? created.id}.`,
         [{ text: 'OK', onPress: () => router.replace(`/pos/${created.id}`) }],
       );
     } catch (err) {
@@ -664,7 +676,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
   const renderLines = () => {
     if (isDetail) {
       return (sale?.items ?? []).map((it, index) => (
-        <ItemSwipe tutorialRow={index === 0} key={it.id} disabled={isVoided || lineBusy} onEdit={() => openEditor(it.id, it.quantity, it.unitPrice)}
+        <ItemSwipe tutorialRow={index === 0} key={it.id} disabled={isVoided || lineBusy || !canEditLines} onEdit={() => openEditor(it.id, it.quantity, it.unitPrice)}
           onDelete={() => feedback.alert("Quitar producto", it.description, [{ text: "Cancelar", style: "cancel" }, { text: "Eliminar", style: "destructive", onPress: () => { void removeSavedItem(it.id); } }])}
           onDuplicate={() => { void duplicateLine(it.id); }} onMove={() => setOrdering(true)}>
         <View style={[styles.itemCard, { backgroundColor: colors.surface }]}>
@@ -852,18 +864,20 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
           </Pressable></TutorialTarget></View>
         </View>
 
+        {!isDetail && pending && !saving && <Text style={{ color: colors.muted, fontFamily: 'Poppins', marginVertical: 12 }}>Envío pendiente. Pulsa Guardar para confirmar esta misma venta.</Text>}
+        <View pointerEvents={!isDetail && pending ? 'none' : 'auto'}>
         <View style={styles.metaRow}>
           <TutorialTarget id="date" ><Pressable style={styles.dateWrap} onPress={() => setDateOpen(true)}
-            accessibilityRole="button" accessibilityLabel="Editar fecha de la venta" disabled={isVoided || loading}>
+            accessibilityRole="button" accessibilityLabel="Editar fecha de la venta" disabled={isVoided || loading || IS_NOVALED}>
             <Text style={[styles.metaMuted, { color: colors.muted }]}>
               Fecha {dayMonthYear(sale?.createdAt ?? draftCreatedAt ?? new Date().toISOString())}
             </Text>
-            {!isVoided && <Ionicons name="pencil-outline" size={13} color={colors.muted} />}
+            {!isVoided && !IS_NOVALED && <Ionicons name="pencil-outline" size={13} color={colors.muted} />}
           </Pressable></TutorialTarget>
           <Text style={[styles.metaDoc, { color: colors.muted }]}>
             {docTab === 'entrega'
-              ? `NOTA DE ENTREGA N° ${sale?.id ?? ''}`
-              : `NOTA DE VENTA N° ${isDetail ? (sale?.id ?? '') : (nextNumber ?? '—')}`}
+              ? `ENTREGA · VENTA N° ${sale?.number ?? sale?.id ?? ''}`
+              : `NOTA DE VENTA N° ${isDetail ? (sale?.number ?? sale?.id ?? '') : (nextNumber ?? '—')}`}
           </Text>
         </View>
 
@@ -920,7 +934,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
             </View>
           </Pressable>
           <View style={[styles.vendorDivider, { backgroundColor: colors.border }]} />
-          <Pressable style={styles.vendorBlock} onPress={() => setBranchesOpen(true)}>
+          <Pressable style={styles.vendorBlock} onPress={() => setBranchesOpen(true)} disabled={sale?.canChangeBranch === false}>
             <Text style={[styles.vendorLabel, { color: colors.text }]}>Sucursal</Text>
             <View style={styles.vendorValue}>
               <Ionicons name="storefront-outline" size={14} color={colors.muted} />
@@ -935,7 +949,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
         <TutorialTarget id="client" ><View>
           <Text style={[styles.fieldLabel, { color: colors.muted }]}>Cliente / Empresa</Text>
           {clientName ? (
-            <Pressable style={styles.clientRow} onPress={() => setClientsOpen(true)}>
+            <Pressable style={styles.clientRow} onPress={() => setClientsOpen(true)} disabled={sale?.canChangeBranch === false}>
               <Text style={[styles.clientName, { color: colors.text }]}>{clientName}</Text>
               <Ionicons name="chevron-forward" size={18} color={colors.icon} />
             </Pressable>
@@ -945,7 +959,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
               onPress={() => (tutorial.notify('client'), router.push(`${basePath}/client`))}
             />
           )}
-          {clientName && (
+          {clientName && sale?.canChangeBranch !== false && (
             <Pressable style={styles.clientPick} onPress={() => setClientsOpen(true)}>
               <Ionicons name="swap-horizontal" size={14} color={colors.primary} />
               <Text style={[styles.clientPickText, { color: colors.primary }]}>Cambiar</Text>
@@ -955,7 +969,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
 
         {renderLines()}
 
-        {hasItems ? (
+        {canEditLines && (hasItems ? (
           <TutorialTarget id="products"><PrimaryButton
             title="+  Añadir producto"
             onPress={() =>
@@ -969,7 +983,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
           >
             <Text style={[styles.outlineText, { color: colors.primary }]}>+  Añadir artículo</Text>
           </Pressable></TutorialTarget>
-        )}
+        ))}
 
         {hasItems && (
           <>
@@ -1026,6 +1040,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
             )}
           </>
         )}
+        </View>
       </TutorialScrollView>
 
       {dateOpen && <DatePickerModal value={sale?.createdAt ?? draftCreatedAt ?? new Date().toISOString()}
@@ -1087,28 +1102,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
             )}
       </FormModal>
 
-      <FormModal visible={clientsOpen} title="Elegir cliente" icon="people-outline" onClose={() => setClientsOpen(false)}>
-
-            <Pressable style={styles.optionRow} onPress={() => setClientsOpen(false)}>
-              <Text style={[styles.optionText, { color: colors.text }]}>Sin Cliente</Text>
-              {clientId == null && <Ionicons name="checkmark" size={18} color={colors.primary} />}
-            </Pressable>
-            {clients.map((c) => (
-              <Pressable key={c.id} style={styles.optionRow} onPress={() => pickClient(c)}>
-                <Text
-                  style={[
-                    styles.optionText,
-                    { color: c.id === clientId ? colors.primary : colors.text },
-                    c.id === clientId && styles.optionSelected,
-                  ]}
-                  numberOfLines={1}
-                >
-                  {c.name}
-                </Text>
-                {c.id === clientId && <Ionicons name="checkmark" size={18} color={colors.primary} />}
-              </Pressable>
-            ))}
-      </FormModal>
+      {clientsOpen && <ClientPickerModal selectedId={clientId} onPick={client => { void pickClient(client); }} onClose={() => setClientsOpen(false)} />}
     </View>
   );
 }

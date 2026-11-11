@@ -41,6 +41,7 @@ function authHarness(remoteLogout: (token: string) => Promise<unknown>, connecte
     '../lib/backend': { IS_NOVALED: connected, STORAGE_NAMESPACE: 'test' },
     '../lib/novaled': { novaled: { logout: remoteLogout } },
     '../lib/authEvents': { subscribeSessionExpiry() {} },
+    '../lib/legacyOperation': { bindLegacySession() {}, configureLegacyStorage() {} },
   };
   const source = readFileSync(new URL('../../apps/mobile/src/context/AuthContext.tsx', import.meta.url), 'utf8');
   const { outputText } = ts.transpileModule(source, {

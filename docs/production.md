@@ -3,6 +3,28 @@
 Destino de la API: `https://lumis.novaledbolivia.com`.
 Hostinger ejecuta `apps/api`; la app de `apps/mobile` se compila con EAS y se instala en Android.
 
+## Variantes Lumis y Lumis Novaled
+
+Las dos variantes conservan las pantallas originales. Compilar desde `apps/mobile` con el perfil explícito:
+
+| Perfil | API | Aplicación Android |
+| --- | --- | --- |
+| `lumis` | `https://lumis.novaledbolivia.com` | Lumis · `com.lumis.app` |
+| `novaled` | `https://sistema.novaledbolivia.com` | Lumis Novaled · `com.lumis.novaled` |
+
+```powershell
+npx eas-cli@latest build --platform android --profile lumis
+npx eas-cli@latest build --platform android --profile novaled
+```
+
+Los identificadores diferentes permiten instalarlas juntas. Lumis usa sus cuentas y datos anteriores. Lumis Novaled inicia sesión con usuarios de Novaled y respeta sus permisos, stock y documentos; no copia ni fusiona las cuentas del backend de Lumis.
+
+Antes de usar la nueva APK conectada, publicar los cambios del servidor Laravel y ejecutar `php artisan migrate --force` en Novaled. La nueva migración `2026_11_11_143032_add_lumis_metadata_to_documentos_table` añade un campo JSON nullable para opciones de impresión y datos auxiliares de las pantallas originales. Los endpoints compatibles viven en `/api/v1/lumis/ui`; los endpoints v1 anteriores se conservan. La API independiente `apps/api` no necesita cambios para esta restauración.
+
+Para desarrollo local: `npm run start:lumis` o `npm run start:novaled`, desde `apps/mobile`.
+
+Las listas de Novaled en `/api/v1/lumis/ui` aceptan `page`, `perPage` (hasta 100) y `search`, y devuelven metadatos de paginación. Publicar estos cambios del servidor junto con la nueva APK: la app carga más documentos al desplazarse y permite buscar productos y clientes en el catálogo completo. La búsqueda de cotizaciones usa el número oficial visible en la tarjeta. Lumis independiente conserva el contrato de su API.
+
 ## 1. Configuración de Hostinger
 
 Con `apps/api` como directorio raíz, usa estas rutas relativas a ese paquete:

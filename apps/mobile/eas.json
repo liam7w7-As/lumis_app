@@ -4,11 +4,20 @@
     "appVersionSource": "remote"
   },
   "build": {
+    "lumis": {
+      "extends": "apk",
+      "env": {
+        "EXPO_PUBLIC_BACKEND": "lumis",
+        "EXPO_PUBLIC_API_URL": "https://lumis.novaledbolivia.com",
+        "APP_VARIANT": "lumis"
+      }
+    },
     "novaled": {
       "extends": "apk",
       "env": {
         "LUMIS_ANDROID_ARCHS": "armeabi-v7a,arm64-v8a",
         "EXPO_PUBLIC_BACKEND": "novaled",
+        "APP_VARIANT": "novaled",
         "EXPO_PUBLIC_API_URL": "https://sistema.novaledbolivia.com"
       }
     },
@@ -34,7 +43,8 @@
       "environment": "production",
       "env": {
         "LUMIS_ANDROID_ARCHS": "armeabi-v7a,arm64-v8a",
-        "EXPO_PUBLIC_API_URL": "https://lumis.novaledbolivia.com"
+        "EXPO_PUBLIC_API_URL": "https://lumis.novaledbolivia.com",
+        "EXPO_PUBLIC_BACKEND": "lumis"
       },
       "android": {
         "buildType": "apk"

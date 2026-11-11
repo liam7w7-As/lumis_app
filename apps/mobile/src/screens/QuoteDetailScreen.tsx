@@ -190,7 +190,7 @@ function QuoteDetailScreenContent() {
     ];
     feedback.alert('Estado', 'Cambia el estado de la cotización', [
       ...options
-        .filter((o) => o.value !== quote.status)
+        .filter((o) => o.value !== quote.status && (!quote.allowedStatuses || quote.allowedStatuses.includes(o.value)))
         .map((o) => ({ text: o.label, onPress: () => applyStatus(o.value as 'borrador' | 'aprobada' | 'rechazada') })),
       { text: 'Cancelar', style: 'cancel' },
     ]);
@@ -307,14 +307,14 @@ function QuoteDetailScreenContent() {
 
         <View style={styles.metaRow}>
           <TutorialTarget id="date" ><Pressable style={styles.dateWrap} onPress={() => setDateOpen(true)}
-            accessibilityRole="button" accessibilityLabel="Editar fecha de la cotización" disabled={!saveable || saving || itemBusy}>
+            accessibilityRole="button" accessibilityLabel="Editar fecha de la cotización" disabled={!saveable || saving || itemBusy || quote.canEditDate === false}>
             <Text style={[styles.metaText, { color: colors.muted }]}>
               Fecha {formatDate(quote.createdAt)}
             </Text>
-            {saveable && <Ionicons name="pencil-outline" size={13} color={colors.muted} />}
+            {saveable && quote.canEditDate !== false && <Ionicons name="pencil-outline" size={13} color={colors.muted} />}
           </Pressable></TutorialTarget>
           <Text style={[styles.metaText, { color: colors.muted }]}>
-            COTIZACIÓN Nº {quote.id}
+            COTIZACIÓN Nº {quote.number ?? quote.id}
           </Text>
         </View>
 
@@ -362,7 +362,7 @@ function QuoteDetailScreenContent() {
             disabled={!quote.client}
           >
             <Text style={[styles.clientName, { color: colors.text }]} numberOfLines={1}>
-              {quote.client?.name ?? 'Sin Cliente'}
+              {quote.client?.name ?? quote.clientName ?? 'Sin Cliente'}
             </Text>
             {quote.client && <Ionicons name="chevron-forward" size={20} color={colors.muted} />}
           </Pressable>

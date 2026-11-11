@@ -5,6 +5,9 @@ import { ApiError, api, type User } from '../lib/api';
 import { IS_NOVALED, STORAGE_NAMESPACE } from '../lib/backend';
 import { novaled } from '../lib/novaled';
 import { subscribeSessionExpiry } from '../lib/authEvents';
+import { bindLegacySession, configureLegacyStorage } from '../lib/legacyOperation';
+
+configureLegacyStorage({ get: key => SecureStore.getItemAsync(key), set: (key, value) => SecureStore.setItemAsync(key, value), remove: key => SecureStore.deleteItemAsync(key) });
 
 const TOKEN_KEY = STORAGE_NAMESPACE + '_token';
 
@@ -49,6 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const stored = await SecureStore.getItemAsync(TOKEN_KEY);
         if (stored) {
           const { user: me } = await api.me(stored);
+          bindLegacySession(stored, me.id);
           setToken(stored);
           setUser(me);
         }
@@ -62,6 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (username: string, password: string, remember = true) => {
     const { user: logged, token: newToken } = await api.login({ username, password });
+    bindLegacySession(newToken, logged.id);
     setToken(newToken);
     setUser(logged);
     await saveToken(remember ? newToken : null);

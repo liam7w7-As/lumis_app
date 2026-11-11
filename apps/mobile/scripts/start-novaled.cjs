@@ -4,6 +4,7 @@ const child = spawn(process.execPath, [require.resolve('expo/bin/cli'), 'start',
   stdio: 'inherit',
   env: {
     ...process.env,
+    APP_VARIANT: 'novaled',
     EXPO_PUBLIC_BACKEND: 'novaled',
     EXPO_PUBLIC_API_URL: process.env.EXPO_PUBLIC_API_URL || 'https://sistema.novaledbolivia.com',
   },

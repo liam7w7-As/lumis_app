@@ -88,7 +88,7 @@ export function SaleCard({
             </View>
             <View style={styles.metaRow}>
               <View style={[styles.pill, { backgroundColor: colors.background }]}>
-                <Text style={[styles.pillText, { color: colors.muted }]}>#{sale.id}</Text>
+                <Text style={[styles.pillText, { color: colors.muted }]}>#{sale.number ?? sale.id}</Text>
               </View>
 
               <View style={[styles.pill, { backgroundColor: `${colors.primary}14` }]}>

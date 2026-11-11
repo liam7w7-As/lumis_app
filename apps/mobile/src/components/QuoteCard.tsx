@@ -87,7 +87,7 @@ export function QuoteCard({
             </View>
             <View style={styles.row2}>
               <View style={[styles.pill, { backgroundColor: colors.background }]}>
-                <Text style={[styles.pillText, { color: colors.muted }]}>#{quote.id}</Text>
+                <Text style={[styles.pillText, { color: colors.muted }]}>#{quote.number ?? quote.id}</Text>
               </View>
               <View style={[styles.pill, { backgroundColor: `${colors.primary}14` }]}>
                 <Text style={[styles.pillText, styles.amountText, { color: colors.primary }]}>

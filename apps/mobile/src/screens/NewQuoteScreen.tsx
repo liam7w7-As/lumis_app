@@ -2,7 +2,8 @@ import { TutorialTarget, TutorialScrollView, TutorialHelpButton, useTutorialAvai
 import { useTutorial } from '../tutorials/TutorialContext';
 import { FormModal } from '../components/FormModal';
 import { feedback } from '../lib/feedback';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useLegacyPending } from '../hooks/useLegacyPending';
 import {
   ActivityIndicator,
   Pressable,
@@ -36,12 +37,24 @@ function NewQuoteScreenContent() {
   const { colors } = useTheme();
   const formatMoney = useMoney();
   const insets = useSafeAreaInsets();
-  const { client, setClient, items, removeItem, clear } = useDraft();
+  const { client, setClient, items, addItem, removeItem, clear } = useDraft();
   const [nextNumber, setNextNumber] = useState<number | null>(null);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [branchId, setBranchId] = useState<number | null>(null);
   const [branchesOpen, setBranchesOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const pending = useLegacyPending('/api/quotes');
+  const restored = useRef<unknown>(null);
+  useEffect(() => {
+    if (!pending || saving || restored.current === pending.body.solicitud_id || !token) return;
+    restored.current = pending.body.solicitud_id;
+    const body = pending.body as unknown as Parameters<typeof api.createQuote>[0];
+    void Promise.resolve().then(async () => {
+      clear(); setBranchId(body.branchId);
+      for (const item of body.items) addItem({ productId: item.productId ?? null, name: item.description, quantity: item.quantity, unit: item.unit, unitPrice: item.unitPrice, marca: item.marca ?? null, procedencia: item.procedencia ?? null });
+      if (body.clientId) { const result = await api.clients(token, { id: body.clientId }); setClient(result.clients.find(item => item.id === body.clientId) ?? null); }
+    }).catch(() => {});
+  }, [pending, saving, token, clear, addItem, setClient]);
 
   useEffect(() => {
     if (!token) return;
@@ -73,7 +86,7 @@ function NewQuoteScreenContent() {
     setSaving(true);
     try {
       const { quote } = await api.createQuote(
-        {
+        pending ? { ...pending.body, solicitud_id: undefined } as unknown as Parameters<typeof api.createQuote>[0] : {
           clientId: client?.id ?? null,
           branchId,
           items: items.map((it) => ({
@@ -88,7 +101,7 @@ function NewQuoteScreenContent() {
         },
         token,
       );
-      feedback.alert('Cotización creada', `Se creó la cotización #${quote.id}`, [
+      feedback.alert('Cotización creada', `Se creó la cotización #${quote.number ?? quote.id}`, [
         {
           text: 'OK',
           onPress: () => {
@@ -133,6 +146,8 @@ function NewQuoteScreenContent() {
           </View>
         </View>
 
+        {pending && !saving && <Text style={{ color: colors.muted, fontFamily: 'Poppins', marginVertical: 12 }}>Envío pendiente. Pulsa Guardar para confirmar esta misma cotización.</Text>}
+        <View pointerEvents={pending ? 'none' : 'auto'}>
         <View style={styles.metaRow}>
           <View style={styles.dateWrap}>
             <Text style={[styles.dateText, { color: colors.muted }]}>Fecha {todayLabel()}</Text>
@@ -227,6 +242,7 @@ function NewQuoteScreenContent() {
             </Text>
           </View>
         )}
+        </View>
       </TutorialScrollView>
 
       <FormModal visible={branchesOpen} title="Elegir sucursal" icon="storefront-outline" onClose={() => setBranchesOpen(false)}>

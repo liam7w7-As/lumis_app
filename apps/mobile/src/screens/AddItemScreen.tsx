@@ -12,7 +12,7 @@ import {
   View,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { router, useFocusEffect } from 'expo-router';
+import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { useDraft } from '../context/DraftContext';
@@ -22,6 +22,9 @@ import { useMoney, useBusiness } from '../context/BusinessContext';
 import { DEFAULT_UNITS, loadUnits, saveUnits } from '../lib/units';
 import { AnimatedInput } from '../components/AnimatedInput';
 import { UnitSheet } from '../components/UnitSheet';
+import { IS_NOVALED } from '../lib/backend';
+import { usePagedCollection } from '../hooks/usePagedCollection';
+import { CollectionFooter } from '../components/CollectionFooter';
 
 function parseNumber(raw: string): number {
   return Number.parseFloat(raw.replace(',', '.'));
@@ -38,13 +41,13 @@ function AddItemScreenContent({ quoteId, saleId }: { quoteId?: number; saleId?: 
 
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
-  const [quantity, setQuantity] = useState('1');
+  const [quantity, setQuantity] = useState('');
   const [unit, setUnit] = useState('Unidad');
   const [units, setUnits] = useState<string[]>(DEFAULT_UNITS);
   const [marca, setMarca] = useState('');
   const [procedencia, setProcedencia] = useState('');
   const [unitsOpen, setUnitsOpen] = useState(false);
-  const [catalog, setCatalog] = useState<Product[]>([]);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -83,29 +86,21 @@ function AddItemScreenContent({ quoteId, saleId }: { quoteId?: number; saleId?: 
     setUnit((prev) => (prev === unitName ? (next[0] ?? prev) : prev));
   };
 
-  const loadCatalog = useCallback(async () => {
-    if (!token) return;
-    try {
-      const { products } = await api.products(token);
-      setCatalog(products);
-    } catch {
-      // El catálogo es apoyo: si falla, el formulario sigue funcionando.
-    }
-  }, [token]);
-
-  useFocusEffect(
-    useCallback(() => {
-      loadCatalog();
-    }, [loadCatalog]),
-  );
-
   const query = name.trim().toLowerCase();
+  const catalogQuery = IS_NOVALED ? query : '';
+  const fetchPage = useCallback(async (page: number) => {
+    if (!token) return { items: [] };
+    const result = await api.products(token, catalogQuery.slice(0, 100) || undefined, page);
+    return { items: result.products, meta: result.meta };
+  }, [token, catalogQuery]);
+  const { items: catalog, setItems: setCatalog, loading: catalogLoading, loadingMore, hasMore, error: catalogError, load, loadMore } = usePagedCollection(fetchPage);
   const filtered =
-    query.length > 0
+    !IS_NOVALED && query.length > 0
       ? catalog.filter((p) => p.name.toLowerCase().includes(query))
       : catalog;
 
   const fillFromProduct = (product: Product) => {
+    setSelectedProduct(product);
     setName(product.name);
     setPrice(String(product.price));
     setUnit(product.unit);
@@ -155,11 +150,12 @@ function AddItemScreenContent({ quoteId, saleId }: { quoteId?: number; saleId?: 
     setError(null);
     setSaving(true);
     try {
-      const match = catalog.find((p) => p.name.toLowerCase() === trimmedName.toLowerCase());
+      const match = selectedProduct?.name.toLowerCase() === trimmedName.toLowerCase()
+        ? selectedProduct : catalog.find((p) => p.name.toLowerCase() === trimmedName.toLowerCase());
       let productId: number | null = match?.id ?? null;
       const lineMarca = marca.trim() || match?.marca || null;
       const lineProcedencia = procedencia.trim() || match?.procedencia || null;
-      if (!match) {
+      if (!match && !IS_NOVALED) {
         const { product } = await api.createProduct(
           { name: trimmedName, price: parsedPrice, unit, marca: lineMarca, procedencia: lineProcedencia },
           token,
@@ -254,23 +250,31 @@ function AddItemScreenContent({ quoteId, saleId }: { quoteId?: number; saleId?: 
           autoCapitalize="words"
         /></TutorialTarget>
 
+        <View style={styles.labelsRow}>
+          <Text style={[styles.miniLabel, styles.priceWrap, { color: colors.muted }]}>Precio</Text>
+          <Text style={[styles.miniLabel, styles.qtyWrap, { color: colors.muted }]}>Cantidad</Text>
+          <Text style={[styles.miniLabel, styles.unitWrap, { color: colors.muted }]}>U. Medida</Text>
+        </View>
         <View style={styles.formRow}>
           <View style={styles.priceWrap}>
-            <Text style={[styles.prefix, { color: colors.muted }]}>{business?.moneda ?? 'Bs.'}</Text>
-            <TextInput
-              style={[styles.miniInput, { color: colors.text, borderBottomColor: colors.border }]}
-              placeholder="0"
-              placeholderTextColor={colors.muted}
-              value={price}
-              onChangeText={setPrice}
-              keyboardType="decimal-pad"
-            />
+            <View style={[styles.priceControl, { borderBottomColor: colors.border }]}>
+              <Text style={[styles.prefix, { color: colors.muted }]}>{business?.moneda ?? 'Bs.'}</Text>
+              <TextInput
+                style={[styles.priceInput, { color: colors.text }]}
+                accessibilityLabel="Precio del producto"
+                placeholder="0.00"
+                placeholderTextColor={colors.muted}
+                value={price}
+                onChangeText={setPrice}
+                keyboardType="decimal-pad"
+              />
+            </View>
           </View>
           <View style={styles.qtyWrap}>
-            <Text style={[styles.miniLabel, { color: colors.muted }]}>Cantidad</Text>
             <TextInput
               style={[styles.miniInput, { color: colors.text, borderBottomColor: colors.border }]}
               placeholder="1"
+              accessibilityLabel="Cantidad del producto"
               placeholderTextColor={colors.muted}
               value={quantity}
               onChangeText={setQuantity}
@@ -278,7 +282,6 @@ function AddItemScreenContent({ quoteId, saleId }: { quoteId?: number; saleId?: 
             />
           </View>
           <View style={styles.unitWrap}>
-            <Text style={[styles.miniLabel, { color: colors.muted }]}>U. Medida</Text>
             <Pressable
               style={[styles.unitButton, { borderBottomColor: colors.border }]}
               onPress={() => setUnitsOpen(true)}
@@ -325,6 +328,8 @@ function AddItemScreenContent({ quoteId, saleId }: { quoteId?: number; saleId?: 
             </View>
           </Pressable>
         ))}
+        <CollectionFooter loading={catalogLoading || loadingMore} hasMore={hasMore} error={catalogError}
+          onMore={() => { void loadMore(); }} onRetry={() => { void (catalog.length ? loadMore(true) : load()); }} />
       </TutorialScrollView>
 
       <UnitSheet
@@ -374,48 +379,79 @@ const styles = StyleSheet.create({
   },
   formRow: {
     flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginTop: 4,
+  },
+  labelsRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
     gap: 12,
     marginTop: 4,
   },
   priceWrap: {
     flex: 1,
+    minWidth: 0,
+  },
+  priceControl: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'center',
+    height: 44,
+    borderBottomWidth: 1,
     gap: 6,
+  },
+  priceInput: {
+    flex: 1,
+    minWidth: 0,
+    height: 44,
+    padding: 0,
+    fontSize: 16,
+    fontFamily: 'Poppins',
+    includeFontPadding: false,
+    textAlignVertical: 'center',
   },
   prefix: {
     fontSize: 14,
     fontFamily: 'Poppins',
-    paddingBottom: 8,
+    includeFontPadding: false,
   },
   qtyWrap: {
     flex: 1,
+    minWidth: 0,
   },
   unitWrap: {
     flex: 1.2,
+    minWidth: 0,
   },
   miniLabel: {
     fontSize: 13,
     fontFamily: 'Poppins',
-    marginBottom: 2,
+    minHeight: 20,
+    marginBottom: 0,
+    includeFontPadding: false,
   },
   miniInput: {
     borderBottomWidth: 1,
     fontSize: 16,
     fontFamily: 'Poppins',
-    paddingBottom: 8,
+    height: 44,
+    padding: 0,
+    includeFontPadding: false,
+    textAlignVertical: 'center',
   },
   unitButton: {
     flexDirection: 'row',
     alignItems: 'center',
     borderBottomWidth: 1,
-    paddingBottom: 8,
+    height: 44,
     gap: 4,
   },
   unitText: {
     flex: 1,
+    minWidth: 0,
     fontSize: 16,
     fontFamily: 'Poppins',
+    includeFontPadding: false,
   },
   error: {
     textAlign: 'center',
