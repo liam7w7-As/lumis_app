@@ -147,7 +147,7 @@ function NewQuoteScreenContent() {
         </View>
 
         {pending && !saving && <Text style={{ color: colors.muted, fontFamily: 'Poppins', marginVertical: 12 }}>Envío pendiente. Pulsa Guardar para confirmar esta misma cotización.</Text>}
-        <View pointerEvents={pending ? 'none' : 'auto'}>
+        <View style={styles.formContent} pointerEvents={pending ? 'none' : 'auto'}>
         <View style={styles.metaRow}>
           <View style={styles.dateWrap}>
             <Text style={[styles.dateText, { color: colors.muted }]}>Fecha {todayLabel()}</Text>
@@ -204,6 +204,7 @@ function NewQuoteScreenContent() {
         ) : (
           <TutorialTarget id="client" ><PrimaryButton
             title="+  Añadir cliente"
+            style={styles.actionButton}
             onPress={() => { tutorial.notify('client'); router.push('/quotes/new/client'); }}
           /></TutorialTarget>
         )}
@@ -228,7 +229,7 @@ function NewQuoteScreenContent() {
         ))}
 
         <TutorialTarget id="products" ><Pressable
-          style={[styles.outlineButton, { borderColor: colors.primary }]}
+          style={[styles.actionButton, styles.outlineButton, { borderColor: colors.primary }]}
           onPress={() => { tutorial.notify('product'); router.push('/quotes/new/item'); }}
         >
           <Text style={[styles.outlineText, { color: colors.primary }]}>+  Añadir artículo</Text>
@@ -289,6 +290,9 @@ const styles = StyleSheet.create({
   scroll: {
     paddingHorizontal: 20,
     gap: 14,
+  },
+  formContent: {
+    gap: 16,
   },
   header: {
     flexDirection: 'row',
@@ -409,9 +413,13 @@ const styles = StyleSheet.create({
     fontFamily: 'Poppins',
     fontWeight: '700',
   },
+  actionButton: {
+    borderRadius: 16,
+    minHeight: 56,
+    justifyContent: 'center',
+  },
   outlineButton: {
     borderWidth: 1.5,
-    borderRadius: 16,
     paddingVertical: 16,
     alignItems: 'center',
   },

@@ -382,6 +382,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: 12,
     marginTop: 4,
+    marginBottom: 24,
   },
   labelsRow: {
     flexDirection: 'row',

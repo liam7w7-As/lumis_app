@@ -1,4 +1,5 @@
 import { ActivityIndicator, Animated, Pressable, StyleSheet, Text } from 'react-native';
+import type { StyleProp, ViewStyle } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { usePressMotion } from '../hooks/usePressMotion';
 
@@ -7,9 +8,10 @@ interface PrimaryButtonProps {
   onPress: () => void;
   disabled?: boolean;
   loading?: boolean;
+  style?: StyleProp<ViewStyle>;
 }
 
-export function PrimaryButton({ title, onPress, disabled, loading }: PrimaryButtonProps) {
+export function PrimaryButton({ title, onPress, disabled, loading, style }: PrimaryButtonProps) {
   const { colors } = useTheme();
   const inactive = !!(disabled || loading);
   const { scale, onPressIn, onPressOut } = usePressMotion(inactive);
@@ -24,6 +26,7 @@ export function PrimaryButton({ title, onPress, disabled, loading }: PrimaryButt
       <Animated.View
         style={[
           styles.button,
+          style,
           { backgroundColor: colors.primary, transform: [{ scale }], opacity: inactive ? 0.7 : 1 },
         ]}
       >
