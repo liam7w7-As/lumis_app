@@ -273,9 +273,7 @@ function AddItemScreenContent({ quoteId, saleId }: { quoteId?: number; saleId?: 
           <View style={styles.qtyWrap}>
             <TextInput
               style={[styles.miniInput, { color: colors.text, borderBottomColor: colors.border }]}
-              placeholder="1"
               accessibilityLabel="Cantidad del producto"
-              placeholderTextColor={colors.muted}
               value={quantity}
               onChangeText={setQuantity}
               keyboardType="decimal-pad"
