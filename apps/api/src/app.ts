@@ -16,6 +16,8 @@ import { salesRouter } from './routes/sales';
 
 import { uploadsRouter } from './routes/uploads';
 import { tutorialsRouter } from './routes/tutorials';
+import { platformRouter } from './routes/platform';
+import { licenseRouter } from './routes/license';
 
 export function createApp() {
   const app = express();
@@ -30,6 +32,8 @@ export function createApp() {
 
   app.use('/uploads', uploadsRouter);
   app.use('/health', healthRouter);
+  app.use('/api/platform', platformRouter);
+  app.use('/api/license', licenseRouter);
   app.use('/api/auth', authRouter);
   app.use('/api/tutorials', tutorialsRouter);
   app.use('/api/agents', agentsRouter);

@@ -3,6 +3,7 @@ import type { RowDataPacket } from 'mysql2/promise';
 import { verifyToken } from '../lib/jwt';
 import { pool } from '../db/pool';
 import { ApiError, notFound, unauthorized } from './errorHandler';
+import { licenseAccess } from './licenseAccess';
 
 export interface AuthRequest extends Request {
   userId?: number;
@@ -19,12 +20,13 @@ export async function requireAuth(req: AuthRequest, _res: Response, next: NextFu
   catch { return next(unauthorized('Token inválido o expirado')); }
   try {
     const [rows] = await pool.query<RowDataPacket[]>(
-      'SELECT business_id, role FROM users WHERE id = ?', [userId]);
+      'SELECT business_id, role, enabled FROM users WHERE id = ?', [userId]);
     if (!rows[0]) throw unauthorized('Usuario no encontrado');
+    if (!rows[0].enabled) throw unauthorized('Tu usuario está deshabilitado. Contacta con el administrador.');
     req.userId = userId;
     req.businessId = Number(rows[0].business_id);
     req.role = rows[0].role;
-    next();
+    await licenseAccess(req,_res,next);
   } catch (err) { next(err); }
 }
 export function requireAdmin(req: AuthRequest, _res: Response, next: NextFunction) {

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { documentDateSchema } from '../lib/documentDate';
+import { consumeUsage } from '../lib/licenses';
 import { registerItemActions } from './itemActions';
 import { PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import { z } from 'zod';
@@ -202,6 +203,7 @@ quotesRouter.post('/', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const { clientId = null, branchId = null, notes = null, items } = createQuoteSchema.parse(req.body);
     await conn.beginTransaction();
+    await consumeUsage(conn,req.businessId!,req.userId!,'quotes');
 
     if (clientId !== null) {
       const [cRows] = await conn.query<RowDataPacket[]>(
@@ -285,6 +287,7 @@ quotesRouter.post('/:id/duplicate', requireAuth, async (req: AuthRequest, res, n
   try {
     const id = parseId(req.params.id);
     await conn.beginTransaction();
+    await consumeUsage(conn,req.businessId!,req.userId!,'quotes');
 
     const [qRows] = await conn.query<RowDataPacket[]>(
       'SELECT client_id, branch_id, notes, total FROM quotes WHERE id = ?',

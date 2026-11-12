@@ -1,6 +1,7 @@
 import { API_URL, backendPath, IS_NOVALED } from './backend';
 import type { PageMeta } from './pagedCollection';
 import { notifySessionExpiry } from './authEvents';
+import { notifyLicenseChange } from './licenseEvents';
 import { runLegacyOperation, rememberLegacyBody } from './legacyOperation';
 import { requestStockSelection, type StockChoiceItem } from './stockSelection';
 export { API_URL } from './backend';
@@ -22,6 +23,12 @@ export class ApiError extends Error {
   }
 }
 
+export interface CompanyLicense {
+  plan:'free'|'pro'|'plus';planName:string;state:'active'|'expired'|'suspended';expiresOn:string|null;
+  readOnly:boolean;hasSeat:boolean;users:{enabled:number;limit:number|null};
+  quotas:Record<'quotes'|'sales'|'deliveries'|'scans',{used:number;limit:number|null;remaining:number|null;period:string}>;
+  features:{editDocuments:boolean;brandColors:boolean};supportUrl:string|null;scannerAvailable:boolean;
+}
 export interface TutorialProgress {
   guide: string;
   version: number;
@@ -308,7 +315,8 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
         if (body.solicitud_id) await rememberLegacyBody(path, options.token, payload);
         return request<T>(path, { ...options, body: payload });
       }
-      if (IS_NOVALED && res.status === 401 && options.token) notifySessionExpiry(options.token);
+      if (res.status === 401 && options.token) notifySessionExpiry(options.token);
+      if (!IS_NOVALED && /^(LICENSE_|PLAN_|USER_LIMIT)/.test(data?.code ?? '')) notifyLicenseChange();
       const errors = data?.errors ?? data?.details;
       const detail = errors ? Object.values(errors).flat().filter(Boolean)[0] : undefined;
       throw new ApiError(res.status, detail ?? data?.message ?? data?.error ?? 'El servidor no pudo completar la solicitud. Inténtalo de nuevo.', data?.code);
@@ -336,6 +344,7 @@ function collectionPath(path: string, options: ListOptions) {
 }
 
 export const api = {
+  license: (token:string)=>request<{license:CompanyLicense}>('/api/license',{token}),
   tutorials: (token: string) => request<{ progress: TutorialProgress[] }>('/api/tutorials', { token }),
   saveTutorial: (guide: string, input: Pick<TutorialProgress, 'version' | 'status' | 'stepId'>, token: string) =>
     request<{ progress: TutorialProgress }>('/api/tutorials/' + encodeURIComponent(guide), { method: 'PUT', body: input, token }),

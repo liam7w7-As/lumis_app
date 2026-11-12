@@ -6,6 +6,7 @@ import { hashPassword, verifyPassword } from '../lib/password';
 import { signToken } from '../lib/jwt';
 import { conflict, unauthorized } from '../middlewares/errorHandler';
 import { type AuthRequest, requireAuth, requireAdmin } from '../middlewares/requireAuth';
+import { assertUserCapacity } from '../lib/licenses';
 
 const usernameRule = z.string().trim().min(3).max(60)
   .regex(/^[a-zA-Z0-9._-]+$/, 'El usuario solo admite letras, números y . _ -')
@@ -18,10 +19,10 @@ const registerSchema = z.object({
 const loginSchema = z.object({
   username: z.string().trim().min(1), password: z.string().min(1),
 });
-const USER_COLUMNS = 'id, name, username, email, business_id, role, theme_mode';
+const USER_COLUMNS = 'id, name, username, email, business_id, role, theme_mode, enabled';
 function publicUser(row: RowDataPacket | Record<string, unknown>) {
   return { id: Number(row.id), name: row.name, username: row.username, email: row.email,
-    businessId: Number(row.business_id), role: row.role, themeMode: row.theme_mode };
+    businessId: Number(row.business_id), role: row.role, themeMode: row.theme_mode, enabled: row.enabled !== 0 };
 }
 function accountError(err: unknown) {
   return (err as { code?: string })?.code === 'ER_DUP_ENTRY'
@@ -37,6 +38,7 @@ authRouter.post('/register', async (req, res, next) => {
     await conn.beginTransaction();
     const [business] = await conn.query<ResultSetHeader>(
       'INSERT INTO business (nombre) VALUES (?)', ['Mi Negocio']);
+    await conn.query('INSERT INTO business_licenses(business_id) VALUES (?)',[business.insertId]);
     const [result] = await conn.query<ResultSetHeader>(
       "INSERT INTO users (username, name, email, password_hash, business_id, role) VALUES (?, ?, ?, ?, ?, 'admin')",
       [username, name, email ?? null, passwordHash, business.insertId]);
@@ -59,6 +61,7 @@ authRouter.post('/login', async (req, res, next) => {
     if (!row || !(await verifyPassword(password, row.password_hash))) {
       throw unauthorized('Usuario o contraseña incorrectos');
     }
+    if (!row.enabled) throw unauthorized('Tu usuario está deshabilitado. Contacta con el administrador.');
     res.json({ user: publicUser(row), token: signToken(Number(row.id)) });
   } catch (err) { next(err); }
 });
@@ -94,6 +97,7 @@ authRouter.post('/users', requireAuth, requireAdmin, async (req: AuthRequest, re
     const { username, name, email, password } = registerSchema.parse(req.body);
     const passwordHash = await hashPassword(password);
     await conn.beginTransaction();
+    await assertUserCapacity(conn,req.businessId!);
     const [result] = await conn.query<ResultSetHeader>(
       "INSERT INTO users (username, name, email, password_hash, business_id, role) VALUES (?, ?, ?, ?, ?, 'seller')",
       [username, name, email ?? null, passwordHash, req.businessId]);

@@ -1,4 +1,5 @@
 import { TutorialTarget, TutorialScrollView, TutorialHelpButton, useTutorialAvailability, withTutorial } from '../tutorials/TutorialElements';
+import { LicenseStatusCard } from '../components/LicenseStatusCard';
 import { useTutorial } from '../tutorials/TutorialContext';
 import { feedback } from '../lib/feedback';
 import { useCallback, useMemo, useRef, useState } from 'react';
@@ -136,6 +137,7 @@ function DashboardScreenContent() {
         </View>
 
         <Text style={[styles.greeting, { color: colors.text }]}>Hola, {firstName}!</Text>
+        <LicenseStatusCard onlyReadOnly />
 
         <TutorialTarget id="modules" ><View style={styles.cards}>
           <TutorialTarget id="quotes" style={{ flex: 1 }}><GradientCard

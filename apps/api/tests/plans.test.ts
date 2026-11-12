@@ -1,0 +1,25 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { PLANS, expiryFromDay, expiryDay, licenseState, monthKey } from '../src/lib/plans';
+test('planes aprobados, fechas inclusivas y meses en Bolivia', () => {
+  assert.equal(PLANS.free.users, 2);
+  assert.equal(PLANS.pro.users, 6);
+  assert.equal(PLANS.plus.users, null);
+  assert.equal(PLANS.pro.price, 95);
+  assert.equal(PLANS.plus.price, 170);
+  assert.deepEqual(PLANS.free.limits, { quotes: 5, sales: 5, deliveries: 5, scans: 5 });
+  assert.equal(PLANS.pro.limits.scans, 50);
+  assert.equal(PLANS.plus.limits.scans, 200);
+  assert.equal(expiryFromDay('2028-02-29').toISOString(), '2028-03-01T04:00:00.000Z');
+  assert.equal(expiryDay(expiryFromDay('2028-02-29')), '2028-02-29');
+  assert.throws(() => expiryFromDay('2026-02-29'));
+  assert.throws(() => expiryFromDay('2026-13-01'));
+  const end = expiryFromDay('2026-11-30');
+  assert.equal(licenseState('pro', 'active', end, new Date('2026-12-01T03:59:59Z')), 'active');
+  assert.equal(licenseState('pro', 'active', end, end), 'expired');
+  assert.equal(licenseState('free', 'active', null), 'active');
+  assert.equal(licenseState('plus', 'active', null), 'expired');
+  assert.equal(licenseState('free', 'suspended', null), 'suspended');
+  assert.equal(monthKey(new Date('2026-12-01T03:59:59Z')), '2026-11');
+  assert.equal(monthKey(new Date('2026-12-01T04:00:00Z')), '2026-12');
+});

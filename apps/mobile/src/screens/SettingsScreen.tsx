@@ -1,6 +1,7 @@
 import { TutorialTarget, TutorialScrollView, TutorialHelpButton, useTutorialAvailability, withTutorial } from '../tutorials/TutorialElements';
 import { loadRemoteImage } from '../lib/remoteImage';
 import { NoticeCard } from '../components/NoticeCard';
+import { LicenseStatusCard } from '../components/LicenseStatusCard';
 import { StoredImage } from '../components/StoredImage';
 import { feedback } from '../lib/feedback';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -418,6 +419,7 @@ function SettingsScreenContent() {
 
         <TutorialTarget id="tabs" ><SegmentedTabs<SettingsTab> options={isAdmin ? TABS : TABS.filter((item) => item.key === 'info')} value={tab} onChange={(next) => { blurFields(); setTab(next); }} /></TutorialTarget>
 
+        <LicenseStatusCard />
         {syncError && <NoticeCard tone="error" title="Hay un problema de sincronización" message={syncError} action="Reintentar" onPress={() => { void refreshBusiness(); void load(); }} />}
         {loading ? (
           <View style={styles.loading}>

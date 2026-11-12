@@ -44,6 +44,8 @@ test('empresas, permisos, sincronización, archivos y orden de documentos', {
   await admin.query("INSERT INTO users(username,name,email,password_hash) VALUES ('legacy_a','Anterior A',NULL,'hash'),('legacy_b','Anterior B',NULL,'hash')");
   await admin.query("INSERT INTO business(id,nombre,logo_url) VALUES (1,'Empresa anterior',NULL)");
   await admin.query("INSERT INTO clients(user_id,name) VALUES (1,'Cliente anterior')");
+  await admin.query('INSERT INTO quotes(user_id,total) VALUES (1,10),(2,20)');
+  await admin.query('INSERT INTO sales(user_id,total,entregada_at) VALUES (1,10,CURRENT_TIMESTAMP)');
   const { runMigrations } = await import('../src/db/migrate');
   await runMigrations();
   await runMigrations();
@@ -51,6 +53,10 @@ test('empresas, permisos, sincronización, archivos y orden de documentos', {
   assert.deepEqual(legacy.map(r=>[r.business_id,r.role]), [[1,'admin'],[1,'seller']]);
   const [oldBiz] = await admin.query<any[]>('SELECT nombre FROM business WHERE id=1');
   assert.equal(oldBiz[0].nombre, 'Empresa anterior');
+  const [oldLicense]=await admin.query<any[]>('SELECT plan FROM business_licenses WHERE business_id=1');
+  assert.equal(oldLicense[0].plan,'free');
+  const [oldUsage]=await admin.query<any[]>('SELECT meter,used FROM license_usage WHERE business_id=1 ORDER BY meter');
+  assert.deepEqual(Object.fromEntries(oldUsage.map(r=>[r.meter,Number(r.used)])),{quotes:2,sales:1,deliveries:1});
   const { pool } = await import('../src/db/pool');
   closePool = () => pool.end();
   const { createApp } = await import('../src/app');
@@ -70,6 +76,9 @@ test('empresas, permisos, sincronización, archivos y orden de documentos', {
   const signup = (username:string)=>request('/api/auth/register',undefined,'POST',
     {username,name:username,password:'test-only-12345'},201);
   const a=await signup('empresa_a'), b=await signup('empresa_b');
+  // Este conjunto verifica edición e aislamiento con un plan que incluye edición.
+  // Los límites de Gratis se prueban de extremo a extremo en licenses.integration.test.ts.
+  await admin.query("UPDATE business_licenses SET plan='pro',expires_at=DATE_ADD(UTC_TIMESTAMP(),INTERVAL 1 YEAR) WHERE business_id IN (?,?)",[a.user.businessId,b.user.businessId]);
   assert.equal(a.user.role,'admin');
   assert.notEqual(a.user.businessId,b.user.businessId);
   const seller = await request('/api/auth/users',a.token,'POST',

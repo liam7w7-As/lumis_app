@@ -14,6 +14,7 @@ const MIGRATIONS_DIR = existsSync(packagedMigrations)
 export async function runMigrations(): Promise<string[]> {
   const { host, port, user, password, database } = config.db;
   let admin: mysql.Connection;
+  let migrationLocked = false;
   try {
     admin = await mysql.createConnection({
       host,
@@ -42,6 +43,10 @@ export async function runMigrations(): Promise<string[]> {
       // Ignorar si el usuario no tiene permisos globales de CREATE DATABASE (habitual en Hostinger)
     }
     await admin.changeUser({ database });
+    const [lock] = await admin.query<RowDataPacket[]>(
+      "SELECT GET_LOCK(CONCAT(LEFT(DATABASE(),40),':migrations'),30) AS acquired");
+    migrationLocked = lock[0]?.acquired === 1;
+    if (!migrationLocked) throw new Error('Otra instancia está migrando la base de datos. Intenta iniciar nuevamente.');
     await admin.query(
       `CREATE TABLE IF NOT EXISTS schema_migrations (
         version VARCHAR(50) PRIMARY KEY,
@@ -65,6 +70,7 @@ export async function runMigrations(): Promise<string[]> {
     }
     return pending;
   } finally {
+    if (migrationLocked) await admin.query("SELECT RELEASE_LOCK(CONCAT(LEFT(DATABASE(),40),':migrations'))");
     await admin.end();
   }
 }

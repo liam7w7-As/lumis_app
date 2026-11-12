@@ -2,6 +2,7 @@ import { saveUpload } from '../lib/uploadStorage';
 import { decodeImage } from '../lib/imageUpload';
 import { reconcileCreditSale } from '../lib/saleTotals';
 import { Router } from 'express';
+import { consumeUsage, assertWritable } from '../lib/licenses';
 import { documentDateSchema } from '../lib/documentDate';
 import { registerItemActions } from './itemActions';
 import { PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
@@ -425,10 +426,14 @@ const receiptSchema = z.object({
 // Marca la venta como entregada y habilita la nota de entrega. Re-llamar es
 // idempotente: la primera entrega fija la fecha y no se pisa al re-generar.
 salesRouter.post('/:id/deliver', requireAuth, async (req: AuthRequest, res, next) => {
+  const conn = await pool.getConnection();
   try {
     const id = parseId(req.params.id);
-    const [rows] = await pool.query<SaleRow[]>(
-      'SELECT id, estado, entregada_at FROM sales WHERE id = ?',
+    await conn.beginTransaction();
+    // Mismo orden de bloqueo que creación/duplicación: licencia antes del documento.
+    await assertWritable(req.businessId!,req.userId!,conn,true);
+    const [rows] = await conn.query<SaleRow[]>(
+      'SELECT id, estado, entregada_at FROM sales WHERE id = ? FOR UPDATE',
       [id],
     );
     const sale = rows[0];
@@ -438,17 +443,22 @@ salesRouter.post('/:id/deliver', requireAuth, async (req: AuthRequest, res, next
     if (sale.estado !== 'activa') {
       throw conflict('La venta está anulada');
     }
-    await pool.query(
+    if (!sale.entregada_at) await consumeUsage(conn,req.businessId!,req.userId!,'deliveries');
+    await conn.query(
       'UPDATE sales SET entregada_at = COALESCE(entregada_at, CURRENT_TIMESTAMP) WHERE id = ?',
       [id],
     );
-    const [after] = await pool.query<SaleRow[]>(
+    const [after] = await conn.query<SaleRow[]>(
       'SELECT entregada_at FROM sales WHERE id = ?',
       [id],
     );
+    await conn.commit();
     res.json({ ok: true, entregadaAt: toIso(after[0]?.entregada_at ?? null) });
   } catch (err) {
+    await rollbackQuiet(conn);
     next(err);
+  } finally {
+    conn.release();
   }
 });
 
@@ -583,6 +593,7 @@ salesRouter.post('/:id/duplicate', requireAuth, async (req: AuthRequest, res, ne
   try {
     const id = parseId(req.params.id);
     await conn.beginTransaction();
+    await consumeUsage(conn,req.businessId!,req.userId!,'sales');
 
     const [sRows] = await conn.query<RowDataPacket[]>(
       'SELECT client_id, branch_id, total, metodo_pago FROM sales WHERE id = ?',
@@ -776,6 +787,7 @@ salesRouter.post('/', requireAuth, async (req: AuthRequest, res, next) => {
     } = createSaleSchema.parse(req.body);
 
     await conn.beginTransaction();
+    await consumeUsage(conn,req.businessId!,req.userId!,'sales');
     await requireClient(conn, clientId);
     await requireBranch(conn, branchId);
     const sellerName = await requireAgent(conn, req.businessId, agentId);
@@ -961,6 +973,7 @@ salesRouter.post('/from-quote', requireAuth, async (req: AuthRequest, res, next)
       .parse(req.body);
 
     await conn.beginTransaction();
+    await consumeUsage(conn,req.businessId!,req.userId!,'sales');
 
     const [qRows] = await conn.query<RowDataPacket[]>(
       'SELECT id, client_id, branch_id, status, total FROM quotes WHERE id = ? FOR UPDATE',

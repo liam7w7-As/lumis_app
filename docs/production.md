@@ -229,6 +229,8 @@ La versión 1.2 usa importaciones directas de Ionicons para no empaquetar las ot
 
 ## Actualización 1.3: guías personales y contraste
 
+Para el nuevo panel web, la migración 021 y las licencias por empresa, consulta [Desplegar el panel de administración](admin-deployment.md). Esa actualización mueve las empresas existentes a Gratis y contabiliza sus documentos anteriores.
+
 La versión 1.3 incorpora once guías interactivas, el botón ? en cada pantalla y Configuración → Centro de ayuda. Se puede continuar o repetir un recorrido, y cada usuario conserva su propio progreso aunque comparta empresa con otros vendedores. La app adapta los pasos a los permisos y al contenido disponible.
 
 Antes de probar la APK contra producción, desplegar en Hostinger el commit que contiene la ruta /api/tutorials y la migración 020_user_tutorials. El arranque crea una tabla nueva para los avances; no modifica los documentos ni los datos de empresa. Sin esta actualización, la API anterior responde 404 y el progreso no puede sincronizarse.

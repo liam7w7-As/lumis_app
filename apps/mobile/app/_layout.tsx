@@ -10,6 +10,7 @@ import { StatusBar } from 'expo-status-bar';
 import * as SystemUI from 'expo-system-ui';
 import { BusinessProvider } from '../src/context/BusinessContext';
 import { AuthProvider } from '../src/context/AuthContext';
+import { LicenseProvider } from '../src/context/LicenseContext';
 import { ThemeProvider, useTheme } from '../src/theme/ThemeContext';
 import { MotionProvider, useReducedMotion } from '../src/context/MotionContext';
 import { useStackMotion } from '../src/hooks/useStackMotion';
@@ -74,7 +75,7 @@ export default function RootLayout() {
     <ThemeProvider>
       <MotionProvider>
         <AuthProvider>
-          <BusinessProvider><TutorialProvider><ThemedNavigator /></TutorialProvider></BusinessProvider>
+          <LicenseProvider><BusinessProvider><TutorialProvider><ThemedNavigator /></TutorialProvider></BusinessProvider></LicenseProvider>
         </AuthProvider>
       </MotionProvider>
     </ThemeProvider>
