@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
 const path = require('node:path');
-const { createServer } = require('../dist/server.cjs');
+const { createServer } = require('../dist/server-app.cjs');
 test('servidor de producción: SPA, archivos y proxy restringido con cookies', async (t) => {
   let received;
   const upstream = http.createServer((req, res) => {

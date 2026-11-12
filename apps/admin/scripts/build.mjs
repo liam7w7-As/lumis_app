@@ -1,8 +1,7 @@
 import { copyFile, writeFile } from 'node:fs/promises';
-await copyFile(
-  new URL('../server.cjs', import.meta.url),
-  new URL('../dist/server.cjs', import.meta.url),
-);
+for (const file of ['server.cjs', 'server-app.cjs']) {
+  await copyFile(new URL('../' + file, import.meta.url), new URL('../dist/' + file, import.meta.url));
+}
 // El servidor usa solo módulos integrados de Node; Hostinger puede ejecutar dist aislado.
 await writeFile(
   new URL('../dist/package.json', import.meta.url),
