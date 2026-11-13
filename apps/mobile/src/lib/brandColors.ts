@@ -141,21 +141,6 @@ export function contrastText(hex: string): string {
   return dark >= 4.5 ? '#111111' : '#000000';
 }
 
-function ensureContrast(background: string, foreground: string, minimum = 4.8): string {
-  if (contrastRatio(background, foreground) >= minimum) return background;
-  const rgb = hexToRgb(background);
-  const destination = foreground === '#ffffff' ? 0 : 255;
-  let low = 0, high = 1;
-  const blend = (amount: number) => toHex(...rgb.map((value) =>
-    Math.round(value + (destination - value) * amount)) as [number, number, number]);
-  for (let attempt = 0; attempt < 24; attempt++) {
-    const middle = (low + high) / 2;
-    if (contrastRatio(blend(middle), foreground) >= minimum) high = middle;
-    else low = middle;
-  }
-  return blend(high);
-}
-
 export function readable(hex: string): string {
   return generatePalette(hex)['brand-600'] ?? '#5842f4';
 }
@@ -186,23 +171,6 @@ export function forDarkBackground(hex: string): string {
   const newL = l < 0.58 ? 0.65 : l > 0.78 ? 0.74 : l;
   const [nr, ng, nb] = hslToRgb(h, s, newL);
   return toHex(nr, ng, nb);
-}
-
-/** Par de paradas [claro, oscuro] para un gradiente derivado del color de marca. */
-export function gradientFor(hex: string): [string, string] {
-  const clean = hex.replace(/^#/, '');
-  if (clean.length !== 6 || !/^[0-9a-fA-F]{6}$/.test(clean)) {
-    return gradientFor('#5842f4');
-  }
-
-  const [r, g, b] = hexToRgb(clean);
-  const [h, s, l] = rgbToHsl(r, g, b);
-
-  const light = hslToHex(h * 360, Math.min(1, Math.max(s, 0.45)), Math.min(0.8, Math.max(0.7, l + 0.18)));
-  const dark = hslToHex(h * 360, Math.min(1, s * 1.05), Math.min(0.6, Math.max(0.4, l - 0.08)));
-
-  const foreground = contrastText(hex);
-  return [ensureContrast(light, foreground), ensureContrast(dark, foreground)];
 }
 
 export function forBackground(hex: string): string {

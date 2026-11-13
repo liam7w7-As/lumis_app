@@ -2,7 +2,7 @@ import { TutorialTarget, TutorialScrollView, TutorialHelpButton, useTutorialAvai
 import { LicenseStatusCard } from '../components/LicenseStatusCard';
 import { useTutorial } from '../tutorials/TutorialContext';
 import { feedback } from '../lib/feedback';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect } from 'expo-router';
@@ -10,8 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBusiness } from '../context/BusinessContext';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
-import { gradientFor } from '../lib/brandColors';
-import { GradientCard } from '../components/GradientCard';
+import { ActionCard } from '../components/ActionCard';
 import { SegmentedTabs } from '../components/SegmentedTabs';
 import { MiniBarChart } from '../components/MiniBarChart';
 import { Logo } from '../components/Logo';
@@ -103,7 +102,6 @@ function DashboardScreenContent() {
 
   const firstName = user?.name?.split(' ')[0] || user?.username || '';
   const stats = data?.period === period ? data : null;
-  const gradient = useMemo(() => gradientFor(colors.primary), [colors.primary]);
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
@@ -140,22 +138,18 @@ function DashboardScreenContent() {
         <LicenseStatusCard onlyReadOnly />
 
         <TutorialTarget id="modules" ><View style={styles.cards}>
-          <TutorialTarget id="quotes" style={{ flex: 1 }}><GradientCard
+          <TutorialTarget id="quotes" style={{ flex: 1 }}><ActionCard
             title="Cotizaciones"
-            gradient={gradient}
-            textColor={colors.onPrimary}
             onPress={() => { tutorial.notify('open-quotes'); router.push('/quotes'); }}
           >
             <Ionicons name="cart-outline" size={30} color={colors.onPrimary} />
-          </GradientCard></TutorialTarget>
-          <GradientCard
+          </ActionCard></TutorialTarget>
+          <ActionCard
             title="Punto de venta"
-            gradient={gradient}
-            textColor={colors.onPrimary}
             onPress={() => router.push('/pos')}
           >
             <Text style={[styles.dollar, { color: colors.onPrimary }]}>$</Text>
-          </GradientCard>
+          </ActionCard>
         </View></TutorialTarget>
 
         <View

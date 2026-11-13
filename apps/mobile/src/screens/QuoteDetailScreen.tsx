@@ -482,10 +482,12 @@ function QuoteDetailScreenContent() {
         })}
 
         {editable && (
-          <PrimaryButton
-            title={proLocked?'Pro · Añadir producto':'+  Añadir producto'} icon={proLocked?'lock-closed-outline':undefined}
-            onPress={() => {if(requestEdit())router.push(`/quotes/${quote.id}/add-item`);}}
-          />
+          <View style={styles.addProductButton}>
+            <PrimaryButton
+              title={proLocked?'Pro · Añadir producto':'+  Añadir producto'} icon={proLocked?'lock-closed-outline':undefined}
+              onPress={() => {if(requestEdit())router.push(`/quotes/${quote.id}/add-item`);}}
+            />
+          </View>
         )}
 
         <View style={styles.totalRow}>
@@ -724,6 +726,9 @@ const styles = StyleSheet.create({
     fontFamily: 'Poppins',
     fontWeight: '700',
     flex: 1,
+  },
+  addProductButton: {
+    marginTop: 16,
   },
   itemCard: {
     borderRadius: 14,

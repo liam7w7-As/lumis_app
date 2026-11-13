@@ -981,7 +981,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
         {renderLines()}
 
         {canEditLines && (hasItems ? (
-          <TutorialTarget id="products"><PrimaryButton
+          <TutorialTarget id="products" style={styles.addProductButton}><PrimaryButton
             title={isDetail&&editAccess.proLocked?'Pro · Añadir producto':'+  Añadir producto'} icon={isDetail&&editAccess.proLocked?'lock-closed-outline':undefined}
             onPress={() =>
               {if(!isDetail||editAccess.requestEdit()){tutorial.notify('product');router.push(`${basePath}/item`);}}
@@ -1302,6 +1302,9 @@ const styles = StyleSheet.create({
     borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  addProductButton: {
+    marginTop: 16,
   },
   outlineButton: {
     borderWidth: 1.5,

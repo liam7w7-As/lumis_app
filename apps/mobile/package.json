@@ -44,7 +44,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "expo lint",
     "sync:pdfjs": "node scripts/sync-pdfjs.cjs",
-    "assets:brand": "node scripts/prepare-brand.cjs"
+    "assets:brand": "node scripts/prepare-brand.cjs",
+    "assets:novaled": "node scripts/prepare-novaled-brand.cjs"
   },
   "private": true
 }
