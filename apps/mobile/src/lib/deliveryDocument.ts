@@ -3,6 +3,7 @@ import { monto as montoLetras } from './numeroALetras';
 import type { DocImages, DocFonts } from './docAssets';
 import type { DocBusiness } from './quoteDocument';
 import type { SaleDetail } from './api';
+import { documentColumns } from './documentColumns';
 
 function escapeHtml(value: string): string {
   return value
@@ -43,6 +44,8 @@ export function buildDeliveryNoteHtml(input: {
   fonts: DocFonts;
 }): string {
   const { sale, business, branchName, images, fonts } = input;
+  const columns=documentColumns(business,sale.items);
+  const isDelivery=input.documentType!=='sale';
 
   const title = input.documentType === 'sale' ? 'NOTA DE VENTA' : 'NOTA DE ENTREGA';
   const label = input.documentType === 'sale' ? 'Nota de venta' : 'Nota de entrega';
@@ -80,8 +83,8 @@ export function buildDeliveryNoteHtml(input: {
         <td class="col-num">${i + 1}</td>
         <td class="col-code">${escapeHtml(it.codigoInterno ?? '-')}</td>
         <td class="col-art"><span class="art-name">${escapeHtml(it.description)}</span></td>
-        <td class="col-brand">${escapeHtml(it.marca ?? '-')}</td>
-        <td class="col-origin">${escapeHtml(it.procedencia ?? '-')}</td>
+        ${columns.showBrand?`<td class="col-brand">${escapeHtml(it.marca ?? '')}</td>`:''}
+        ${columns.showOrigin?`<td class="col-origin">${escapeHtml(it.procedencia ?? '')}</td>`:''}
         <td class="col-qty">${fmtQty(it.quantity)}</td>
         <td class="col-unit">${escapeHtml(it.unit || 'Unidad')}</td>
         <td class="col-price col-money">${escapeHtml(moneda)} ${fmtMoney(it.unitPrice)}</td>
@@ -95,8 +98,7 @@ export function buildDeliveryNoteHtml(input: {
   const iconImg = (src: string | null, alt: string) =>
     src ? `<img src="${src}" class="footer-icon" alt="${alt}">` : '';
 
-  // El sello (con la firma encima) es opcional por venta; las etiquetas
-  // «Entregué conforme» / «Recibí conforme» siempre van.
+  // Las firmas y el sello de recepción pertenecen a la nota de entrega.
   const sealImages = (() => {
     if (!sale.includeSello) {
       return '<div class="seal-container"></div>';
@@ -159,7 +161,7 @@ export function buildDeliveryNoteHtml(input: {
   .items tbody tr.row-even td.col-money { background: #ced3da; }
   .col-num { width: 4%; text-align: center; }
   .col-code { width: 11%; text-align: left; font-size: 7pt; word-wrap: break-word; }
-  .col-art { width: 30%; text-align: left; }
+  .col-art { width: ${columns.articleWidth}%; text-align: left; }
   .col-brand, .col-origin { width: 9%; text-align: center; }
   .col-qty { width: 6%; text-align: center; white-space: nowrap; }
   .col-unit { width: 8%; text-align: center; }
@@ -253,8 +255,8 @@ export function buildDeliveryNoteHtml(input: {
       <th class="col-num">N°</th>
       <th class="col-code">Código interno</th>
       <th class="col-art">Artículo</th>
-      <th class="col-brand">Marca</th>
-      <th class="col-origin">Procedencia</th>
+      ${columns.showBrand?'<th class="col-brand">Marca</th>':''}
+      ${columns.showOrigin?'<th class="col-origin">Procedencia</th>':''}
       <th class="col-qty">Cant.</th>
       <th class="col-unit">Unidad</th>
       <th class="col-price">Precio unitario</th>
@@ -264,7 +266,7 @@ export function buildDeliveryNoteHtml(input: {
   <tbody>
     ${rows}
   </tbody>
-  <tfoot aria-hidden="true"><tr><td colspan="9"></td></tr></tfoot>
+  <tfoot aria-hidden="true"><tr><td colspan="${columns.count}"></td></tr></tfoot>
 </table>
 
 <table class="totals-wrap">
@@ -281,7 +283,7 @@ export function buildDeliveryNoteHtml(input: {
   </tr>
 </table>
 
-<div class="signature-section">
+${isDelivery?`<div class="signature-section">
   <table class="signature-table">
     <tr>
       <td class="signature-cell">
@@ -296,7 +298,7 @@ export function buildDeliveryNoteHtml(input: {
       </td>
     </tr>
   </table>
-</div>
+</div>`:''}
 
 </body>
 </html>`;

@@ -2,6 +2,7 @@ import { ActivityIndicator, Animated, Pressable, StyleSheet, Text } from 'react-
 import type { StyleProp, ViewStyle } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { usePressMotion } from '../hooks/usePressMotion';
+import Ionicons from '@expo/vector-icons/Ionicons';
 
 interface PrimaryButtonProps {
   title: string;
@@ -9,9 +10,10 @@ interface PrimaryButtonProps {
   disabled?: boolean;
   loading?: boolean;
   style?: StyleProp<ViewStyle>;
+  icon?:keyof typeof Ionicons.glyphMap;
 }
 
-export function PrimaryButton({ title, onPress, disabled, loading, style }: PrimaryButtonProps) {
+export function PrimaryButton({ title, onPress, disabled, loading, style, icon }: PrimaryButtonProps) {
   const { colors } = useTheme();
   const inactive = !!(disabled || loading);
   const { scale, onPressIn, onPressOut } = usePressMotion(inactive);
@@ -33,7 +35,7 @@ export function PrimaryButton({ title, onPress, disabled, loading, style }: Prim
         {loading ? (
           <ActivityIndicator color={colors.onPrimary} />
         ) : (
-          <Text style={[styles.text, { color: colors.onPrimary }]}>{title}</Text>
+          <>{icon&&<Ionicons name={icon} size={20} color={colors.onPrimary}/>}<Text style={[styles.text, { color: colors.onPrimary }]}>{title}</Text></>
         )}
       </Animated.View>
     </Pressable>
@@ -42,6 +44,7 @@ export function PrimaryButton({ title, onPress, disabled, loading, style }: Prim
 
 const styles = StyleSheet.create({
   button: {
+    flexDirection:'row',justifyContent:'center',gap:8,
     borderRadius: 28,
     paddingVertical: 16,
     alignItems: 'center',

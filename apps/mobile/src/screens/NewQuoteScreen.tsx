@@ -43,6 +43,7 @@ function NewQuoteScreenContent() {
   const [branchId, setBranchId] = useState<number | null>(null);
   const [branchesOpen, setBranchesOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const submitLock=useRef(false);
   const pending = useLegacyPending('/api/quotes');
   const restored = useRef<unknown>(null);
   useEffect(() => {
@@ -78,11 +79,12 @@ function NewQuoteScreenContent() {
   const total = items.reduce((sum, it) => sum + it.quantity * it.unitPrice, 0);
 
   const save = async () => {
-    if (!token) return;
+    if (!token || submitLock.current) return;
     if (items.length === 0) {
       feedback.alert('Sin artículos', 'Agrega al menos un artículo a la cotización');
       return;
     }
+    submitLock.current=true;
     setSaving(true);
     try {
       const { quote } = await api.createQuote(
@@ -101,18 +103,12 @@ function NewQuoteScreenContent() {
         },
         token,
       );
-      feedback.alert('Cotización creada', `Se creó la cotización #${quote.number ?? quote.id}`, [
-        {
-          text: 'OK',
-          onPress: () => {
-            clear();
-            router.back();
-          },
-        },
-      ]);
+      clear();
+      router.replace(`/quotes/${quote.id}/preview?created=1`);
     } catch (err) {
       feedback.alert('Error', err instanceof ApiError ? err.message : 'No se pudo guardar');
     } finally {
+      submitLock.current=false;
       setSaving(false);
     }
   };
@@ -243,6 +239,7 @@ function NewQuoteScreenContent() {
             </Text>
           </View>
         )}
+        <PrimaryButton title="Guardar y ver PDF" onPress={() => { void save(); }} loading={saving} disabled={items.length===0}/>
         </View>
       </TutorialScrollView>
 

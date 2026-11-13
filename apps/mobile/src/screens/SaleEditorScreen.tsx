@@ -41,6 +41,8 @@ import { PrimaryButton } from '../components/PrimaryButton';
 import { SegmentedTabs } from '../components/SegmentedTabs';
 import { SalePaymentSection } from '../components/SalePaymentSection';
 import { ClientPickerModal } from '../components/ClientPickerModal';
+import { useDocumentEditAccess } from '../hooks/useDocumentEditAccess';
+import { ProBadge } from '../components/ProBadge';
 
 type DocTab = 'venta' | 'entrega';
 type LineKey = string | number;
@@ -70,6 +72,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
   const { colors } = useTheme();
   const formatMoney = useMoney();
   const { token, user } = useAuth();
+  const editAccess=useDocumentEditAccess();
   const insets = useSafeAreaInsets();
   const { client, setClient, items, addItem, updateItem, removeItem, clear } = useDraft();
 
@@ -91,6 +94,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
   const [agentId, setAgentId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const submitLock=useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [ordering, setOrdering] = useState(false);
   const [lineBusy, setLineBusy] = useState(false);
@@ -216,12 +220,14 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
 
   const openEditor = (key: LineKey, quantity: number, unitPrice: number) => {
     if (!canEditLines) return;
+    if(isDetail&&!editAccess.requestEdit())return;
     setExpanded(key);
     setEditQty(String(quantity));
     setEditPrice(String(unitPrice));
   };
 
   const saveSavedItem = async (itemId: number) => {
+    if(!editAccess.requestEdit())return;
     if (!token || saleId == null) return;
     const quantity = parseNum(editQty);
     const unitPrice = parseNum(editPrice);
@@ -239,6 +245,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
   };
 
   const removeSavedItem = async (itemId: number) => {
+    if(!editAccess.requestEdit())return;
     if (!token || saleId == null) return;
     try {
       await api.deleteSaleItem(saleId, itemId, token);
@@ -371,6 +378,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
       return;
     }
     if (!token || saleId == null) return;
+    if(!editAccess.requestEdit())return;
     try {
       await api.updateSale(saleId, { clientId: picked.id }, token);
       setSale((prev) =>
@@ -395,6 +403,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
       return;
     }
     if (!token || saleId == null) return;
+    if(!editAccess.requestEdit())return;
     try {
       await api.updateSale(saleId, { branchId: picked.id }, token);
       setSale((prev) => (prev ? { ...prev, branchId: picked.id, branchName: picked.name } : prev));
@@ -409,6 +418,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
       return;
     }
     if (!token || saleId == null || isVoided) throw new Error('Esta venta no admite cambios.');
+    if(!editAccess.requestEdit())return;
     const result = await api.updateSale(saleId, { createdAt }, token);
     setSale((prev) => prev ? { ...prev, createdAt: result.createdAt ?? createdAt } : prev);
   };
@@ -420,6 +430,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
       return;
     }
     if (!token || saleId == null) return;
+    if(!editAccess.requestEdit())return;
     try {
       const res = await api.updateSale(saleId, { agentId: picked?.id ?? null }, token);
       setAgentId(picked?.id ?? null);
@@ -504,7 +515,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
   };
 
   const handleRealizar = async () => {
-    if (!token) return;
+    if (!token || submitLock.current) return;
 
     if (metodo === 'qr' && !hasReceipt) {
       feedback.alert('Falta la boleta', 'Adjunta la boleta de pago para registrar la venta.');
@@ -570,6 +581,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
       feedback.alert('Venta vacía', 'Agrega al menos un producto.');
       return;
     }
+    submitLock.current=true;
     setSaving(true);
     try {
       const { sale: created } = await api.createSale(
@@ -598,16 +610,12 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
         }
       }
       clear();
-      feedback.alert(
-        'Venta realizada',
-        receiptWarning
-          ? `Se generó la venta #${created.number ?? created.id}, pero el comprobante no se pudo subir. Adjúntalo desde el detalle.`
-          : `Se generó la venta #${created.number ?? created.id}.`,
-        [{ text: 'OK', onPress: () => router.replace(`/pos/${created.id}`) }],
-      );
+      router.replace(`/pos/${created.id}/preview?created=1`);
+      if(receiptWarning)feedback.warning('Venta guardada',`La venta #${created.number??created.id} está guardada. El comprobante no se pudo subir; puedes adjuntarlo desde el detalle.`);
     } catch (err) {
       showApiError(err, 'No se pudo crear la venta');
     } finally {
+      submitLock.current=false;
       setSaving(false);
     }
   };
@@ -657,12 +665,14 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
   };
   const persistLineDraft = async () => {
     if (!token || saleId == null || typeof expanded !== "number") return;
+    if(!editAccess.canEdit)return;
     const quantity = parseNum(editQty), unitPrice = parseNum(editPrice);
     if (quantity == null || quantity <= 0 || unitPrice == null || unitPrice < 0) throw new Error("Revisa la cantidad y el precio.");
     await api.updateSaleItem(saleId, expanded, { quantity, unitPrice }, token);
     setExpanded(null);
   };
   const duplicateLine = async (itemId: number) => {
+    if(!editAccess.requestEdit())return;
     if (!token || saleId == null || lineBusy) return;
     setLineBusy(true);
     try { await persistLineDraft(); await api.duplicateItem('sales', saleId, itemId, token); await refreshLineItems(); }
@@ -670,15 +680,16 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
     finally { setLineBusy(false); }
   };
   const reorderLines = async (ids: number[]) => {
+    if(!editAccess.requestEdit())return;
     if (!token || saleId == null) return;
     await persistLineDraft(); await api.reorderItems('sales', saleId, ids, token); await refreshLineItems();
   };
   const renderLines = () => {
     if (isDetail) {
       return (sale?.items ?? []).map((it, index) => (
-        <ItemSwipe tutorialRow={index === 0} key={it.id} disabled={isVoided || lineBusy || !canEditLines} onEdit={() => openEditor(it.id, it.quantity, it.unitPrice)}
-          onDelete={() => feedback.alert("Quitar producto", it.description, [{ text: "Cancelar", style: "cancel" }, { text: "Eliminar", style: "destructive", onPress: () => { void removeSavedItem(it.id); } }])}
-          onDuplicate={() => { void duplicateLine(it.id); }} onMove={() => setOrdering(true)}>
+        <ItemSwipe tutorialRow={index === 0} key={it.id} proLocked={editAccess.proLocked} disabled={isVoided || lineBusy || !canEditLines} onEdit={() => openEditor(it.id, it.quantity, it.unitPrice)}
+          onDelete={() => {if(editAccess.requestEdit())feedback.alert("Quitar producto", it.description, [{ text: "Cancelar", style: "cancel" }, { text: "Eliminar", style: "destructive", onPress: () => { void removeSavedItem(it.id); } }]);}}
+          onDuplicate={() => { void duplicateLine(it.id); }} onMove={() => {if(editAccess.requestEdit())setOrdering(true);}}>
         <View style={[styles.itemCard, { backgroundColor: colors.surface }]}>
           <View style={styles.itemHead}>
             <View style={[styles.itemBadge, { backgroundColor: colors.primary }]}>
@@ -867,12 +878,12 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
         {!isDetail && pending && !saving && <Text style={{ color: colors.muted, fontFamily: 'Poppins', marginVertical: 12 }}>Envío pendiente. Pulsa Guardar para confirmar esta misma venta.</Text>}
         <View pointerEvents={!isDetail && pending ? 'none' : 'auto'}>
         <View style={styles.metaRow}>
-          <TutorialTarget id="date" ><Pressable style={styles.dateWrap} onPress={() => setDateOpen(true)}
+          <TutorialTarget id="date" ><Pressable style={styles.dateWrap} onPress={() => {if(!isDetail||editAccess.requestEdit())setDateOpen(true);}}
             accessibilityRole="button" accessibilityLabel="Editar fecha de la venta" disabled={isVoided || loading || IS_NOVALED}>
             <Text style={[styles.metaMuted, { color: colors.muted }]}>
               Fecha {dayMonthYear(sale?.createdAt ?? draftCreatedAt ?? new Date().toISOString())}
             </Text>
-            {!isVoided && !IS_NOVALED && <Ionicons name="pencil-outline" size={13} color={colors.muted} />}
+            {!isVoided && !IS_NOVALED && (isDetail&&editAccess.proLocked?<ProBadge/>:<Ionicons name="pencil-outline" size={13} color={colors.muted} />)}
           </Pressable></TutorialTarget>
           <Text style={[styles.metaDoc, { color: colors.muted }]}>
             {docTab === 'entrega'
@@ -921,7 +932,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
         <TutorialTarget id="seller" ><View style={[styles.vendorCard, { backgroundColor: colors.surface }]}>
           <Pressable
             style={styles.vendorBlock}
-            onPress={() => setAgentsOpen(true)}
+            onPress={() => {if(!isDetail||editAccess.requestEdit())setAgentsOpen(true);}}
             disabled={isVoided}
           >
             <Text style={[styles.vendorLabel, { color: colors.text }]}>Vendedor</Text>
@@ -930,18 +941,18 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
               <Text style={[styles.vendorText, { color: colors.muted }]} numberOfLines={1}>
                 {(sellerName || '—').toUpperCase()}
               </Text>
-              {!isVoided && <Ionicons name="chevron-down" size={13} color={colors.muted} />}
+              {!isVoided && (isDetail&&editAccess.proLocked?<ProBadge/>:<Ionicons name="chevron-down" size={13} color={colors.muted} />)}
             </View>
           </Pressable>
           <View style={[styles.vendorDivider, { backgroundColor: colors.border }]} />
-          <Pressable style={styles.vendorBlock} onPress={() => setBranchesOpen(true)} disabled={sale?.canChangeBranch === false}>
+          <Pressable style={styles.vendorBlock} onPress={() => {if(!isDetail||editAccess.requestEdit())setBranchesOpen(true);}} disabled={sale?.canChangeBranch === false}>
             <Text style={[styles.vendorLabel, { color: colors.text }]}>Sucursal</Text>
             <View style={styles.vendorValue}>
               <Ionicons name="storefront-outline" size={14} color={colors.muted} />
               <Text style={[styles.vendorText, { color: colors.muted }]} numberOfLines={1}>
                 {branchName ?? 'Sin sucursal'}
               </Text>
-              <Ionicons name="chevron-down" size={13} color={colors.muted} />
+              {isDetail&&editAccess.proLocked?<ProBadge/>:<Ionicons name="chevron-down" size={13} color={colors.muted} />}
             </View>
           </Pressable>
         </View></TutorialTarget>
@@ -949,19 +960,19 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
         <TutorialTarget id="client" ><View>
           <Text style={[styles.fieldLabel, { color: colors.muted }]}>Cliente / Empresa</Text>
           {clientName ? (
-            <Pressable style={styles.clientRow} onPress={() => setClientsOpen(true)} disabled={sale?.canChangeBranch === false}>
+            <Pressable style={styles.clientRow} onPress={() => {if(!isDetail||editAccess.requestEdit())setClientsOpen(true);}} disabled={sale?.canChangeBranch === false}>
               <Text style={[styles.clientName, { color: colors.text }]}>{clientName}</Text>
-              <Ionicons name="chevron-forward" size={18} color={colors.icon} />
+              {isDetail&&editAccess.proLocked?<ProBadge/>:<Ionicons name="chevron-forward" size={18} color={colors.icon} />}
             </Pressable>
           ) : (
             <PrimaryButton
               title="+  Añadir cliente"
-              onPress={() => (tutorial.notify('client'), router.push(`${basePath}/client`))}
+              onPress={() => {if(isDetail){if(editAccess.requestEdit())setClientsOpen(true);}else{tutorial.notify('client');router.push(`${basePath}/client`);}}}
             />
           )}
           {clientName && sale?.canChangeBranch !== false && (
-            <Pressable style={styles.clientPick} onPress={() => setClientsOpen(true)}>
-              <Ionicons name="swap-horizontal" size={14} color={colors.primary} />
+            <Pressable style={styles.clientPick} onPress={() => {if(!isDetail||editAccess.requestEdit())setClientsOpen(true);}}>
+              {isDetail&&editAccess.proLocked?<ProBadge/>:<Ionicons name="swap-horizontal" size={14} color={colors.primary} />}
               <Text style={[styles.clientPickText, { color: colors.primary }]}>Cambiar</Text>
             </Pressable>
           )}
@@ -971,15 +982,15 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
 
         {canEditLines && (hasItems ? (
           <TutorialTarget id="products"><PrimaryButton
-            title="+  Añadir producto"
+            title={isDetail&&editAccess.proLocked?'Pro · Añadir producto':'+  Añadir producto'} icon={isDetail&&editAccess.proLocked?'lock-closed-outline':undefined}
             onPress={() =>
-              (tutorial.notify('product'), router.push(isDetail ? `${basePath}/item` : `${basePath}/item`))
+              {if(!isDetail||editAccess.requestEdit()){tutorial.notify('product');router.push(`${basePath}/item`);}}
             }
           /></TutorialTarget>
         ) : (
           <TutorialTarget id="products"><Pressable
             style={[styles.outlineButton, { borderColor: colors.primary }]}
-            onPress={() => (tutorial.notify('product'), router.push(`${basePath}/item`))}
+            onPress={() => {if(!isDetail||editAccess.requestEdit()){tutorial.notify('product');router.push(`${basePath}/item`);}}}
           >
             <Text style={[styles.outlineText, { color: colors.primary }]}>+  Añadir artículo</Text>
           </Pressable></TutorialTarget>
@@ -1023,7 +1034,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
                 {!(isDetail && metodo === 'por_pagar') && (
                   <PrimaryButton
                     title={
-                      isVoided
+                      !isDetail?'Guardar y ver PDF':isVoided
                         ? 'Venta anulada'
                         : isPaid
                           ? 'Venta pagada'
@@ -1041,6 +1052,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
           </>
         )}
         </View>
+        {isDetail&&<PrimaryButton title="Ver PDF de la venta" onPress={() => router.push(`/pos/${saleId}/preview`)}/>}
       </TutorialScrollView>
 
       {dateOpen && <DatePickerModal value={sale?.createdAt ?? draftCreatedAt ?? new Date().toISOString()}

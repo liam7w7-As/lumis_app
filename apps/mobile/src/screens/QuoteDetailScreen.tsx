@@ -24,6 +24,9 @@ import { ItemSwipe } from '../components/ItemSwipe';
 import { ReorderItemsModal } from '../components/ReorderItemsModal';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { STATUS_COLOR, STATUS_LABEL } from '../components/QuoteCard';
+import { useDocumentEditAccess } from '../hooks/useDocumentEditAccess';
+import { ProBadge } from '../components/ProBadge';
+import { changedQuoteOptions } from '../lib/quoteOptions';
 
 function parseNum(raw: string): number {
   return Number.parseFloat(raw.replace(',', '.'));
@@ -36,6 +39,7 @@ function QuoteDetailScreenContent() {
   const { colors } = useTheme();
   const formatMoney = useMoney();
   const { business } = useBusiness();
+  const {canEdit,proLocked,requestEdit,access}=useDocumentEditAccess();
   const insets = useSafeAreaInsets();
 
   const [quote, setQuote] = useState<QuoteDetail | null>(null);
@@ -101,6 +105,7 @@ function QuoteDetailScreenContent() {
   const saveable = quote != null && quote.status !== 'convertida';
 
   const saveDate = async (createdAt: string) => {
+    if(!requestEdit())return;
     if (!token || !quote || !saveable) throw new Error('Esta cotización no admite cambios.');
     const request = requestId.current;
     const result = await api.updateQuote(quote.id, { createdAt }, token);
@@ -115,6 +120,7 @@ function QuoteDetailScreenContent() {
   };
   const persistItemDraft = async () => {
     if (!token || !quote || !editable || expandedItem == null) return;
+    if(!canEdit) return;
     const item = quote.items.find((entry) => entry.id === expandedItem);
     if (!item) return;
     const quantity = parseNum(editQty), unitPrice = parseNum(editPrice);
@@ -123,6 +129,7 @@ function QuoteDetailScreenContent() {
     setExpandedItem(null);
   };
   const duplicateItem = async (item: QuoteItem) => {
+    if(!requestEdit())return;
     if (!token || !quote || itemBusy) return;
     setItemBusy(true);
     try { await persistItemDraft(); await api.duplicateItem('quotes', quote.id, item.id, token); await refreshItems(); }
@@ -130,24 +137,27 @@ function QuoteDetailScreenContent() {
     finally { setItemBusy(false); }
   };
   const reorderItems = async (ids: number[]) => {
+    if(!requestEdit())return;
     if (!token || !quote) return;
     await persistItemDraft(); await api.reorderItems('quotes', quote.id, ids, token); await refreshItems();
   };
   const persistDocumentOptions = async () => {
-    if (!token || !quote || !saveable) return;
-    const patch = { notes: notes.trim() || null, includeSeal, showNotes, includeSignature };
-    if (patch.notes === quote.notes && includeSeal === quote.includeSeal
-      && showNotes === quote.showNotes && includeSignature === quote.includeSignature) return;
+    if (!token || !quote || !saveable) return true;
+    const patch=changedQuoteOptions(quote,{notes,includeSeal,showNotes,includeSignature});
+    if(Object.keys(patch).length===0)return true;
+    if(patch.notes!==undefined && !requestEdit())return false;
     await api.updateQuote(quote.id, patch, token);
     setQuote({ ...quote, ...patch });
+    return true;
   };
 
   const save = async () => {
     if (!token || !quote || saving) return;
+    if (access === 'read_only' || access === 'checking') { requestEdit(); return; }
     setSaving(true);
     try {
       await persistItemDraft();
-      await persistDocumentOptions();
+      if (!await persistDocumentOptions()) return;
       feedback.alert('Guardado', 'Cambios guardados');
       await refreshItems();
     } catch (err) {
@@ -161,8 +171,10 @@ function QuoteDetailScreenContent() {
     if (!token || !quote || saving || itemBusy) return;
     setSaving(true);
     try {
-      await persistItemDraft();
-      await persistDocumentOptions();
+      if(access==='allowed' || access==='pro'){
+        await persistItemDraft();
+        if (!await persistDocumentOptions()) return;
+      }
       router.push(`/quotes/${quote.id}/preview`);
     } catch (err) {
       feedback.alert('Error', err instanceof Error ? err.message : 'No se pudieron guardar las opciones del documento');
@@ -173,6 +185,7 @@ function QuoteDetailScreenContent() {
 
   const applyStatus = async (status: 'borrador' | 'aprobada' | 'rechazada') => {
     if (!token || !quote) return;
+    if (access === 'read_only' || access === 'checking') { requestEdit(); return; }
     try {
       await api.updateQuote(quote.id, { status }, token);
       load();
@@ -198,6 +211,7 @@ function QuoteDetailScreenContent() {
 
   const toggleItem = (item: QuoteItem) => {
     if (!editable) return;
+    if(!requestEdit())return;
     if (expandedItem === item.id) {
       setExpandedItem(null);
       return;
@@ -208,6 +222,7 @@ function QuoteDetailScreenContent() {
   };
 
   const saveItem = async (item: QuoteItem) => {
+    if(!requestEdit())return;
     if (!token || !quote) return;
     const qty = parseNum(editQty);
     const price = parseNum(editPrice);
@@ -232,6 +247,7 @@ function QuoteDetailScreenContent() {
   };
 
   const removeItem = (item: QuoteItem) => {
+    if(!requestEdit())return;
     if (!token || !quote) return;
     feedback.alert('Quitar artículo', `¿Quitar "${item.description}"?`, [
       { text: 'Cancelar', style: 'cancel' },
@@ -277,6 +293,7 @@ function QuoteDetailScreenContent() {
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <TutorialScrollView
+        keyboardShouldPersistTaps="handled"
         contentContainerStyle={[
           styles.scroll,
           { paddingTop: insets.top + 8, paddingBottom: 32 + insets.bottom },
@@ -306,12 +323,12 @@ function QuoteDetailScreenContent() {
         </View>
 
         <View style={styles.metaRow}>
-          <TutorialTarget id="date" ><Pressable style={styles.dateWrap} onPress={() => setDateOpen(true)}
+          <TutorialTarget id="date" ><Pressable style={styles.dateWrap} onPress={() => {if(requestEdit())setDateOpen(true);}}
             accessibilityRole="button" accessibilityLabel="Editar fecha de la cotización" disabled={!saveable || saving || itemBusy || quote.canEditDate === false}>
             <Text style={[styles.metaText, { color: colors.muted }]}>
               Fecha {formatDate(quote.createdAt)}
             </Text>
-            {saveable && quote.canEditDate !== false && <Ionicons name="pencil-outline" size={13} color={colors.muted} />}
+            {saveable && quote.canEditDate !== false && (proLocked?<ProBadge/>:<Ionicons name="pencil-outline" size={13} color={colors.muted} />)}
           </Pressable></TutorialTarget>
           <Text style={[styles.metaText, { color: colors.muted }]}>
             COTIZACIÓN Nº {quote.number ?? quote.id}
@@ -371,8 +388,8 @@ function QuoteDetailScreenContent() {
         {quote.items.map((item, index) => {
           const expanded = expandedItem === item.id;
           return (
-            <ItemSwipe tutorialRow={index === 0} key={item.id} disabled={!editable || itemBusy} onEdit={() => { if (!expanded) toggleItem(item); }}
-              onDelete={() => removeItem(item)} onDuplicate={() => { void duplicateItem(item); }} onMove={() => setOrdering(true)}>
+            <ItemSwipe tutorialRow={index === 0} key={item.id} proLocked={proLocked} disabled={!editable || itemBusy} onEdit={() => { if (!expanded) toggleItem(item); }}
+              onDelete={() => removeItem(item)} onDuplicate={() => { void duplicateItem(item); }} onMove={() => {if(requestEdit())setOrdering(true);}}>
             <View style={[styles.itemCard, { backgroundColor: colors.surface }]}>
               <Pressable onPress={() => toggleItem(item)} disabled={!editable}>
                 <View style={styles.itemRow}>
@@ -392,13 +409,13 @@ function QuoteDetailScreenContent() {
                   <Text style={[styles.itemSubtotal, { color: colors.text }]}>
                     {formatMoney(item.subtotal)}
                   </Text>
-                  {editable && (
+                  {editable && (proLocked?<ProBadge/>:(
                     <Ionicons
                       name={expanded ? 'chevron-down' : 'chevron-back'}
                       size={18}
                       color={colors.muted}
                     />
-                  )}
+                  ))}
                 </View>
               </Pressable>
               {expanded && (
@@ -466,8 +483,8 @@ function QuoteDetailScreenContent() {
 
         {editable && (
           <PrimaryButton
-            title="+  Añadir producto"
-            onPress={() => router.push(`/quotes/${quote.id}/add-item`)}
+            title={proLocked?'Pro · Añadir producto':'+  Añadir producto'} icon={proLocked?'lock-closed-outline':undefined}
+            onPress={() => {if(requestEdit())router.push(`/quotes/${quote.id}/add-item`);}}
           />
         )}
 
@@ -480,7 +497,7 @@ function QuoteDetailScreenContent() {
 
         {saveable && (
           <>
-            <TutorialTarget id="options" ><Pressable style={styles.toggleRow} onPress={() => setIncludeSeal(!includeSeal)}>
+            <TutorialTarget id="options" ><Pressable style={styles.toggleRow} onPress={() => { if (access === 'read_only' || access === 'checking') { requestEdit(); return; } setIncludeSeal(!includeSeal); }}>
               <Text style={[styles.toggleLabel, { color: colors.text }]}>Incluir sello</Text>
               <View
                 style={[
@@ -492,7 +509,7 @@ function QuoteDetailScreenContent() {
                 {includeSeal && <Ionicons name="checkmark" size={14} color={colors.onPrimary} />}
               </View>
             </Pressable></TutorialTarget>
-            <Pressable style={styles.toggleRow} onPress={() => setShowNotes(!showNotes)}>
+            <Pressable style={styles.toggleRow} onPress={() => { if (access === 'read_only' || access === 'checking') { requestEdit(); return; } setShowNotes(!showNotes); }}>
               <Text style={[styles.toggleLabel, { color: colors.text }]}>Notas adicionales</Text>
               <View
                 style={[
@@ -506,7 +523,7 @@ function QuoteDetailScreenContent() {
             </Pressable>
             <Pressable
               style={styles.toggleRow}
-              onPress={() => setIncludeSignature(!includeSignature)}
+              onPress={() => { if (access === 'read_only' || access === 'checking') { requestEdit(); return; } setIncludeSignature(!includeSignature); }}
             >
               <Text style={[styles.toggleLabel, { color: colors.text }]}>Pie de firma</Text>
               <View
@@ -525,18 +542,21 @@ function QuoteDetailScreenContent() {
         )}
 
         {showNotes && saveable && (
-          <TextInput
+          <View><Pressable accessibilityRole="button" onPress={() => {if(!canEdit)requestEdit();}} style={{flexDirection:'row',alignItems:'center',gap:8,marginBottom:8}}>
+            <Text style={[styles.toggleLabel,{color:colors.text}]}>Texto de las notas</Text>{proLocked&&<ProBadge/>}
+          </Pressable><TextInput
             style={[
               styles.notesBox,
               { color: colors.text, borderColor: colors.border, backgroundColor: colors.surface },
             ]}
             value={notes}
+            editable={canEdit}
             onChangeText={setNotes}
             placeholder="Notas adicionales"
             placeholderTextColor={colors.muted}
             multiline
             textAlignVertical="top"
-          />
+          /></View>
         )}
 
         <TutorialTarget id="preview" ><PrimaryButton

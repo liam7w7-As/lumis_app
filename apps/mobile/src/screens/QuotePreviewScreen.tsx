@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { router,useLocalSearchParams } from 'expo-router';
 import { DocumentPreviewScreen, type DocumentSource } from '../components/DocumentPreviewScreen';
 import { api, mediaUrl } from '../lib/api';
 import { documentBusiness } from '../lib/documentBusiness';
@@ -8,6 +9,7 @@ import { IS_NOVALED } from '../lib/backend';
 import { downloadNovaledQuotePdf } from '../lib/pdfFile';
 
 export function QuotePreviewScreen({ quoteId }: { quoteId: number }) {
+  const {created}=useLocalSearchParams<{created?:string}>();
   const loadDocument = useCallback(async (token: string): Promise<DocumentSource> => {
     if (!Number.isSafeInteger(quoteId) || quoteId <= 0) throw new Error('Cotización no encontrada.');
     if (IS_NOVALED) {
@@ -29,5 +31,5 @@ export function QuotePreviewScreen({ quoteId }: { quoteId: number }) {
       warnings: images.warnings,
     };
   }, [quoteId]);
-  return <DocumentPreviewScreen key={'quote:' + quoteId} loadDocument={loadDocument} />;
+  return <DocumentPreviewScreen key={'quote:' + quoteId} loadDocument={loadDocument} onBack={created==='1'?()=>router.replace(`/quotes/${quoteId}`):undefined}/>;
 }

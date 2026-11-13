@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react';
+import { router,useLocalSearchParams } from 'expo-router';
 import { Pressable, Text, TextInput, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { FormModal } from '../components/FormModal';
@@ -16,6 +17,7 @@ export function DeliveryPreviewScreen({ saleId, documentType = 'delivery' }: {
   saleId: number; documentType?: 'sale' | 'delivery';
 }) {
   const { colors } = useTheme();
+  const {created}=useLocalSearchParams<{created?:string}>();
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [mode, setMode] = useState<'asesor' | 'otro' | 'sin_nombre'>('asesor');
   const [name, setName] = useState('');
@@ -33,7 +35,7 @@ export function DeliveryPreviewScreen({ saleId, documentType = 'delivery' }: {
       api.saleDetail(saleId, token), api.business(token), loadDocFonts(),
     ]);
     const images = await loadDocImages({
-      token, includeSeal: sale.includeSello,
+      token, includeSeal: documentType==='delivery' && sale.includeSello,
       logoUrl: mediaUrl(business?.logo_url ?? null), selloUrl: mediaUrl(business?.sello_url ?? null),
     });
     return {
@@ -44,7 +46,7 @@ export function DeliveryPreviewScreen({ saleId, documentType = 'delivery' }: {
     };
   }, [saleId, documentType, signature]);
   const canChooseSignature = IS_NOVALED && documentType === 'delivery';
-  return <><DocumentPreviewScreen key={documentType + ':' + saleId} loadDocument={loadDocument} headerAction={canChooseSignature ?
+  return <><DocumentPreviewScreen key={documentType + ':' + saleId} loadDocument={loadDocument} onBack={created==='1'?()=>router.replace(`/pos/${saleId}`):undefined} headerAction={canChooseSignature ?
     <Pressable accessibilityLabel="Nombre en firma de entrega" hitSlop={10} onPress={() => setOptionsOpen(true)}><Ionicons name="options-outline" size={23} color={colors.text} /></Pressable> : undefined} />
     <FormModal visible={optionsOpen} title="Entregué conforme" icon="create-outline" onClose={() => setOptionsOpen(false)}>
       {(['asesor', 'otro', 'sin_nombre'] as const).map(value => <Pressable key={value} onPress={() => { setMode(value); setOptionError(null); }} style={{ minHeight: 46, flexDirection: 'row', alignItems: 'center', gap: 12 }}>

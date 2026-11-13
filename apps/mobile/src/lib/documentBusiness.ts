@@ -14,5 +14,7 @@ export function documentBusiness(business: Business | null): DocBusiness {
     nit: business?.nit ?? null,
     email: business?.email ?? null,
     telefono: business?.telefono ?? null,
+    pdf_mostrar_marca: business?.pdf_mostrar_marca ?? true,
+    pdf_mostrar_procedencia: business?.pdf_mostrar_procedencia ?? true,
   };
 }

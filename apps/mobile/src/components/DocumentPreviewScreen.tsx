@@ -16,9 +16,10 @@ import { PdfViewer } from './PdfViewer';
 export type DocumentSource = { fileName: string; title: string; warnings: string[] } &
   ({ html: string; pdf?: never } | { pdf: PreparedPdf; html?: never });
 type Action = 'print' | 'download' | 'share';
-function DocumentPreviewScreenContent({ loadDocument, headerAction }: {
+function DocumentPreviewScreenContent({ loadDocument, headerAction, onBack }: {
   loadDocument: (token: string) => Promise<DocumentSource>;
   headerAction?: ReactNode;
+  onBack?:()=>void;
 }) {
   const { token } = useAuth();
   const { colors } = useTheme();
@@ -78,7 +79,7 @@ function DocumentPreviewScreenContent({ loadDocument, headerAction }: {
 
   return <View style={[styles.root, { backgroundColor: colors.background }]}>
     <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
-      <Pressable onPress={() => router.back()} hitSlop={10} accessibilityLabel="Volver">
+      <Pressable onPress={onBack ?? (() => router.back())} hitSlop={10} accessibilityLabel={onBack?'Volver al documento':'Volver'}>
         <Ionicons name="arrow-back" size={24} color={colors.text} />
       </Pressable>
       <Text style={[styles.title, { color: colors.text }]}>Vista previa</Text>

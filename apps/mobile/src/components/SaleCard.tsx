@@ -9,6 +9,7 @@ import { usePressMotion } from '../hooks/usePressMotion';
 import { formatDate } from '../lib/format';
 import { useMoney } from '../context/BusinessContext';
 import type { Sale, SaleEstadoPago } from '../lib/api';
+import { useDocumentEditAccess } from '../hooks/useDocumentEditAccess';
 
 export const SALE_STATUS_LABEL: Record<SaleEstadoPago, string> = {
   por_cobrar: 'Por Cobrar',
@@ -44,6 +45,7 @@ export function SaleCard({
   onDuplicate,
 }: SaleCardProps) {
   const { colors } = useTheme();
+  const {proLocked}=useDocumentEditAccess();
   const formatMoney = useMoney();
   const { scale, onPressIn, onPressOut } = usePressMotion();
   const swipeRef = useRef<SwipeRowHandle>(null);
@@ -51,8 +53,8 @@ export function SaleCard({
   const voided = sale.estado === 'anulada';
 
   const renderRightActions = () => <SwipeActions actions={[{ label: 'Vista previa', icon: 'document-text-outline', onPress: onPreview },
-      { label: 'Anular venta', icon: 'close-circle-outline', onPress: onVoid },
-      { label: 'Borrar', icon: 'trash-outline', onPress: onDelete },
+      { label: proLocked?'Anular · Pro':'Anular venta', icon: proLocked?'lock-closed-outline':'close-circle-outline', onPress: onVoid },
+      { label: proLocked?'Borrar · Pro':'Borrar', icon: proLocked?'lock-closed-outline':'trash-outline', onPress: onDelete },
       { label: 'Copiar', icon: 'copy-outline', onPress: onDuplicate }]} />;
 
   const content = (

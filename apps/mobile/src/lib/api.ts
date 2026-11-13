@@ -103,6 +103,8 @@ export interface Product {
 }
 
 export interface Business {
+  pdf_mostrar_marca?: boolean;
+  pdf_mostrar_procedencia?: boolean;
   id: number;
   nombre: string;
   color_primario: string;
@@ -120,6 +122,8 @@ export interface Business {
 }
 
 export interface BusinessUpdateInput {
+  pdf_mostrar_marca?: boolean;
+  pdf_mostrar_procedencia?: boolean;
   nombre?: string;
   color_primario?: string;
   moneda?: string;

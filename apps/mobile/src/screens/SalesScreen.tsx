@@ -23,6 +23,7 @@ import { searchTerm } from '../lib/documentSearch';
 import { usePagedCollection } from '../hooks/usePagedCollection';
 import { CollectionFooter } from '../components/CollectionFooter';
 import { SaleCard } from '../components/SaleCard';
+import { useDocumentEditAccess } from '../hooks/useDocumentEditAccess';
 import { SegmentedTabs } from '../components/SegmentedTabs';
 import { BranchFilterSheet } from '../components/BranchFilterSheet';
 
@@ -38,6 +39,7 @@ function SalesScreenContent() {
   const tutorial = useTutorial();
   const { colors } = useTheme();
   const { token } = useAuth();
+  const {requestEdit}=useDocumentEditAccess();
   const insets = useSafeAreaInsets();
 
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -87,6 +89,7 @@ function SalesScreenContent() {
   };
 
   const handleVoid = (sale: Sale) => {
+    if(!requestEdit())return;
     if (!token) return;
     closeRow();
     feedback.alert(
@@ -111,6 +114,7 @@ function SalesScreenContent() {
   };
 
   const handleDelete = (sale: Sale) => {
+    if(!requestEdit())return;
     if (!token) return;
     closeRow();
     feedback.alert('Borrar venta', `¿Borrar la venta #${sale.id}? No se puede deshacer.`, [

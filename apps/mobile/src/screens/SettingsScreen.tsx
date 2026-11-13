@@ -2,6 +2,7 @@ import { TutorialTarget, TutorialScrollView, TutorialHelpButton, useTutorialAvai
 import { loadRemoteImage } from '../lib/remoteImage';
 import { NoticeCard } from '../components/NoticeCard';
 import { LicenseStatusCard } from '../components/LicenseStatusCard';
+import { BusinessDocumentPreferences } from '../components/BusinessDocumentPreferences';
 import { StoredImage } from '../components/StoredImage';
 import { feedback } from '../lib/feedback';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -640,6 +641,7 @@ function SettingsScreenContent() {
 
             </View>
 
+            <BusinessDocumentPreferences />
             <TutorialTarget id="users" ><TeamUsers onCreated={() => { void load(); }} /></TutorialTarget>
             {!isAdmin && <Text style={{ color: colors.muted }}>La configuración de empresa la administra el administrador.</Text>}
             <Text style={[styles.section, { color: colors.muted }]}>Apariencia de mi cuenta</Text>

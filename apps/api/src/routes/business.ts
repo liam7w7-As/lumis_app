@@ -22,15 +22,19 @@ const businessSchema = z.object({
   nit: z.string().trim().max(30).nullable().optional(),
   email: z.string().trim().email('Email inválido').nullable().optional(),
   telefono: z.string().trim().max(40).nullable().optional(),
+  pdf_mostrar_marca: z.boolean().optional(),
+  pdf_mostrar_procedencia: z.boolean().optional(),
 });
-const COLUMNS = 'id, nombre, color_primario, moneda, logo_url, sello_url, terminos_default, redes_sociales, website, direccion, ciudad, nit, email, telefono';
+const COLUMNS = 'id, nombre, color_primario, moneda, logo_url, sello_url, terminos_default, redes_sociales, website, direccion, ciudad, nit, email, telefono, pdf_mostrar_marca, pdf_mostrar_procedencia';
+const publicBusiness = (row: RowDataPacket) => ({ ...row,
+  pdf_mostrar_marca: !!row.pdf_mostrar_marca, pdf_mostrar_procedencia: !!row.pdf_mostrar_procedencia });
 export const businessRouter = Router();
 businessRouter.use(requireAuth);
 businessRouter.get('/', async (req: AuthRequest, res, next) => {
   try {
     const [rows] = await pool.query<RowDataPacket[]>('SELECT ' + COLUMNS + ' FROM business WHERE id = ?', [req.businessId]);
     res.setHeader('Cache-Control', 'no-store');
-    res.json({ business: rows[0] ?? null });
+    res.json({ business: rows[0] ? publicBusiness(rows[0]) : null });
   } catch (err) { next(err); }
 });
 businessRouter.put('/', requireAdmin, async (req: AuthRequest, res, next) => {
@@ -41,7 +45,7 @@ businessRouter.put('/', requireAdmin, async (req: AuthRequest, res, next) => {
       ' WHERE id = ?', [...entries.map(([,value]) => value), req.businessId]);
     const [rows] = await pool.query<RowDataPacket[]>('SELECT ' + COLUMNS + ' FROM business WHERE id = ?', [req.businessId]);
     if (!rows[0]) throw notFound('Empresa no encontrada');
-    res.json({ business: rows[0] });
+    res.json({ business: publicBusiness(rows[0]) });
   } catch (err) { next(err); }
 });
 businessRouter.post('/assets', requireAdmin, async (req: AuthRequest, res, next) => {

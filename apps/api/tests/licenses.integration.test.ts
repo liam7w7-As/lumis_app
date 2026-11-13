@@ -134,6 +134,13 @@ test(
     assert.equal(info.data.license.plan, 'free');
     assert.equal(info.data.license.users.limit, 2);
     await call('/api/business', 'PUT', { nombre: 'Empresa A' }, tenant);
+    const prefs=await call('/api/business','PUT',{pdf_mostrar_marca:false,pdf_mostrar_procedencia:true},tenant);
+    assert.equal(prefs.data.business.pdf_mostrar_marca,false);
+    assert.equal(prefs.data.business.pdf_mostrar_procedencia,true);
+    const otherSession=(await call('/api/auth/login','POST',{username:'license_company_a',password:'tenant-test-12345'})).data;
+    assert.equal((await call('/api/business','GET',undefined,{token:otherSession.token})).data.business.pdf_mostrar_marca,false,'La misma empresa conserva su preferencia en otra sesión');
+    assert.equal((await call('/api/business','GET',undefined,{token:b.token})).data.business.pdf_mostrar_marca,true,'Otra empresa conserva su propia preferencia');
+    await call('/api/business','PUT',{pdf_mostrar_marca:'false'},tenant,400);
     await call('/api/business', 'PUT', { color_primario: '#123456' }, tenant, 403);
     await call(
       '/api/auth/users',

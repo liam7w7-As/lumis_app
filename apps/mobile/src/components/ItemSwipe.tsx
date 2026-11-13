@@ -5,8 +5,9 @@ import { StyleSheet, View } from 'react-native';
 import { SwipeActions, SWIPE_ACTIONS_WIDTH } from './SwipeActions';
 import { SwipeRow, type SwipeRowHandle } from './SwipeRow';
 
-export function ItemSwipe({ children, disabled, tutorialRow = false, onEdit, onDelete, onDuplicate, onMove }: {
+export function ItemSwipe({ children, disabled, tutorialRow = false, proLocked=false, onEdit, onDelete, onDuplicate, onMove }: {
   children: ReactNode; disabled?: boolean; tutorialRow?: boolean;
+  proLocked?:boolean;
   onEdit: () => void; onDelete: () => void; onDuplicate: () => void; onMove: () => void;
 }) {
   const ref = useRef<SwipeRowHandle>(null);
@@ -18,7 +19,7 @@ export function ItemSwipe({ children, disabled, tutorialRow = false, onEdit, onD
   ] as const;
   const content = disabled ? <View>{children}</View> : <View style={styles.clip}>
     <SwipeRow ref={ref} actionsWidth={SWIPE_ACTIONS_WIDTH} renderRightActions={() =>
-      <SwipeActions actions={actions.map((action) => ({ label: action.label, icon: action.icon,
+      <SwipeActions actions={actions.map((action) => ({ label: action.label+(proLocked?' · Pro':''), icon: proLocked?'lock-closed-outline':action.icon,
         onPress: () => { ref.current?.close(); action.run(); } }))} />}>
       {children}
     </SwipeRow>

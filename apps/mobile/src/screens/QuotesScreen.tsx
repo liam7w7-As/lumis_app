@@ -24,11 +24,13 @@ import { matchesQuoteSearch, searchTerm } from '../lib/documentSearch';
 import { usePagedCollection } from '../hooks/usePagedCollection';
 import { CollectionFooter } from '../components/CollectionFooter';
 import { QuoteCard } from '../components/QuoteCard';
+import { useDocumentEditAccess } from '../hooks/useDocumentEditAccess';
 
 function QuotesScreenContent() {
   const tutorial = useTutorial();
   const { colors } = useTheme();
   const { token } = useAuth();
+  const {requestEdit}=useDocumentEditAccess();
   const insets = useSafeAreaInsets();
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -59,6 +61,7 @@ function QuotesScreenContent() {
   };
 
   const handleDelete = (quote: Quote) => {
+    if(!requestEdit())return;
     if (!token) return;
     closeRow();
     feedback.alert('Borrar cotización', `¿Borrar la cotización #${quote.id}?`, [

@@ -9,6 +9,7 @@ import { usePressMotion } from '../hooks/usePressMotion';
 import { formatDate } from '../lib/format';
 import { useMoney } from '../context/BusinessContext';
 import type { Quote, QuoteStatus } from '../lib/api';
+import { useDocumentEditAccess } from '../hooks/useDocumentEditAccess';
 
 export const STATUS_LABEL: Record<QuoteStatus, string> = {
   borrador: 'Borrador',
@@ -48,6 +49,7 @@ export function QuoteCard({
   onDuplicate,
 }: QuoteCardProps) {
   const { colors } = useTheme();
+  const {proLocked}=useDocumentEditAccess();
   const formatMoney = useMoney();
   const { scale, onPressIn, onPressOut } = usePressMotion();
   const swipeRef = useRef<SwipeRowHandle>(null);
@@ -55,7 +57,7 @@ export function QuoteCard({
 
   const renderRightActions = () => <SwipeActions actions={[{ label: 'Generar venta', icon: 'cash-outline', onPress: onGenerateSale },
       { label: 'Vista previa', icon: 'document-text-outline', onPress: onPreview },
-      { label: 'Borrar', icon: 'trash-outline', onPress: onDelete },
+      { label: proLocked?'Borrar · Pro':'Borrar', icon: proLocked?'lock-closed-outline':'trash-outline', onPress: onDelete },
       { label: 'Copiar', icon: 'copy-outline', onPress: onDuplicate }]} />;
 
   const content = (
