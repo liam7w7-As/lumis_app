@@ -28,9 +28,14 @@ test('el escáner solo selecciona coincidencias exactas únicas y conserva difer
 });
 
 test('OpenAI recibe imagen y esquema estricto sin persistencia; datos ausentes siguen siendo null', async t => {
-  const original = globalThis.fetch, previousKey = process.env.OPENAI_API_KEY;
+  const original = globalThis.fetch, previousKey = process.env.OPENAI_API_KEY, previousModel = process.env.OPENAI_SCAN_MODEL;
   process.env.OPENAI_API_KEY = 'test-only-key-not-real';
-  t.after(() => { globalThis.fetch = original; if (previousKey === undefined) delete process.env.OPENAI_API_KEY; else process.env.OPENAI_API_KEY = previousKey; });
+  delete process.env.OPENAI_SCAN_MODEL;
+  t.after(() => {
+    globalThis.fetch = original;
+    if (previousKey === undefined) delete process.env.OPENAI_API_KEY; else process.env.OPENAI_API_KEY = previousKey;
+    if (previousModel === undefined) delete process.env.OPENAI_SCAN_MODEL; else process.env.OPENAI_SCAN_MODEL = previousModel;
+  });
   let sent: Record<string, any> | null = null;
   globalThis.fetch = async (url, init) => {
     assert.equal(url, 'https://api.openai.com/v1/responses');
@@ -43,6 +48,7 @@ test('OpenAI recibe imagen y esquema estricto sin persistencia; datos ausentes s
   assert.equal(result[0].quantity, null);
   assert.equal(result[0].unitPrice, null);
   assert.equal(sent!.store, false);
+  assert.equal(sent!.model, 'gpt-4o-mini');
   assert.equal(sent!.text.format.type, 'json_schema');
   assert.equal(sent!.text.format.strict, true);
   assert.match(sent!.input[0].content[1].image_url, /^data:image\/png;base64,/);
