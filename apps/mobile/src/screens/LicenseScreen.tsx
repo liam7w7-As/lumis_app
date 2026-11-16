@@ -9,6 +9,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { NoticeCard } from '../components/NoticeCard';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { feedback } from '../lib/feedback';
+import { formatLicenseExpiry, licenseExpiryMessage, licenseStatusLabel } from '../lib/licensePresentation';
 const labels = {
   quotes: 'Cotizaciones',
   sales: 'Notas de venta',
@@ -85,9 +86,12 @@ export function LicenseScreen() {
               >
                 <Text style={[styles.label, { color: colors.muted }]}>LICENCIA DE TU EMPRESA</Text>
                 <Text style={[styles.plan, { color: colors.text }]}>{license.planName}</Text>
-                <Text style={[styles.description, { color: colors.muted }]}>
-                  {license.readOnly ? 'Solo consulta y exportación' : 'Licencia activa'}
-                  {license.expiresOn ? ' · Válida hasta ' + license.expiresOn : ''}
+                <Text style={[styles.title, { color: license.readOnly ? colors.error : colors.text }]}>
+                  {licenseStatusLabel(license)}
+                </Text>
+                <Text style={[styles.description, { color: colors.text }]}>
+                  {license.plan === 'free' ? 'Sin vencimiento' : license.expiresOn ? 'Vence el ' + formatLicenseExpiry(license.expiresOn) : 'Vencimiento por confirmar'}
+                  {'\n'}{licenseExpiryMessage(license)}
                 </Text>
                 <Text style={[styles.description, { color: colors.text }]}>
                   {license.users.enabled} usuarios habilitados /{' '}
@@ -120,7 +124,7 @@ export function LicenseScreen() {
                       {labels[meter as keyof typeof labels]}
                     </Text>
                     <Text style={[styles.description, { color: colors.muted }]}>
-                      {meter === 'scans'
+                      {meter === 'scans' && !license.scannerAvailable
                         ? 'Función aún no disponible'
                         : q.limit === null
                           ? 'Sin límite'

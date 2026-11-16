@@ -74,6 +74,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const register = useCallback(async (username: string, name: string, password: string) => {
     const { user: created, token: newToken } = await api.register({ username, name, password });
+    bindLegacySession(newToken, created.id);
     setToken(newToken);
     setUser(created);
     await saveToken(newToken);

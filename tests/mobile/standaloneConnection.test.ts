@@ -4,9 +4,14 @@ import { createServer } from 'node:http';
 
 test('Lumis independiente conserva sus rutas, usuarios y envíos sin campos de Novaled', async t => {
   const requests: { path: string; auth?: string; body: unknown }[] = [];
+  let rejectedCode = '';
   const server = createServer(async (req, res) => {
     let raw = ''; for await (const chunk of req) raw += chunk;
     requests.push({ path: req.url!, auth: req.headers.authorization, body: raw ? JSON.parse(raw) : null });
+    if (rejectedCode) {
+      res.writeHead(403, { 'Content-Type': 'application/json' }).end(JSON.stringify({ code: rejectedCode, message: 'No disponible' }));
+      return;
+    }
     res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ user: { id: 8 }, token: 'lumis-session', quote: { id: 11 }, sale: { id: 12 } }));
   });
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -18,7 +23,12 @@ test('Lumis independiente conserva sus rutas, usuarios y envíos sin campos de N
   assert.deepEqual(requests.at(-1), { path: '/api/auth/login', auth: undefined, body: { username: 'usuario-anterior', password: 'password' } });
   const quote = { clientId: null, branchId: 1, items: [{ description: 'Lámpara', quantity: 2, unit: 'Unidad', unitPrice: 10 }] };
   await api.createQuote(quote, 'lumis-session');
-  assert.deepEqual(requests.at(-1), { path: '/api/quotes', auth: 'Bearer lumis-session', body: quote });
+  const sentQuote = requests.at(-1)!;
+  assert.equal(sentQuote.path, '/api/quotes');
+  assert.equal(sentQuote.auth, 'Bearer lumis-session');
+  const { solicitud_id, ...quoteBody } = sentQuote.body as Record<string, unknown>;
+  assert.match(solicitud_id as string, /^lumis-/);
+  assert.deepEqual(quoteBody, quote);
   const sale = { ...quote, metodoPago: 'por_pagar' as const };
   await api.createSale(sale, 'lumis-session');
   assert.deepEqual(requests.at(-1), { path: '/api/sales', auth: 'Bearer lumis-session', body: sale });
@@ -32,4 +42,15 @@ test('Lumis independiente conserva sus rutas, usuarios y envíos sin campos de N
   assert.equal(requests.at(-1)!.path, '/api/products');
   await api.sales('lumis-session', { page: 2 });
   assert.equal(requests.at(-1)!.path, '/api/sales');
+
+  const { subscribeLicenseChange } = await import('../../apps/mobile/src/lib/licenseEvents');
+  let changes = 0;
+  const unsubscribe = subscribeLicenseChange(() => { changes += 1; });
+  t.after(unsubscribe);
+  rejectedCode = 'LICENSE_UNAVAILABLE';
+  await assert.rejects(api.license('lumis-session'));
+  assert.equal(changes, 0, 'El sondeo de licencia no debe iniciar otro sondeo al fallar');
+  rejectedCode = 'PLAN_LIMIT_REACHED';
+  await assert.rejects(api.createQuote(quote, 'lumis-session'));
+  assert.equal(changes, 1, 'Los errores de acceso de otras operaciones sí deben actualizar el plan');
 });

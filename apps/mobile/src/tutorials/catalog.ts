@@ -42,6 +42,7 @@ export const GUIDES: Record<GuideKey, GuideDefinition> = {
       { id: 'seller', target: 'seller', title: 'Vendedor y sucursal', body: 'Tu cuenta aparece como vendedor. Elige la sucursal que corresponda al documento.' },
       { id: 'client', target: 'client', title: 'Añade tu cliente', body: 'Toca Añadir cliente para ingresar sus datos. Puedes volver aquí sin perder lo que ya preparaste.', event: 'client' },
       { id: 'products', target: 'products', title: 'Añade los productos', body: 'Selecciona un artículo o escribe su descripción, cantidad, unidad y precio. El total se calcula con tus productos.', event: 'product' },
+      { id: 'scan', target: 'scan', title: 'Escaneo mágico de tu lista', body: 'También puedes tomar una foto o elegir una imagen. Revisa las coincidencias, completa los datos que falten y añade los artículos. Los productos nuevos se crean al guardar la cotización.' },
       { id: 'save', target: 'save', title: 'Guarda cuando esté lista', body: 'Revisa el contenido y pulsa Guardar cuando quieras crear la cotización. La guía no guarda documentos automáticamente.' },
     ],
   },

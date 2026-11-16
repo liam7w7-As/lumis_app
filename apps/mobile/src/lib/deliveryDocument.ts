@@ -98,7 +98,7 @@ export function buildDeliveryNoteHtml(input: {
   const iconImg = (src: string | null, alt: string) =>
     src ? `<img src="${src}" class="footer-icon" alt="${alt}">` : '';
 
-  // Las firmas y el sello de recepción pertenecen a la nota de entrega.
+  // El sello es opcional; las dos líneas de conformidad de entrega son fijas.
   const sealImages = (() => {
     if (!sale.includeSello) {
       return '<div class="seal-container"></div>';
@@ -117,6 +117,16 @@ export function buildDeliveryNoteHtml(input: {
     }
     return '<div class="seal-container"></div>';
   })();
+
+  const saleSignature = !isDelivery && (sale.includeSignature || sale.includeSello)
+    ? `<div class="signature-section signature-single">
+        ${sale.includeSello ? sealImages : ''}
+        ${sale.includeSignature ? `<div class="signature-line"></div>
+        <div class="signature-label">${escapeHtml(business.nombre)}</div>` : ''}
+      </div>` : '';
+  const notes = !isDelivery && sale.showNotes && sale.notes?.trim()
+    ? `<div class="document-notes"><div class="notes-title">Notas adicionales</div>
+        <div class="notes-content">${escapeHtml(sale.notes.trim())}</div></div>` : '';
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -176,6 +186,10 @@ export function buildDeliveryNoteHtml(input: {
   .totals-wrap .grand-total-row .value { text-align: right; }
   .totals-wrap .literal-row .value { text-align: right; color: #4b5563; font-size: 7.2pt; padding-top: 0; }
   .signature-section { margin-top: 6mm; page-break-inside: avoid; }
+  .signature-single { width: 48mm; margin-left: auto; margin-right: auto; text-align: center; }
+  .document-notes { margin-top: 6mm; }
+  .notes-title { font-size: 8pt; font-weight: 700; margin-bottom: 1.5mm; }
+  .notes-content { font-size: 8pt; white-space: pre-wrap; overflow-wrap: break-word; }
   .signature-table { width: 100%; table-layout: fixed; }
   .signature-cell { width: 50%; text-align: center; vertical-align: bottom; padding: 0 6mm; }
   .seal-container { min-height: 18mm; }
@@ -298,7 +312,8 @@ ${isDelivery?`<div class="signature-section">
       </td>
     </tr>
   </table>
-</div>`:''}
+</div>`:saleSignature}
+${notes}
 
 </body>
 </html>`;

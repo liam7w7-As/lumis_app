@@ -1,4 +1,4 @@
-import { STORAGE_NAMESPACE } from './backend';
+import { API_URL, IS_NOVALED, STORAGE_NAMESPACE } from './backend';
 type Body = Record<string, unknown>;
 export interface PendingLegacyOperation { body: Body; fingerprint: string }
 export interface OperationStorage { get: (key: string) => Promise<string | null>; set: (key: string,value: string) => Promise<void>; remove: (key: string) => Promise<void> }
@@ -7,7 +7,12 @@ let storage: OperationStorage = { get: async key => memory.get(key) ?? null, set
 const actors = new Map<string,number>(); const cache = new Map<string,PendingLegacyOperation | null>(); const listeners = new Set<() => void>();
 export function configureLegacyStorage(value: OperationStorage) { storage = value; }
 export function bindLegacySession(token: string,userId: number) { actors.set(token,userId); }
-function key(path: string,token: string) { return STORAGE_NAMESPACE + '_operation_' + (actors.get(token) ?? token.split('|')[0].replace(/[^a-zA-Z0-9_-]/g,'').slice(0,30)) + '_' + path.replace(/[^a-zA-Z0-9]/g,'_'); }
+function key(path: string,token: string) {
+  // Las operaciones Novaled mantienen su clave anterior; Lumis comienza a
+  // recuperar envíos de cotización y separa pruebas locales de producción.
+  const origin = IS_NOVALED ? '' : API_URL.replace(/[^a-zA-Z0-9._-]/g, '_') + '_';
+  return STORAGE_NAMESPACE + '_operation_' + origin + (actors.get(token) ?? token.split('|')[0].replace(/[^a-zA-Z0-9_-]/g,'').slice(0,30)) + '_' + path.replace(/[^a-zA-Z0-9]/g,'_');
+}
 function canonical(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonical);
   if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).filter(([name]) => !['solicitud_id','clave_operacion','stock_selections'].includes(name)).sort(([a],[b]) => a.localeCompare(b)).map(([name,input]) => [name,canonical(input)]));

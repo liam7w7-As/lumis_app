@@ -58,7 +58,10 @@ export const sampleSale = {
   sellerName: sampleQuote.sellerName,
   items: documentItems,
   total: 890,
-  includeSello: true,
+  includeSello: false,
+  notes: null,
+  showNotes: false,
+  includeSignature: false,
 } as unknown as SaleDetail;
 export const sampleImages = {
   logo: null,

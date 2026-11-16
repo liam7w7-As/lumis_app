@@ -39,6 +39,39 @@ test("venta sin firmas de recepción; entrega conserva sus firmas y los mismos t
     assert.match(html, /240\.00/);
   }
 });
+
+test('la entrega conserva ambas conformidades con todos los adicionales apagados', () => {
+  const html = saleHtml(true);
+  assert.match(html, /Entregué conforme/);
+  assert.match(html, /Recibí conforme/);
+  assert.doesNotMatch(html, /alt="Sello"|class="document-notes"/);
+});
+
+test('notas, firma de empresa y sello se pueden activar por separado en la venta', () => {
+  const render = (patch: Partial<typeof sampleSale>) => buildDeliveryNoteHtml({
+    documentType: 'sale', sale: { ...sampleSale, ...patch }, business: sampleBusiness,
+    branchName: null, images: { ...sampleImages, sello: 'data:image/png;base64,c2VsbG8=' }, fonts: sampleFonts,
+  });
+  const seal = render({ includeSello: true });
+  assert.match(seal, /alt="Sello"/);
+  assert.doesNotMatch(seal, /<div class="signature-line"|Entregué conforme|Recibí conforme/);
+  const signature = render({ includeSignature: true });
+  assert.match(signature, /<div class="signature-line"/);
+  assert.doesNotMatch(signature, /alt="Sello"|Entregué conforme|Recibí conforme/);
+  const note = 'Entrega <programada> & confirmada';
+  assert.doesNotMatch(render({ notes: note }), /class="document-notes"/);
+  assert.match(render({ notes: note, showNotes: true }), /Entrega &lt;programada&gt; &amp; confirmada/);
+});
+
+test('el sello de la cotización no necesita activar el pie de firma', () => {
+  const html = buildQuoteHtml({
+    quote: { ...sampleQuote, includeSeal: true, includeSignature: false, showNotes: false },
+    business: sampleBusiness, branchName: null,
+    images: { ...sampleImages, sello: 'data:image/png;base64,c2VsbG8=' }, fonts: sampleFonts,
+  });
+  assert.match(html, /alt="Sello"/);
+  assert.doesNotMatch(html, /<div class="signature-line"|class="footer-notes-title"/);
+});
 test("preferencias de empresa ocultan columnas completas y aprovechan el ancho libre", () => {
   const business = {
     ...sampleBusiness,

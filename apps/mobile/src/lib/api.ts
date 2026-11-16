@@ -202,6 +202,9 @@ export interface SaleDetail extends Sale {
   notaPago: string | null;
   transferenciaNumero: string | null;
   includeSello: boolean;
+  notes: string | null;
+  showNotes: boolean;
+  includeSignature: boolean;
   totalPagado: number;
   payments: SalePayment[];
   items: SaleItem[];
@@ -219,6 +222,9 @@ export interface SaleUpdateInput {
   transferenciaNumero?: string | null;
   comprobanteUrl?: null;
   includeSello?: boolean;
+  notes?: string | null;
+  showNotes?: boolean;
+  includeSignature?: boolean;
 }
 
 export interface SaleFilters {
@@ -275,7 +281,21 @@ export interface QuoteItemInput {
   codigoInterno?: string | null;
   marca?: string | null;
   procedencia?: string | null;
+  /** Producto leído de una lista que se registra al confirmar la cotización. */
+  createProduct?: boolean;
 }
+
+export interface QuoteScanLine {
+  name: string;
+  quantity: number | null;
+  unit: string | null;
+  unitPrice: number | null;
+  codigoInterno?: string | null;
+  candidates: Product[];
+  selectedProductId: number | null;
+  match: 'exact' | 'suggested' | 'none';
+}
+export interface QuoteScan { id: string; lines: QuoteScanLine[] }
 
 export interface QuoteUpdateInput {
   createdAt?: string;
@@ -290,20 +310,22 @@ interface RequestOptions {
   method?: string;
   body?: unknown;
   token?: string;
+  timeoutMs?: number;
 }
 
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const body = options.body && typeof options.body === 'object' ? options.body as Record<string, unknown> : {};
   const createDocument = options.method === 'POST' && ['/api/quotes', '/api/sales', '/api/sales/from-quote'].includes(path);
+  const idempotentQuote = createDocument && path === '/api/quotes';
   const payment = (options.method === 'POST' && /^\/api\/sales\/\d+\/payments$/.test(path)) || (options.method === 'PATCH' && body.estadoPago === 'pagado');
   const keyField = createDocument ? 'solicitud_id' : 'clave_operacion';
-  if (IS_NOVALED && options.token && (createDocument || payment) && !body[keyField]) {
+  if (options.token && (idempotentQuote || IS_NOVALED && (createDocument || payment)) && !body[keyField]) {
     return runLegacyOperation(path, options.token, body, keyField, () => createDocument ? newRequestId() : newPaymentId(),
       payload => request<T>(path, { ...options, body: payload }), error => error instanceof ApiError && [400, 403, 404, 409, 422].includes(error.status));
   }
   const resolvedPath = backendPath(path);
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 30000);
+  const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? 30000);
   try {
     const res = await fetch(API_URL + resolvedPath, {
       method: options.method ?? 'GET', signal: controller.signal,
@@ -320,7 +342,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
         return request<T>(path, { ...options, body: payload });
       }
       if (res.status === 401 && options.token) notifySessionExpiry(options.token);
-      if (!IS_NOVALED && /^(LICENSE_|PLAN_|USER_LIMIT)/.test(data?.code ?? '')) notifyLicenseChange();
+      if (!IS_NOVALED && path !== '/api/license' && /^(LICENSE_|PLAN_|USER_LIMIT)/.test(data?.code ?? '')) notifyLicenseChange();
       const errors = data?.errors ?? data?.details;
       const detail = errors ? Object.values(errors).flat().filter(Boolean)[0] : undefined;
       throw new ApiError(res.status, detail ?? data?.message ?? data?.error ?? 'El servidor no pudo completar la solicitud. Inténtalo de nuevo.', data?.code);
@@ -506,7 +528,7 @@ export const api = {
   deleteProduct: (id: number, token: string) =>
     request<unknown>(`/api/products/${id}`, { method: 'DELETE', token }),
   createQuote: (
-    input: { clientId: number | null; branchId: number | null; items: QuoteItemInput[]; notes?: string | null },
+    input: { clientId: number | null; branchId: number | null; items: QuoteItemInput[]; notes?: string | null; solicitud_id?: string },
     token: string,
   ) =>
     request<{ quote: { id: number; number?: number; total: number } }>('/api/quotes', {
@@ -516,6 +538,8 @@ export const api = {
     }),
   nextQuoteNumber: (token: string) =>
     request<{ nextNumber: number }>('/api/quotes/next-number', { token }),
+  scanQuote: (input: { scanId: string; base64: string }, token: string) =>
+    request<{ scan: QuoteScan }>('/api/quotes/scan', { method: 'POST', body: input, token, timeoutMs: 100000 }),
   business: (token: string) =>
     request<{ business: Business | null }>('/api/business', { token }),
   updateBusiness: (input: BusinessUpdateInput, token: string) =>

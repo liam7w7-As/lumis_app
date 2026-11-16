@@ -49,6 +49,10 @@ test('empresas, permisos, sincronización, archivos y orden de documentos', {
   const { runMigrations } = await import('../src/db/migrate');
   await runMigrations();
   await runMigrations();
+  const [legacyQuoteOptions] = await admin.query<any[]>('SELECT include_seal, show_notes, include_signature FROM quotes ORDER BY id');
+  assert.deepEqual(legacyQuoteOptions.map(row => [row.include_seal, row.show_notes, row.include_signature]), [[1,1,1],[1,1,1]], 'La migración conserva las opciones de cotizaciones guardadas');
+  const [legacySaleOptions] = await admin.query<any[]>('SELECT include_sello FROM sales');
+  assert.equal(legacySaleOptions[0].include_sello, 1, 'La migración conserva el sello de ventas guardadas');
   const [legacy] = await admin.query<any[]>('SELECT business_id, role FROM users ORDER BY id');
   assert.deepEqual(legacy.map(r=>[r.business_id,r.role]), [[1,'admin'],[1,'seller']]);
   const [oldBiz] = await admin.query<any[]>('SELECT nombre FROM business WHERE id=1');
@@ -137,6 +141,25 @@ test('empresas, permisos, sincronización, archivos y orden de documentos', {
   await request('/api/quotes',b.token,'POST',{items:lines},404);
   const q=(await request('/api/quotes',a.token,'POST',{clientId:clientA.id,items:lines},201)).quote;
   const s=(await request('/api/sales',st,'POST',{clientId:clientA.id,items:lines,metodoPago:'por_pagar'},201)).sale;
+  await t.test('opciones PDF: nuevas desmarcadas, persistencia entre sesiones y copias con nuevos valores', async () => {
+    const quote = (await request('/api/quotes/'+q.id,a.token)).quote;
+    assert.deepEqual([quote.showNotes,quote.includeSignature,quote.includeSeal], [false,false,false]);
+    const sale = (await request('/api/sales/'+s.id,st)).sale;
+    assert.deepEqual([sale.showNotes,sale.includeSignature,sale.includeSello,sale.notes], [false,false,false,null]);
+    const options = { notes: 'Observaciones del documento', showNotes: true, includeSignature: true, includeSello: true };
+    await request('/api/sales/'+s.id,st,'PATCH',options);
+    const otherSession = (await request('/api/sales/'+s.id,secondLogin.token)).sale;
+    for (const [key,value] of Object.entries(options)) assert.equal(otherSession[key],value);
+    await request('/api/sales/'+s.id,st,'PATCH',{showNotes:'false'},400);
+    await request('/api/sales/'+s.id,b.token,'PATCH',{includeSignature:false},404);
+    const copied = (await request('/api/sales/'+s.id+'/duplicate',st,'POST',{},201)).sale;
+    const copy = (await request('/api/sales/'+copied.id,st)).sale;
+    assert.deepEqual([copy.showNotes,copy.includeSignature,copy.includeSello], [false,false,false]);
+    assert.equal(copy.notes,options.notes);
+    await request('/api/sales/'+s.id,st,'PATCH',{notes:null,showNotes:false,includeSignature:false,includeSello:false});
+    const cleared = (await request('/api/sales/'+s.id,st)).sale;
+    assert.deepEqual([cleared.notes,cleared.showNotes,cleared.includeSignature,cleared.includeSello], [null,false,false,false]);
+  });
   for(const [route,id,key] of [['quotes',q.id,'quote'],['sales',s.id,'sale']] as const) {
     assert.equal((await request('/api/'+route,b.token))[route].length,0);
     await request('/api/'+route+'/'+id,b.token,'GET',undefined,404);

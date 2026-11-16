@@ -20,6 +20,7 @@ export interface DraftItem {
   unitPrice: number;
   marca: string | null;
   procedencia: string | null;
+  createProduct?: boolean;
 }
 
 interface DraftValue {

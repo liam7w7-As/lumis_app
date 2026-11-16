@@ -91,4 +91,5 @@ export const feedback = {
       (current.kind === 'success' && current.actions.length === 1 ? current.actions[0].onPress : undefined));
   },
   clear() { publish({ ...state, messages: [] }); },
+  remove(id: number) { remove(id); },
 };

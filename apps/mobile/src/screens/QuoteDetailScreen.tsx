@@ -23,6 +23,7 @@ import { useMoney, useBusiness } from '../context/BusinessContext';
 import { ItemSwipe } from '../components/ItemSwipe';
 import { ReorderItemsModal } from '../components/ReorderItemsModal';
 import { PrimaryButton } from '../components/PrimaryButton';
+import { DocumentOptions } from '../components/DocumentOptions';
 import { STATUS_COLOR, STATUS_LABEL } from '../components/QuoteCard';
 import { useDocumentEditAccess } from '../hooks/useDocumentEditAccess';
 import { ProBadge } from '../components/ProBadge';
@@ -50,9 +51,9 @@ function QuoteDetailScreenContent() {
   const [error, setError] = useState<string | null>(null);
 
   const [notes, setNotes] = useState('');
-  const [includeSeal, setIncludeSeal] = useState(true);
-  const [showNotes, setShowNotes] = useState(true);
-  const [includeSignature, setIncludeSignature] = useState(true);
+  const [includeSeal, setIncludeSeal] = useState(false);
+  const [showNotes, setShowNotes] = useState(false);
+  const [includeSignature, setIncludeSignature] = useState(false);
   const [saving, setSaving] = useState(false);
   const [clientOpen, setClientOpen] = useState(false);
   const [dateOpen, setDateOpen] = useState(false);
@@ -498,49 +499,15 @@ function QuoteDetailScreenContent() {
         </View>
 
         {saveable && (
-          <>
-            <TutorialTarget id="options" ><Pressable style={styles.toggleRow} onPress={() => { if (access === 'read_only' || access === 'checking') { requestEdit(); return; } setIncludeSeal(!includeSeal); }}>
-              <Text style={[styles.toggleLabel, { color: colors.text }]}>Incluir sello</Text>
-              <View
-                style={[
-                  styles.toggle,
-                  { borderColor: colors.primary },
-                  includeSeal && { backgroundColor: colors.primary },
-                ]}
-              >
-                {includeSeal && <Ionicons name="checkmark" size={14} color={colors.onPrimary} />}
-              </View>
-            </Pressable></TutorialTarget>
-            <Pressable style={styles.toggleRow} onPress={() => { if (access === 'read_only' || access === 'checking') { requestEdit(); return; } setShowNotes(!showNotes); }}>
-              <Text style={[styles.toggleLabel, { color: colors.text }]}>Notas adicionales</Text>
-              <View
-                style={[
-                  styles.toggle,
-                  { borderColor: colors.primary },
-                  showNotes && { backgroundColor: colors.primary },
-                ]}
-              >
-                {showNotes && <Ionicons name="checkmark" size={14} color={colors.onPrimary} />}
-              </View>
-            </Pressable>
-            <Pressable
-              style={styles.toggleRow}
-              onPress={() => { if (access === 'read_only' || access === 'checking') { requestEdit(); return; } setIncludeSignature(!includeSignature); }}
-            >
-              <Text style={[styles.toggleLabel, { color: colors.text }]}>Pie de firma</Text>
-              <View
-                style={[
-                  styles.toggle,
-                  { borderColor: colors.primary },
-                  includeSignature && { backgroundColor: colors.primary },
-                ]}
-              >
-                {includeSignature && (
-                  <Ionicons name="checkmark" size={14} color={colors.onPrimary} />
-                )}
-              </View>
-            </Pressable>
-          </>
+          <TutorialTarget id="options">
+            <DocumentOptions values={{ showNotes, includeSignature, includeSeal }} disabled={saving || itemBusy}
+              onToggle={key => {
+                if (access === 'read_only' || access === 'checking') { requestEdit(); return; }
+                if (key === 'showNotes') setShowNotes(!showNotes);
+                else if (key === 'includeSignature') setIncludeSignature(!includeSignature);
+                else setIncludeSeal(!includeSeal);
+              }} />
+          </TutorialTarget>
         )}
 
         {showNotes && saveable && (
@@ -843,23 +810,9 @@ const styles = StyleSheet.create({
     fontFamily: 'Poppins',
     fontWeight: '700',
   },
-  toggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 4,
-  },
   toggleLabel: {
     fontSize: 15,
     fontFamily: 'Poppins',
-  },
-  toggle: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   notesBox: {
     borderWidth: 1,

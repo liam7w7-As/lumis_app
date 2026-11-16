@@ -9,6 +9,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBusiness } from '../context/BusinessContext';
 import { useAuth } from '../context/AuthContext';
+import { useLicense } from '../context/LicenseContext';
 import { useTheme } from '../theme/ThemeContext';
 import { ActionCard } from '../components/ActionCard';
 import { SegmentedTabs } from '../components/SegmentedTabs';
@@ -48,6 +49,7 @@ function StatCard({
 function DashboardScreenContent() {
   const tutorial = useTutorial();
   const { user, token } = useAuth();
+  const { refresh: refreshLicense } = useLicense();
   const { colors, dark } = useTheme();
   const { changeMode } = useBusiness();
   const [changingMode, setChangingMode] = useState(false);
@@ -97,8 +99,9 @@ function DashboardScreenContent() {
 
   useFocusEffect(useCallback(() => {
     void load();
+    void refreshLicense();
     return () => { requestId.current += 1; };
-  }, [load]));
+  }, [load, refreshLicense]));
 
   const firstName = user?.name?.split(' ')[0] || user?.username || '';
   const stats = data?.period === period ? data : null;
@@ -109,7 +112,7 @@ function DashboardScreenContent() {
         contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 8 }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor={colors.primary} colors={[colors.primary]} />
+          <RefreshControl refreshing={refreshing} onRefresh={() => { void load(true); void refreshLicense(); }} tintColor={colors.primary} colors={[colors.primary]} />
         }
       >
         <View style={styles.header}>
@@ -135,7 +138,7 @@ function DashboardScreenContent() {
         </View>
 
         <Text style={[styles.greeting, { color: colors.text }]}>Hola, {firstName}!</Text>
-        <LicenseStatusCard onlyReadOnly />
+        <View style={styles.planCard}><LicenseStatusCard /></View>
 
         <TutorialTarget id="modules" ><View style={styles.cards}>
           <TutorialTarget id="quotes" style={{ flex: 1 }}><ActionCard
@@ -228,6 +231,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     marginTop: 16,
   },
+  planCard: { paddingHorizontal: 24 },
   dollar: {
     color: '#fff',
     fontSize: 30,

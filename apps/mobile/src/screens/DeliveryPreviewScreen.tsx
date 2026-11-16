@@ -35,7 +35,7 @@ export function DeliveryPreviewScreen({ saleId, documentType = 'delivery' }: {
       api.saleDetail(saleId, token), api.business(token), loadDocFonts(),
     ]);
     const images = await loadDocImages({
-      token, includeSeal: documentType==='delivery' && sale.includeSello,
+      token, includeSeal: sale.includeSello,
       logoUrl: mediaUrl(business?.logo_url ?? null), selloUrl: mediaUrl(business?.sello_url ?? null),
     });
     return {

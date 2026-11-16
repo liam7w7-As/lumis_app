@@ -177,6 +177,8 @@ test(
     await call('/api/quotes/' + quoteId + '/items/reorder', 'POST', { itemIds: [1] }, tenant, 403);
     await call('/api/quotes/' + quoteId + '/duplicate', 'POST', {}, tenant, 403);
     await call('/api/quotes/' + quoteId, 'PATCH', { includeSeal: false }, tenant);
+    const quoteOptions = (await call('/api/quotes/' + quoteId, 'GET', undefined, tenant)).data.quote;
+    assert.deepEqual([quoteOptions.showNotes,quoteOptions.includeSignature,quoteOptions.includeSeal],[false,false,false]);
     const paid = {
       plan: 'pro',
       status: 'active',
@@ -265,6 +267,13 @@ test(
           .sale,
       );
     await call('/api/sales', 'POST', { items }, tenant, 403);
+    const salePath = '/api/sales/' + sales[0].id;
+    const newSale = (await call(salePath, 'GET', undefined, tenant)).data.sale;
+    assert.deepEqual([newSale.showNotes,newSale.includeSignature,newSale.includeSello],[false,false,false]);
+    await call(salePath, 'PATCH', { showNotes:true,includeSignature:true,includeSello:true }, tenant);
+    const changedOptions = (await call(salePath, 'GET', undefined, tenant)).data.sale;
+    assert.deepEqual([changedOptions.showNotes,changedOptions.includeSignature,changedOptions.includeSello],[true,true,true], 'Gratis permite elegir opciones de presentación');
+    await call(salePath, 'PATCH', { notes:'Modificar contenido guardado' }, tenant, 403);
     for (const sale of sales) await call('/api/sales/' + sale.id + '/deliver', 'POST', {}, tenant);
     await call('/api/sales/' + sales[0].id + '/deliver', 'POST', {}, tenant);
     assert.equal(

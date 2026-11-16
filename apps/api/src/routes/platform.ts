@@ -6,6 +6,7 @@ import { ApiError, badRequest, notFound, unauthorized } from '../middlewares/err
 import { verifyPassword, hashPassword } from '../lib/password';
 import { PLANS, expiryFromDay, expiryDay, licenseState } from '../lib/plans';
 import { assertUserCapacity, licenseSnapshot, readLicense } from '../lib/licenses';
+import { scannerAvailable } from '../lib/quoteVision';
 import {
   newSession,
   protectPlatformOrigin,
@@ -125,7 +126,7 @@ platformRouter.post('/password', async (req: PlatformRequest, res, next) => {
   }
 });
 platformRouter.get('/plans', (_req, res) =>
-  res.json({ plans: Object.values(PLANS), scannerAvailable: false }),
+  res.json({ plans: Object.values(PLANS), scannerAvailable: scannerAvailable() }),
 );
 const stateSql =
   "CASE WHEN l.status='suspended' THEN 'suspended' WHEN l.plan<>'free' AND (l.expires_at IS NULL OR l.expires_at<=UTC_TIMESTAMP()) THEN 'expired' ELSE 'active' END";

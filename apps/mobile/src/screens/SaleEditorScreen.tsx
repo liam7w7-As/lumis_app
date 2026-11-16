@@ -38,6 +38,7 @@ import { useMoney } from '../context/BusinessContext';
 import { ItemSwipe } from '../components/ItemSwipe';
 import { ReorderItemsModal } from '../components/ReorderItemsModal';
 import { PrimaryButton } from '../components/PrimaryButton';
+import { DocumentOptions, type DocumentOptionValues } from '../components/DocumentOptions';
 import { SegmentedTabs } from '../components/SegmentedTabs';
 import { SalePaymentSection } from '../components/SalePaymentSection';
 import { ClientPickerModal } from '../components/ClientPickerModal';
@@ -113,7 +114,11 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
   const [payInicial, setPayInicial] = useState('');
   const [payAmount, setPayAmount] = useState('');
   const [busyPayment, setBusyPayment] = useState(false);
-  const [includeSello, setIncludeSello] = useState(true);
+  const [includeSello, setIncludeSello] = useState(false);
+  const [documentNotes, setDocumentNotes] = useState('');
+  const [showNotes, setShowNotes] = useState(false);
+  const [includeSignature, setIncludeSignature] = useState(false);
+  const [optionsBusy, setOptionsBusy] = useState(false);
   const pending = useLegacyPending('/api/sales');
   const restored = useRef<unknown>(null);
   const canEditLines = !isDetail || sale?.canEditItems !== false;
@@ -156,6 +161,9 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
         setPayments(details.sale.payments);
         setTotalPagado(details.sale.totalPagado);
         setIncludeSello(details.sale.includeSello);
+        setDocumentNotes(details.sale.notes ?? '');
+        setShowNotes(details.sale.showNotes ?? false);
+        setIncludeSignature(details.sale.includeSignature ?? false);
       } else {
         setBranchId(current => current ?? br.branches[0]?.id ?? null);
       }
@@ -445,6 +453,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
   };
 
   const handleHeaderCheck = async () => {
+    if (optionsBusy || saving) return;
     if (docTab === 'entrega' && isDetail) {
       handleDeliver();
       return;
@@ -454,6 +463,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
       setSaving(true);
       try {
         await persistLineDraft();
+        if (!await persistDocumentNotes()) return;
         await api.updateSale(saleId, { notaPago: notaPago.trim() || null, transferenciaNumero: transferenciaNumero.trim() || null,
           ...(IS_NOVALED && sale?.canEditItems ? { confirmDraft: true } : {}) }, token);
         router.back();
@@ -501,16 +511,46 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
     }
   };
 
-  const toggleSello = async () => {
-    const next = !includeSello;
-    setIncludeSello(next);
-    if (!isDetail || !token || saleId == null) return;
+  const toggleDocumentOption = async (key: keyof DocumentOptionValues) => {
+    if (!isDetail || !token || saleId == null || optionsBusy || isVoided) return;
+    if (editAccess.access === 'read_only' || editAccess.access === 'checking') { editAccess.requestEdit(); return; }
+    const values = { showNotes, includeSignature, includeSeal: includeSello };
+    const next = !values[key];
+    const patch = key === 'includeSeal' ? { includeSello: next } : { [key]: next };
+    setOptionsBusy(true);
     try {
-      await api.updateSale(saleId, { includeSello: next }, token);
-      setSale((prev) => (prev ? { ...prev, includeSello: next } : prev));
+      await api.updateSale(saleId, patch, token);
+      if (key === 'includeSeal') setIncludeSello(next);
+      else if (key === 'showNotes') setShowNotes(next);
+      else setIncludeSignature(next);
+      setSale(prev => prev ? { ...prev, ...patch } : prev);
     } catch (err) {
-      setIncludeSello(!next);
-      showApiError(err, 'No se pudo guardar el sello');
+      showApiError(err, 'No se pudo guardar la opción del documento');
+    } finally {
+      setOptionsBusy(false);
+    }
+  };
+
+  const persistDocumentNotes = async () => {
+    const next = documentNotes.trim() || null;
+    if (!isDetail || !token || saleId == null || next === (sale?.notes ?? null)) return true;
+    if (!editAccess.requestEdit()) return false;
+    await api.updateSale(saleId, { notes: next }, token);
+    setSale(prev => prev ? { ...prev, notes: next } : prev);
+    return true;
+  };
+
+  const openSalePreview = async () => {
+    if (!isDetail || saleId == null || saving || optionsBusy) return;
+    setSaving(true);
+    try {
+      await persistLineDraft();
+      if (!await persistDocumentNotes()) return;
+      router.push(`/pos/${saleId}/preview`);
+    } catch (err) {
+      showApiError(err, 'No se pudo abrir el PDF de la venta');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -1004,22 +1044,28 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
               <Text style={[styles.totalValue, { color: colors.text }]}>{formatMoney(total)}</Text>
             </View>
 
+            {isDetail && docTab === 'venta' && (
+              <>
+                <DocumentOptions values={{ showNotes, includeSignature, includeSeal: includeSello }}
+                  disabled={optionsBusy || saving || isVoided} onToggle={key => { void toggleDocumentOption(key); }} />
+                {showNotes && <View style={styles.notesSection}>
+                  <Pressable accessibilityRole="button" onPress={() => { if (!editAccess.canEdit) editAccess.requestEdit(); }}
+                    style={styles.notesLabel}>
+                    <Text style={[styles.toggleLabel, { color: colors.text }]}>Texto de las notas</Text>
+                    {editAccess.proLocked && <ProBadge />}
+                  </Pressable>
+                  <TextInput value={documentNotes} onChangeText={setDocumentNotes} multiline maxLength={10000}
+                    editable={editAccess.canEdit && !isVoided && !saving} accessibilityLabel="Texto de las notas adicionales"
+                    placeholder="Notas adicionales" placeholderTextColor={colors.muted}
+                    style={[styles.notesBox, { color: colors.text, borderColor: colors.border, backgroundColor: colors.surface }]} />
+                </View>}
+              </>
+            )}
+
             {docTab === 'entrega' ? (
               <>
-                <Pressable style={styles.toggleRow} onPress={toggleSello}>
-                  <Text style={[styles.toggleLabel, { color: colors.text }]}>Incluir sello</Text>
-                  <View
-                    style={[
-                      styles.toggle,
-                      { borderColor: colors.primary },
-                      includeSello && { backgroundColor: colors.primary },
-                    ]}
-                  >
-                    {includeSello && (
-                      <Ionicons name="checkmark" size={14} color={colors.onPrimary} />
-                    )}
-                  </View>
-                </Pressable>
+                <DocumentOptions delivery values={{ showNotes, includeSignature, includeSeal: includeSello }}
+                  disabled={optionsBusy || saving || isVoided} onToggle={key => { void toggleDocumentOption(key); }} />
 
                 <Text style={[styles.fieldLabel, { color: colors.muted }]}>Estado de pago</Text>
                 {metodoSelector}
@@ -1052,7 +1098,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
           </>
         )}
         </View>
-        {isDetail&&<PrimaryButton title="Ver PDF de la venta" onPress={() => router.push(`/pos/${saleId}/preview`)}/>}
+        {isDetail&&<PrimaryButton title="Ver PDF de la venta" onPress={() => { void openSalePreview(); }} loading={saving} disabled={optionsBusy}/>}
       </TutorialScrollView>
 
       {dateOpen && <DatePickerModal value={sale?.createdAt ?? draftCreatedAt ?? new Date().toISOString()}
@@ -1354,24 +1400,13 @@ const styles = StyleSheet.create({
     fontFamily: 'Poppins',
     fontWeight: '600',
   },
-  toggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 4,
-  },
   toggleLabel: {
     fontSize: 15,
     fontFamily: 'Poppins',
   },
-  toggle: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  notesSection: { gap: 8, marginBottom: 12 },
+  notesLabel: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 40 },
+  notesBox: { borderWidth: 1, borderRadius: 12, minHeight: 90, padding: 12, fontSize: 15, fontFamily: 'Poppins', textAlignVertical: 'top' },
   center: {
     flex: 1,
     alignItems: 'center',

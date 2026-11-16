@@ -3,7 +3,7 @@ import type { AuditEvent, Plan } from './api';
 import { useRemote } from './hooks';
 import { date, Empty, ErrorBox, Icon, Loading, money, Pagination, planNames } from './ui';
 export function Plans() {
-  const { data, error, loading, reload } = useRemote<{ plans: Plan[] }>('/plans');
+  const { data, error, loading, reload } = useRemote<{ plans: Plan[]; scannerAvailable: boolean }>('/plans');
   return (
     <>
       <div className="page-heading">
@@ -75,10 +75,12 @@ export function Plans() {
       <div className="info-note">
         <Icon name="alert" />
         <div>
-          <strong>Escaneos mágicos: preparados en los planes</strong>
+          <strong>{data?.scannerAvailable ? 'Escaneo mágico de cotizaciones' : 'Escaneo mágico pendiente de configuración'}</strong>
           <p>
-            El escáner todavía no está implementado. No se cobra ni se registra consumo ficticio. En
-            Pro y Plus, su cupo se renovará por mes calendario, hora de Bolivia.
+            {data?.scannerAvailable
+              ? 'Solo las lecturas correctas consumen cupo. Los reintentos de la misma lectura no se cobran dos veces.'
+              : 'Configura OpenAI en el servidor de Lumis para habilitar las lecturas de fotos.'}{' '}
+            En Pro y Plus, el cupo se renueva por mes calendario, hora de Bolivia. En Gratis es por única vez.
           </p>
         </div>
       </div>

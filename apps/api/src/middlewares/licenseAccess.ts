@@ -36,6 +36,8 @@ export async function licenseAccess(req: AuthRequest, _res: Response, next: Next
             'transferenciaNumero',
             'comprobanteUrl',
             'includeSello',
+            'showNotes',
+            'includeSignature',
           ];
       const onlyOperation =
         isPatch &&

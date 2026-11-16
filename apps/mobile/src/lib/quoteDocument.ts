@@ -142,15 +142,15 @@ export function buildQuoteHtml(input: {
     return '';
   })();
 
-  const firmaBlock = quote.includeSignature
+  const firmaBlock = quote.includeSignature || sealImages
     ? `
     <div class="signature-section">
       <div class="signature-single">
         <div class="seal-container">
           ${sealImages}
         </div>
-        <div class="signature-line"></div>
-        <div class="signature-company">${escapeHtml(business.nombre)}</div>
+        ${quote.includeSignature ? `<div class="signature-line"></div>
+        <div class="signature-company">${escapeHtml(business.nombre)}</div>` : ''}
       </div>
     </div>`
     : '';

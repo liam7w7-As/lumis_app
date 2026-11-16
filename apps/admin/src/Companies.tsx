@@ -310,7 +310,7 @@ export function CompanyDialog({
                     value={q.limit === null ? 0 : Math.min(q.used, q.limit)}
                   />
                   <small>
-                    {meter === 'scans'
+                    {meter === 'scans' && !data.license.scannerAvailable
                       ? 'Función aún no disponible'
                       : q.limit === null
                         ? 'Sin límite'

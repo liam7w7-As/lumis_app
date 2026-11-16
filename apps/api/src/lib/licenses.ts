@@ -2,6 +2,7 @@ import type { Pool, PoolConnection, RowDataPacket } from 'mysql2/promise';
 import { pool } from '../db/pool';
 import { ApiError } from '../middlewares/errorHandler';
 import { PLANS, licenseState, monthKey, expiryDay, type Meter, type PlanId } from './plans';
+import { scannerAvailable } from './quoteVision';
 
 type Database = Pool | PoolConnection;
 interface LicenseRow extends RowDataPacket {
@@ -67,7 +68,7 @@ export async function licenseSnapshot(businessId: number, userId?: number) {
     quotas,
     features: { editDocuments: plan.editDocuments, brandColors: plan.brandColors },
     supportUrl: process.env.LUMIS_SUPPORT_URL || null,
-    scannerAvailable: false,
+    scannerAvailable: scannerAvailable(),
   };
 }
 export async function assertWritable(

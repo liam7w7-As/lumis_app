@@ -44,8 +44,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Lumis usa tus fotos para adjuntar comprobantes de pago.",
-          "cameraPermission": "Lumis usa la cámara para fotografiar comprobantes de pago.",
+          "photosPermission": "Lumis usa tus fotos para escanear listas de productos y adjuntar comprobantes de pago.",
+          "cameraPermission": "Lumis usa la cámara para escanear listas de productos y fotografiar comprobantes de pago.",
           "microphonePermission": false
         }
       ],

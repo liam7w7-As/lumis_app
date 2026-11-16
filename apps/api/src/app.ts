@@ -18,8 +18,10 @@ import { uploadsRouter } from './routes/uploads';
 import { tutorialsRouter } from './routes/tutorials';
 import { platformRouter } from './routes/platform';
 import { licenseRouter } from './routes/license';
+import { createQuoteScanRouter } from './routes/quoteScan';
+import type { QuoteImageReader } from './lib/quoteVision';
 
-export function createApp() {
+export function createApp(options: { quoteImageReader?: QuoteImageReader } = {}) {
   const app = express();
   app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
   app.use(cors({ origin: config.corsOrigin }));
@@ -28,6 +30,7 @@ export function createApp() {
   // (body-parser no re-parsea si ya se leyó el body).
   app.use('/api/sales', express.json({ limit: '12mb' }));
   app.use('/api/business', express.json({ limit: '12mb' }));
+  app.use('/api/quotes/scan', express.json({ limit: '12mb' }));
   app.use(express.json({ limit: '1mb' }));
 
   app.use('/uploads', uploadsRouter);
@@ -42,6 +45,7 @@ export function createApp() {
   app.use('/api/clients', clientsRouter);
   app.use('/api/dashboard', dashboardRouter);
   app.use('/api/products', productsRouter);
+  app.use('/api/quotes/scan', createQuoteScanRouter(options.quoteImageReader));
   app.use('/api/quotes', quotesRouter);
   app.use('/api/sales', salesRouter);
 

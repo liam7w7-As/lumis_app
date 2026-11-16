@@ -1,6 +1,8 @@
 import { Router } from 'express';
+import { createHash } from 'node:crypto';
 import { documentDateSchema } from '../lib/documentDate';
-import { consumeUsage } from '../lib/licenses';
+import { assertWritable, consumeUsage } from '../lib/licenses';
+import { resolveQuoteProducts } from '../lib/quoteProducts';
 import { registerItemActions } from './itemActions';
 import { PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import { z } from 'zod';
@@ -94,13 +96,18 @@ quotesRouter.get('/', requireAuth, async (req: AuthRequest, res, next) => {
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 const createQuoteSchema = z.object({
+  solicitud_id: z.string().trim().min(1).max(100).regex(/^[A-Za-z0-9_-]+$/).optional(),
   clientId: z.number().int().positive().nullable().optional(),
   branchId: z.number().int().positive().nullable().optional(),
   notes: z.string().trim().max(1000).nullable().optional(),
+  includeSeal: z.boolean().default(false),
+  showNotes: z.boolean().default(false),
+  includeSignature: z.boolean().default(false),
   items: z
     .array(
       z.object({
         productId: z.number().int().positive().nullable().optional(),
+        createProduct: z.boolean().optional(),
         description: z.string().trim().min(1, 'La descripción es obligatoria').max(255),
         quantity: z.number().positive('La cantidad debe ser mayor a 0'),
         unit: z.string().trim().min(1).max(20).default('Unidad'),
@@ -170,7 +177,7 @@ quotesRouter.get('/:id', requireAuth, async (req: AuthRequest, res, next) => {
         notes: (q.notes as string | null) ?? null,
         includeSeal: Number(q.include_seal) === 1,
         showNotes: Number(q.show_notes) === 1,
-        includeSignature: Number(q.include_signature ?? 1) === 1,
+        includeSignature: Number(q.include_signature ?? 0) === 1,
         versionNumero: Number(q.version_numero ?? 1),
         fechaVencimiento: q.fecha_vencimiento
           ? new Date(q.fecha_vencimiento as string).toISOString().slice(0, 10)
@@ -201,9 +208,25 @@ quotesRouter.get('/:id', requireAuth, async (req: AuthRequest, res, next) => {
 quotesRouter.post('/', requireAuth, async (req: AuthRequest, res, next) => {
   const conn = await pool.getConnection();
   try {
-    const { clientId = null, branchId = null, notes = null, items } = createQuoteSchema.parse(req.body);
+    const parsed = createQuoteSchema.parse(req.body);
+    const { clientId = null, branchId = null, notes = null, solicitud_id, includeSeal, showNotes, includeSignature } = parsed;
+    const { solicitud_id: _key, ...payload } = parsed;
+    const requestHash = createHash('sha256').update(JSON.stringify(payload)).digest('hex');
     await conn.beginTransaction();
+    await assertWritable(req.businessId!, req.userId!, conn, true);
+    if (solicitud_id) {
+      const [previous] = await conn.query<RowDataPacket[]>(
+        'SELECT request_hash,result_json FROM quote_requests WHERE business_id=? AND user_id=? AND request_key=? FOR UPDATE',
+        [req.businessId, req.userId, solicitud_id]);
+      if (previous[0]) {
+        if (previous[0].request_hash !== requestHash) throw conflict('Esta solicitud ya se usó con otros datos. Revisa el envío pendiente.');
+        await conn.commit();
+        res.status(201).json(JSON.parse(previous[0].result_json));
+        return;
+      }
+    }
     await consumeUsage(conn,req.businessId!,req.userId!,'quotes');
+    const items = await resolveQuoteProducts(conn, parsed.items, req.businessId!, req.userId!);
 
     if (clientId !== null) {
       const [cRows] = await conn.query<RowDataPacket[]>(
@@ -227,8 +250,8 @@ quotesRouter.post('/', requireAuth, async (req: AuthRequest, res, next) => {
     for (const it of items) {
       if (it.productId != null && !snapshots.has(it.productId)) {
         const [pRows] = await conn.query<RowDataPacket[]>(
-          'SELECT codigo_interno, marca, procedencia FROM products WHERE id = ?',
-          [it.productId],
+          'SELECT codigo_interno, marca, procedencia FROM products WHERE id = ? AND business_id = ?',
+          [it.productId, req.businessId],
         );
         if (pRows.length === 0) {
           throw badRequest(`Producto #${it.productId} no encontrado`);
@@ -254,9 +277,11 @@ quotesRouter.post('/', requireAuth, async (req: AuthRequest, res, next) => {
     const total = round2(lines.reduce((sum, l) => sum + l.subtotal, 0));
 
     const [ins] = await conn.query<ResultSetHeader>(
-      `INSERT INTO quotes (business_id, user_id, client_id, branch_id, status, notes, total)
-       VALUES (?, ?, ?, ?, 'borrador', ?, ?)`,
-      [req.businessId, req.userId, clientId, branchId, notes, total],
+      `INSERT INTO quotes (business_id, user_id, client_id, branch_id, status, notes, total,
+          include_seal, show_notes, include_signature)
+       VALUES (?, ?, ?, ?, 'borrador', ?, ?, ?, ?, ?)`,
+      [req.businessId, req.userId, clientId, branchId, notes, total,
+        includeSeal ? 1 : 0, showNotes ? 1 : 0, includeSignature ? 1 : 0],
     );
     for (const l of lines) {
       await conn.query(
@@ -268,8 +293,12 @@ quotesRouter.post('/', requireAuth, async (req: AuthRequest, res, next) => {
       );
     }
 
+    const result = { quote: { id: ins.insertId, total } };
+    if (solicitud_id) await conn.query(
+      'INSERT INTO quote_requests(business_id,user_id,request_key,request_hash,result_json) VALUES(?,?,?,?,?)',
+      [req.businessId, req.userId, solicitud_id, requestHash, JSON.stringify(result)]);
     await conn.commit();
-    res.status(201).json({ quote: { id: ins.insertId, total } });
+    res.status(201).json(result);
   } catch (err) {
     try {
       await conn.rollback();
@@ -298,8 +327,9 @@ quotesRouter.post('/:id/duplicate', requireAuth, async (req: AuthRequest, res, n
       throw notFound('Cotización no encontrada');
     }
     const [ins] = await conn.query<ResultSetHeader>(
-      `INSERT INTO quotes (business_id, user_id, client_id, branch_id, status, notes, total)
-       VALUES (?, ?, ?, ?, 'borrador', ?, ?)`,
+      `INSERT INTO quotes (business_id, user_id, client_id, branch_id, status, notes, total,
+          include_seal, show_notes, include_signature)
+       VALUES (?, ?, ?, ?, 'borrador', ?, ?, 0, 0, 0)`,
       [req.businessId, req.userId, quote.client_id, quote.branch_id, quote.notes, quote.total],
     );
     const [items] = await conn.query<RowDataPacket[]>(

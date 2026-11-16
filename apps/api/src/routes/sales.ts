@@ -37,6 +37,9 @@ interface SaleRow extends RowDataPacket {
   anulado_at: Date | null;
   entregada_at: Date | null;
   include_sello: number;
+  notes: string | null;
+  show_notes: number;
+  include_signature: number;
   created_at: Date;
   seller_name: string;
   agent_id: number | null;
@@ -113,6 +116,10 @@ const createSaleSchema = z.object({
   notaPago: z.string().trim().max(500).nullable().optional(),
   transferenciaNumero: z.string().trim().max(50).nullable().optional(),
   pagoInicial: z.number().positive('El pago inicial debe ser mayor a 0').optional(),
+  notes: z.string().trim().max(10000).nullable().optional(),
+  showNotes: z.boolean().default(false),
+  includeSignature: z.boolean().default(false),
+  includeSello: z.boolean().default(false),
   items: z.array(itemInputSchema).min(1, 'Agrega al menos un artículo').max(200),
 });
 
@@ -308,7 +315,7 @@ salesRouter.get('/:id', requireAuth, async (req: AuthRequest, res, next) => {
               s.branch_id, b.name AS branch_name,
               s.total, s.estado_pago, s.metodo_pago, s.estado, s.anulado_at,
               s.comprobante_url, s.nota_pago, s.transferencia_numero,
-              s.entregada_at, s.include_sello, s.agent_id,
+              s.entregada_at, s.include_sello, s.notes, s.show_notes, s.include_signature, s.agent_id,
               s.created_at, COALESCE(s.seller_name, u.name) AS seller_name
        FROM sales s
        LEFT JOIN clients c ON c.id = s.client_id
@@ -360,6 +367,9 @@ salesRouter.get('/:id', requireAuth, async (req: AuthRequest, res, next) => {
         anuladoAt: toIso(s.anulado_at),
         entregadaAt: toIso(s.entregada_at),
         includeSello: s.include_sello === 1,
+        notes: s.notes ?? null,
+        showNotes: Number(s.show_notes) === 1,
+        includeSignature: Number(s.include_signature) === 1,
         comprobanteUrl: (s.comprobante_url as string | null) ?? null,
         notaPago: (s.nota_pago as string | null) ?? null,
         transferenciaNumero: (s.transferencia_numero as string | null) ?? null,
@@ -596,7 +606,7 @@ salesRouter.post('/:id/duplicate', requireAuth, async (req: AuthRequest, res, ne
     await consumeUsage(conn,req.businessId!,req.userId!,'sales');
 
     const [sRows] = await conn.query<RowDataPacket[]>(
-      'SELECT client_id, branch_id, total, metodo_pago FROM sales WHERE id = ?',
+      'SELECT client_id, branch_id, total, metodo_pago, notes FROM sales WHERE id = ?',
       [id],
     );
     const source = sRows[0];
@@ -615,9 +625,11 @@ salesRouter.post('/:id/duplicate', requireAuth, async (req: AuthRequest, res, ne
 
     // La copia nace activa y por cobrar: es una venta nueva, sin cobrar.
     const [ins] = await conn.query<ResultSetHeader>(
-      `INSERT INTO sales (business_id, user_id, client_id, branch_id, total, estado_pago, metodo_pago)
-       VALUES (?, ?, ?, ?, ?, 'por_cobrar', ?)`,
-      [req.businessId, req.userId, source.client_id, source.branch_id, source.total, source.metodo_pago],
+      `INSERT INTO sales (business_id, user_id, client_id, branch_id, total, estado_pago, metodo_pago,
+          notes, include_sello, show_notes, include_signature)
+       VALUES (?, ?, ?, ?, ?, 'por_cobrar', ?, ?, 0, 0, 0)`,
+      [req.businessId, req.userId, source.client_id, source.branch_id, source.total, source.metodo_pago,
+        source.notes ?? null],
     );
     for (const it of items) {
       await conn.query(
@@ -652,6 +664,9 @@ const updateSaleSchema = z.object({
   transferenciaNumero: z.string().trim().max(50).nullable().optional(),
   comprobanteUrl: z.null().optional(),
   includeSello: z.boolean().optional(),
+  notes: z.string().trim().max(10000).nullable().optional(),
+  showNotes: z.boolean().optional(),
+  includeSignature: z.boolean().optional(),
 });
 
 salesRouter.patch('/:id', requireAuth, async (req: AuthRequest, res, next) => {
@@ -669,6 +684,9 @@ salesRouter.patch('/:id', requireAuth, async (req: AuthRequest, res, next) => {
       transferenciaNumero,
       comprobanteUrl,
       includeSello,
+      notes,
+      showNotes,
+      includeSignature,
     } = updateSaleSchema.parse(req.body);
     if (
       createdAt === undefined &&
@@ -680,7 +698,10 @@ salesRouter.patch('/:id', requireAuth, async (req: AuthRequest, res, next) => {
       notaPago === undefined &&
       transferenciaNumero === undefined &&
       comprobanteUrl === undefined &&
-      includeSello === undefined
+      includeSello === undefined &&
+      notes === undefined &&
+      showNotes === undefined &&
+      includeSignature === undefined
     ) {
       throw badRequest('No hay nada que actualizar');
     }
@@ -737,6 +758,9 @@ salesRouter.patch('/:id', requireAuth, async (req: AuthRequest, res, next) => {
            transferencia_numero = CASE WHEN ? THEN ? ELSE transferencia_numero END,
            comprobante_url = CASE WHEN ? THEN ? ELSE comprobante_url END,
            include_sello = COALESCE(?, include_sello),
+           notes = CASE WHEN ? THEN ? ELSE notes END,
+           show_notes = COALESCE(?, show_notes),
+           include_signature = COALESCE(?, include_signature),
            paid_at = CASE
              WHEN ? = 'pagado' THEN COALESCE(paid_at, CURRENT_TIMESTAMP)
              WHEN ? = 'por_cobrar' THEN NULL
@@ -755,6 +779,9 @@ salesRouter.patch('/:id', requireAuth, async (req: AuthRequest, res, next) => {
         transferenciaNumero !== undefined, transferenciaNumero ?? null,
         comprobanteUrl !== undefined, comprobanteUrl ?? null,
         includeSello === undefined ? null : includeSello ? 1 : 0,
+        notes !== undefined, notes ?? null,
+        showNotes === undefined ? null : showNotes ? 1 : 0,
+        includeSignature === undefined ? null : includeSignature ? 1 : 0,
         nextEstado ?? null, nextEstado ?? null,
         id,
       ],
@@ -784,6 +811,10 @@ salesRouter.post('/', requireAuth, async (req: AuthRequest, res, next) => {
       transferenciaNumero = null,
       pagoInicial,
       createdAt,
+      notes = null,
+      showNotes,
+      includeSignature,
+      includeSello,
     } = createSaleSchema.parse(req.body);
 
     await conn.beginTransaction();
@@ -797,8 +828,9 @@ salesRouter.post('/', requireAuth, async (req: AuthRequest, res, next) => {
 
     const [ins] = await conn.query<ResultSetHeader>(
       `INSERT INTO sales (business_id, user_id, client_id, branch_id, agent_id, seller_name, total, estado_pago,
-         metodo_pago, nota_pago, transferencia_numero, paid_at, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         metodo_pago, nota_pago, transferencia_numero, paid_at, created_at,
+         notes, show_notes, include_signature, include_sello)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         req.businessId, req.userId,
         clientId,
@@ -812,6 +844,10 @@ salesRouter.post('/', requireAuth, async (req: AuthRequest, res, next) => {
         metodoPago === 'transferencia' ? transferenciaNumero : null,
         estadoPago === 'pagado' ? new Date() : null,
         createdAt === undefined ? new Date() : new Date(createdAt),
+        notes,
+        showNotes ? 1 : 0,
+        includeSignature ? 1 : 0,
+        includeSello ? 1 : 0,
       ],
     );
     for (const it of items) {
@@ -976,7 +1012,7 @@ salesRouter.post('/from-quote', requireAuth, async (req: AuthRequest, res, next)
     await consumeUsage(conn,req.businessId!,req.userId!,'sales');
 
     const [qRows] = await conn.query<RowDataPacket[]>(
-      'SELECT id, client_id, branch_id, status, total FROM quotes WHERE id = ? FOR UPDATE',
+      'SELECT id, client_id, branch_id, status, total, notes FROM quotes WHERE id = ? FOR UPDATE',
       [quoteId],
     );
     const quote = qRows[0];
@@ -1001,8 +1037,9 @@ salesRouter.post('/from-quote', requireAuth, async (req: AuthRequest, res, next)
       [quoteId],
     );
     const [sale] = await conn.query<ResultSetHeader>(
-      'INSERT INTO sales (business_id, user_id, client_id, branch_id, quote_id, total) VALUES (?, ?, ?, ?, ?, ?)',
-      [req.businessId, req.userId, quote.client_id, quote.branch_id, quoteId, quote.total],
+      `INSERT INTO sales (business_id, user_id, client_id, branch_id, quote_id, total,
+          notes, include_sello, show_notes, include_signature) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0)`,
+      [req.businessId, req.userId, quote.client_id, quote.branch_id, quoteId, quote.total, quote.notes ?? null],
     );
     for (const it of items) {
       await conn.query(

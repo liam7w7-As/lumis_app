@@ -20,6 +20,8 @@ import { useTheme } from '../theme/ThemeContext';
 import { ApiError, api, type Branch } from '../lib/api';
 import { useMoney } from '../context/BusinessContext';
 import { PrimaryButton } from '../components/PrimaryButton';
+import { MagicQuoteScanModal } from '../components/MagicQuoteScanModal';
+import { useLicense } from '../context/LicenseContext';
 
 function todayLabel(): string {
   const d = new Date();
@@ -34,6 +36,7 @@ function NewQuoteScreenContent() {
   const tutorial = useTutorial();
 
   const { user, token } = useAuth();
+  const { refresh: refreshLicense } = useLicense();
   const { colors } = useTheme();
   const formatMoney = useMoney();
   const insets = useSafeAreaInsets();
@@ -43,6 +46,7 @@ function NewQuoteScreenContent() {
   const [branchId, setBranchId] = useState<number | null>(null);
   const [branchesOpen, setBranchesOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [scanOpen, setScanOpen] = useState(false);
   const submitLock=useRef(false);
   const pending = useLegacyPending('/api/quotes');
   const restored = useRef<unknown>(null);
@@ -52,7 +56,7 @@ function NewQuoteScreenContent() {
     const body = pending.body as unknown as Parameters<typeof api.createQuote>[0];
     void Promise.resolve().then(async () => {
       clear(); setBranchId(body.branchId);
-      for (const item of body.items) addItem({ productId: item.productId ?? null, name: item.description, quantity: item.quantity, unit: item.unit, unitPrice: item.unitPrice, marca: item.marca ?? null, procedencia: item.procedencia ?? null });
+      for (const item of body.items) addItem({ productId: item.productId ?? null, name: item.description, quantity: item.quantity, unit: item.unit, unitPrice: item.unitPrice, marca: item.marca ?? null, procedencia: item.procedencia ?? null, createProduct: item.createProduct });
       if (body.clientId) { const result = await api.clients(token, { id: body.clientId }); setClient(result.clients.find(item => item.id === body.clientId) ?? null); }
     }).catch(() => {});
   }, [pending, saving, token, clear, addItem, setClient]);
@@ -99,6 +103,7 @@ function NewQuoteScreenContent() {
             unitPrice: it.unitPrice,
             marca: it.marca,
             procedencia: it.procedencia,
+            createProduct: it.createProduct,
           })),
         },
         token,
@@ -211,6 +216,7 @@ function NewQuoteScreenContent() {
               <Text style={[styles.itemName, { color: colors.text }]} numberOfLines={1}>
                 {item.name}
               </Text>
+              {item.createProduct && <Text style={[styles.scanCaption, { color: colors.primary }]}>Nuevo · Se creará en el catálogo al guardar</Text>}
               <Text style={[styles.itemDetail, { color: colors.muted }]}>
                 {item.quantity} {item.unit} × {formatMoney(item.unitPrice)}
               </Text>
@@ -231,6 +237,20 @@ function NewQuoteScreenContent() {
           <Text style={[styles.outlineText, { color: colors.primary }]}>+  Añadir artículo</Text>
         </Pressable></TutorialTarget>
 
+        <TutorialTarget id="scan"><Pressable
+          accessibilityRole="button" accessibilityLabel="Escaneo mágico de una lista de productos"
+          disabled={saving || !!pending}
+          onPress={() => { tutorial.notify('scan'); setScanOpen(true); }}
+          style={[styles.scanButton, { backgroundColor: colors.primary + '12', borderColor: colors.primary, opacity: saving || pending ? 0.5 : 1 }]}
+        >
+          <Ionicons name="sparkles-outline" size={24} color={colors.primary} />
+          <View style={{ flex: 1, gap: 3 }}>
+            <Text style={[styles.scanTitle, { color: colors.primary }]}>Escaneo mágico</Text>
+            <Text style={[styles.scanCaption, { color: colors.muted }]}>Convierte una foto de tu lista en artículos</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.primary} />
+        </Pressable></TutorialTarget>
+
         {items.length > 0 && (
           <View style={styles.totalRow}>
             <Text style={[styles.totalLabel, { color: colors.muted }]}>TOTAL</Text>
@@ -242,6 +262,14 @@ function NewQuoteScreenContent() {
         <PrimaryButton title="Guardar y ver PDF" onPress={() => { void save(); }} loading={saving} disabled={items.length===0}/>
         </View>
       </TutorialScrollView>
+
+      {token && <MagicQuoteScanModal key={token} visible={scanOpen} token={token}
+        onClose={() => { setScanOpen(false); void refreshLicense(); }}
+        onAdd={lines => {
+          if (items.length + lines.length > 200) throw new Error('La cotización admite hasta 200 artículos. Desmarca algunos productos para continuar.');
+          lines.forEach(line => addItem(line));
+          void refreshLicense();
+        }} />}
 
       <FormModal visible={branchesOpen} title="Elegir sucursal" icon="storefront-outline" onClose={() => setBranchesOpen(false)}>
 
@@ -415,6 +443,9 @@ const styles = StyleSheet.create({
     minHeight: 56,
     justifyContent: 'center',
   },
+  scanButton: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 15, borderWidth: 1, borderRadius: 16 },
+  scanTitle: { fontFamily: 'Poppins-SemiBold', fontSize: 15 },
+  scanCaption: { fontFamily: 'Poppins', fontSize: 11, lineHeight: 17 },
   outlineButton: {
     borderWidth: 1.5,
     paddingVertical: 16,

@@ -51,3 +51,13 @@ test('cerrar un éxito conserva la navegación asociada a Listo', () => {
   feedback.dismiss();
   assert.equal(continued,true);
 });
+
+test('cerrar una sesión retira solo su aviso y no ejecuta acciones de la cuenta anterior', async () => {
+  let previousAction = false;
+  const old = feedback.alert('Tu plan se actualizó', 'Plan Pro', [{ text: 'Ver mi plan', onPress: () => { previousAction = true; } }]);
+  const current = feedback.success('Venta guardada', 'Documento de otra sesión');
+  feedback.remove(old);
+  await feedback.press(old, 0);
+  assert.equal(previousAction, false);
+  assert.deepEqual(getFeedbackSnapshot().messages.map(message => message.id), [current]);
+});
