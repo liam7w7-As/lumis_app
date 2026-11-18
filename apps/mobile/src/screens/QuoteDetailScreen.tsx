@@ -59,6 +59,8 @@ function QuoteDetailScreenContent() {
   const [dateOpen, setDateOpen] = useState(false);
 
   const [expandedItem, setExpandedItem] = useState<number | null>(null);
+  const [editName, setEditName] = useState('');
+  const editNameRef = useRef('');
   const [editQty, setEditQty] = useState('1');
   const [editPrice, setEditPrice] = useState('');
   const [itemBusy, setItemBusy] = useState(false);
@@ -119,14 +121,24 @@ function QuoteDetailScreenContent() {
     const { quote: updated } = await api.quoteDetail(quote.id, token);
     setQuote((current) => current ? { ...current, items: updated.items, total: updated.total } : current);
   };
+  const itemDraftInput = () => {
+    const description = editNameRef.current.trim();
+    if (!description) throw new Error('El nombre del artículo no puede quedar vacío.');
+    if (description.length > 255) throw new Error('El nombre del artículo admite hasta 255 caracteres.');
+    const quantity = parseNum(editQty), unitPrice = parseNum(editPrice);
+    if (!Number.isFinite(quantity) || quantity <= 0) throw new Error('La cantidad debe ser mayor a 0');
+    if (!Number.isFinite(unitPrice) || unitPrice < 0) throw new Error('Escribe un precio válido, mayor o igual a 0.');
+    return { description, quantity, unitPrice };
+  };
   const persistItemDraft = async () => {
     if (!token || !quote || !editable || expandedItem == null) return;
     if(!canEdit) return;
     const item = quote.items.find((entry) => entry.id === expandedItem);
     if (!item) return;
-    const quantity = parseNum(editQty), unitPrice = parseNum(editPrice);
-    if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(unitPrice) || unitPrice < 0) throw new Error('Revisa la cantidad y el precio del producto.');
-    if (quantity !== item.quantity || unitPrice !== item.unitPrice) await api.updateQuoteItem(quote.id, item.id, { quantity, unitPrice }, token);
+    const input = itemDraftInput();
+    if (input.description !== item.description || input.quantity !== item.quantity || input.unitPrice !== item.unitPrice) {
+      await api.updateQuoteItem(quote.id, item.id, input, token);
+    }
     setExpandedItem(null);
   };
   const duplicateItem = async (item: QuoteItem) => {
@@ -211,37 +223,30 @@ function QuoteDetailScreenContent() {
   };
 
   const toggleItem = (item: QuoteItem) => {
-    if (!editable) return;
+    if (!editable || itemBusy || saving) return;
     if(!requestEdit())return;
     if (expandedItem === item.id) {
       setExpandedItem(null);
       return;
     }
     setExpandedItem(item.id);
+    editNameRef.current = item.description;
+    setEditName(item.description);
     setEditQty(String(item.quantity));
     setEditPrice(String(item.unitPrice));
   };
 
   const saveItem = async (item: QuoteItem) => {
     if(!requestEdit())return;
-    if (!token || !quote) return;
-    const qty = parseNum(editQty);
-    const price = parseNum(editPrice);
-    if (!Number.isFinite(qty) || qty <= 0) {
-      feedback.alert('Error', 'La cantidad debe ser mayor a 0');
-      return;
-    }
-    if (!Number.isFinite(price) || price < 0) {
-      feedback.alert('Error', 'El precio no puede ser negativo');
-      return;
-    }
-    setItemBusy(true);
+    if (!token || !quote || itemBusy || saving) return;
     try {
-      await api.updateQuoteItem(quote.id, item.id, { quantity: qty, unitPrice: price }, token);
+      const input = itemDraftInput();
+      setItemBusy(true);
+      await api.updateQuoteItem(quote.id, item.id, input, token);
       setExpandedItem(null);
       await refreshItems();
     } catch (err) {
-      feedback.alert('Error', err instanceof ApiError ? err.message : 'No se pudo guardar');
+      feedback.alert('Error', err instanceof Error ? err.message : 'No se pudo guardar');
     } finally {
       setItemBusy(false);
     }
@@ -421,6 +426,22 @@ function QuoteDetailScreenContent() {
               </Pressable>
               {expanded && (
                 <View style={styles.editor}>
+                  <View>
+                    <Text style={[styles.fieldLabel, { color: colors.muted }]}>Nombre del artículo</Text>
+                    <TextInput
+                      style={[styles.nameInput, { color: colors.text, borderBottomColor: colors.border }]}
+                      value={editName}
+                      onChangeText={value => { editNameRef.current = value; setEditName(value); }}
+                      accessibilityLabel={`Nombre del artículo ${index + 1}`}
+                      editable={!itemBusy && !saving}
+                      maxLength={255}
+                      autoCorrect={false}
+                      multiline
+                      textAlignVertical="top"
+                      returnKeyType="done"
+                      submitBehavior="blurAndSubmit"
+                    />
+                  </View>
                   <View style={styles.qtyRow}>
                     <Pressable
                       style={[styles.stepper, { borderColor: colors.border }]}
@@ -435,6 +456,7 @@ function QuoteDetailScreenContent() {
                       style={[styles.qtyInput, { color: colors.text, borderBottomColor: colors.border }]}
                       value={editQty}
                       onChangeText={setEditQty}
+                      accessibilityLabel={`Cantidad del artículo ${index + 1}`}
                       keyboardType="decimal-pad"
                     />
                     <Pressable
@@ -454,6 +476,7 @@ function QuoteDetailScreenContent() {
                       style={[styles.priceInput, { color: colors.text, borderBottomColor: colors.border }]}
                       value={editPrice}
                       onChangeText={setEditPrice}
+                      accessibilityLabel={`Precio unitario del artículo ${index + 1}`}
                       keyboardType="decimal-pad"
                     />
                   </View>
@@ -461,6 +484,8 @@ function QuoteDetailScreenContent() {
                     <Pressable
                       style={[styles.editorSave, { backgroundColor: colors.primary }]}
                       onPress={() => saveItem(item)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Guardar artículo ${index + 1}`}
                       disabled={itemBusy}
                     >
                       {itemBusy ? (
@@ -739,6 +764,13 @@ const styles = StyleSheet.create({
   editor: {
     marginTop: 12,
     gap: 10,
+  },
+  nameInput: {
+    borderBottomWidth: 1,
+    fontSize: 16,
+    fontFamily: 'Poppins',
+    minHeight: 44,
+    paddingBottom: 8,
   },
   qtyRow: {
     flexDirection: 'row',

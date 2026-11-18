@@ -69,6 +69,8 @@ function parseNum(raw: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+class ItemEditError extends Error {}
+
 function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
   const { colors } = useTheme();
   const formatMoney = useMoney();
@@ -100,6 +102,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
   const [ordering, setOrdering] = useState(false);
   const [lineBusy, setLineBusy] = useState(false);
   const [expanded, setExpanded] = useState<LineKey | null>(null);
+  const [editName, setEditName] = useState('');
   const [editQty, setEditQty] = useState('1');
   const [editPrice, setEditPrice] = useState('');
   const [notaPago, setNotaPago] = useState('');
@@ -206,7 +209,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
       : 'pagado';
 
   const showApiError = (err: unknown, fallback: string) =>
-    feedback.alert('Error', err instanceof ApiError ? err.message : fallback);
+    feedback.alert('Error', err instanceof ApiError || err instanceof ItemEditError ? err.message : fallback);
 
   const toInput = (line: {
     productId: number | null;
@@ -226,29 +229,39 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
     procedencia: line.procedencia,
   });
 
-  const openEditor = (key: LineKey, quantity: number, unitPrice: number) => {
-    if (!canEditLines) return;
+  const openEditor = (key: LineKey, quantity: number, unitPrice: number, description = '') => {
+    if (!canEditLines || lineBusy || saving || isVoided) return;
     if(isDetail&&!editAccess.requestEdit())return;
     setExpanded(key);
+    setEditName(description);
     setEditQty(String(quantity));
     setEditPrice(String(unitPrice));
   };
 
+  const lineDraftInput = () => {
+    const description = editName.trim();
+    if (!description) throw new ItemEditError('El nombre del artículo no puede quedar vacío.');
+    if (description.length > 255) throw new ItemEditError('El nombre del artículo admite hasta 255 caracteres.');
+    const quantity = parseNum(editQty), unitPrice = parseNum(editPrice);
+    if (quantity == null || quantity <= 0 || unitPrice == null || unitPrice < 0) {
+      throw new ItemEditError('Revisa la cantidad y el precio.');
+    }
+    return { description, quantity, unitPrice };
+  };
+
   const saveSavedItem = async (itemId: number) => {
     if(!editAccess.requestEdit())return;
-    if (!token || saleId == null) return;
-    const quantity = parseNum(editQty);
-    const unitPrice = parseNum(editPrice);
-    if (quantity == null || quantity <= 0 || unitPrice == null || unitPrice < 0) {
-      feedback.alert('Datos inválidos', 'Revisa la cantidad y el precio.');
-      return;
-    }
+    if (!token || saleId == null || lineBusy || saving) return;
     try {
-      await api.updateSaleItem(saleId, itemId, { quantity, unitPrice }, token);
+      const input = lineDraftInput();
+      setLineBusy(true);
+      await api.updateSaleItem(saleId, itemId, input, token);
       setExpanded(null);
       await refreshLineItems();
     } catch (err) {
       showApiError(err, 'No se pudo guardar el artículo');
+    } finally {
+      setLineBusy(false);
     }
   };
 
@@ -666,11 +679,29 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
     onQty: (v: string) => void,
     onPrice: (v: string) => void,
   ) => (
+    <View>
+    {isDetail && <View style={styles.editorNameField}>
+      <Text style={[styles.fieldLabel, { color: colors.muted }]}>Nombre del artículo</Text>
+      <TextInput
+        style={[styles.editorInput, styles.editorName, { color: colors.text, borderColor: colors.border }]}
+        value={editName}
+        onChangeText={setEditName}
+        accessibilityLabel="Nombre del producto"
+        editable={!lineBusy && !saving}
+        maxLength={255}
+        autoCorrect={false}
+        multiline
+        returnKeyType="done"
+        submitBehavior="blurAndSubmit"
+      />
+    </View>}
     <View style={styles.editorRow}>
       <TextInput
         style={[styles.editorInput, { color: colors.text, borderColor: colors.border }]}
         value={editQty}
         onChangeText={onQty}
+        accessibilityLabel="Cantidad del producto"
+        editable={!lineBusy && !saving}
         keyboardType="decimal-pad"
         placeholder="Cant."
         placeholderTextColor={colors.muted}
@@ -679,6 +710,8 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
         style={[styles.editorInput, { color: colors.text, borderColor: colors.border }]}
         value={editPrice}
         onChangeText={onPrice}
+        accessibilityLabel="Precio del producto"
+        editable={!lineBusy && !saving}
         keyboardType="decimal-pad"
         placeholder="Precio"
         placeholderTextColor={colors.muted}
@@ -686,15 +719,20 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
       <Pressable
         style={[styles.editorDone, { backgroundColor: colors.primary }]}
         onPress={onCommit}
+        accessibilityRole="button"
+        accessibilityLabel="Guardar cambios del producto"
+        disabled={lineBusy || saving}
       >
         <Text style={{ color: colors.onPrimary, fontWeight: "700" }}>Guardar</Text>
       </Pressable>
       <Pressable
         style={[styles.editorDone, { backgroundColor: colors.background }]}
         onPress={onRemove}
+        disabled={lineBusy || saving}
       >
         <Ionicons name="trash-outline" size={18} color={colors.error} />
       </Pressable>
+    </View>
     </View>
   );
 
@@ -706,9 +744,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
   const persistLineDraft = async () => {
     if (!token || saleId == null || typeof expanded !== "number") return;
     if(!editAccess.canEdit)return;
-    const quantity = parseNum(editQty), unitPrice = parseNum(editPrice);
-    if (quantity == null || quantity <= 0 || unitPrice == null || unitPrice < 0) throw new Error("Revisa la cantidad y el precio.");
-    await api.updateSaleItem(saleId, expanded, { quantity, unitPrice }, token);
+    await api.updateSaleItem(saleId, expanded, lineDraftInput(), token);
     setExpanded(null);
   };
   const duplicateLine = async (itemId: number) => {
@@ -727,7 +763,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
   const renderLines = () => {
     if (isDetail) {
       return (sale?.items ?? []).map((it, index) => (
-        <ItemSwipe tutorialRow={index === 0} key={it.id} proLocked={editAccess.proLocked} disabled={isVoided || lineBusy || !canEditLines} onEdit={() => openEditor(it.id, it.quantity, it.unitPrice)}
+        <ItemSwipe tutorialRow={index === 0} key={it.id} proLocked={editAccess.proLocked} disabled={isVoided || lineBusy || !canEditLines} onEdit={() => openEditor(it.id, it.quantity, it.unitPrice, it.description)}
           onDelete={() => {if(editAccess.requestEdit())feedback.alert("Quitar producto", it.description, [{ text: "Cancelar", style: "cancel" }, { text: "Eliminar", style: "destructive", onPress: () => { void removeSavedItem(it.id); } }]);}}
           onDuplicate={() => { void duplicateLine(it.id); }} onMove={() => {if(editAccess.requestEdit())setOrdering(true);}}>
         <View style={[styles.itemCard, { backgroundColor: colors.surface }]}>
@@ -737,7 +773,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
             </View>
             <Pressable
               style={styles.itemInfo}
-              onPress={() => openEditor(it.id, it.quantity, it.unitPrice)}
+              onPress={() => openEditor(it.id, it.quantity, it.unitPrice, it.description)}
             >
               <Text style={[styles.itemName, { color: colors.text }]} numberOfLines={2}>
                 {it.description}
@@ -1331,6 +1367,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     marginTop: 12,
+  },
+  editorNameField: {
+    marginTop: 12,
+  },
+  editorName: {
+    flex: 0,
+    minHeight: 44,
+    textAlignVertical: 'top',
   },
   editorInput: {
     flex: 1,
