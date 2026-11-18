@@ -8,6 +8,8 @@ import { IS_NOVALED } from '../lib/backend';
 import { useLegacyPending } from '../hooks/useLegacyPending';
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -44,6 +46,7 @@ import { SalePaymentSection } from '../components/SalePaymentSection';
 import { ClientPickerModal } from '../components/ClientPickerModal';
 import { useDocumentEditAccess } from '../hooks/useDocumentEditAccess';
 import { ProBadge } from '../components/ProBadge';
+import { useKeyboardAwareNotes } from '../hooks/useKeyboardAwareNotes';
 
 type DocTab = 'venta' | 'entrega';
 type LineKey = string | number;
@@ -78,6 +81,8 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
   const { token, user } = useAuth();
   const editAccess=useDocumentEditAccess();
   const insets = useSafeAreaInsets();
+  const { scrollRef: notesScrollRef, inputRef: notesInputRef, onScroll: onNotesScroll,
+    reveal: revealNotes, inputStyle: notesInputStyle } = useKeyboardAwareNotes();
   const { client, setClient, items, addItem, updateItem, removeItem, clear } = useDraft();
 
   const isDetail = saleId != null;
@@ -981,8 +986,13 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
   }
 
   return (
-    <View style={[styles.screen, { backgroundColor: colors.background }]}>
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={[styles.screen, { backgroundColor: colors.background }]}>
       <TutorialScrollView
+        ref={notesScrollRef}
+        onScroll={onNotesScroll}
+        onLayout={revealNotes}
+        onContentSizeChange={revealNotes}
         contentContainerStyle={[
           styles.scroll,
           { paddingTop: insets.top + 8, paddingBottom: 32 + insets.bottom },
@@ -1150,9 +1160,11 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
                     {editAccess.proLocked && <ProBadge />}
                   </Pressable>
                   <TextInput value={documentNotes} onChangeText={setDocumentNotes} multiline maxLength={10000}
+                    ref={notesInputRef} onFocus={revealNotes} onLayout={revealNotes}
+                    onContentSizeChange={revealNotes} onSelectionChange={revealNotes} disableFullscreenUI
                     editable={editAccess.canEdit && !isVoided && !saving} accessibilityLabel="Texto de las notas adicionales"
                     placeholder="Notas adicionales" placeholderTextColor={colors.muted}
-                    style={[styles.notesBox, { color: colors.text, borderColor: colors.border, backgroundColor: colors.surface }]} />
+                    style={[styles.notesBox, { color: colors.text, borderColor: colors.border, backgroundColor: colors.surface }, notesInputStyle]} />
                 </View>}
               </>
             )}
@@ -1256,7 +1268,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
       </FormModal>
 
       {clientsOpen && <ClientPickerModal selectedId={clientId} onPick={client => { void pickClient(client); }} onClose={() => setClientsOpen(false)} />}
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

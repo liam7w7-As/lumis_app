@@ -85,7 +85,8 @@ function harness(screen: Screen, novaled: boolean, newSale = false) {
   const modules: Record<string, unknown> = {
     react, 'react/jsx-runtime': { jsx, jsxs: jsx },
     'react-native': {
-      ...Object.fromEntries(['ActivityIndicator', 'Pressable', 'Text', 'TextInput', 'View'].map(name => [name, name])),
+      ...Object.fromEntries(['ActivityIndicator', 'KeyboardAvoidingView', 'Pressable', 'Text', 'TextInput', 'View'].map(name => [name, name])),
+      Platform: { OS: 'android' },
       StyleSheet: { create: (value: unknown) => value },
     },
     '@expo/vector-icons/Ionicons': { default: 'Icon' },
@@ -117,6 +118,9 @@ function harness(screen: Screen, novaled: boolean, newSale = false) {
       ...access, requestEdit() { accessRequests += 1; return access.canEdit; },
     }) },
     '../hooks/useLegacyPending': { useLegacyPending: () => null },
+    '../hooks/useKeyboardAwareNotes': { useKeyboardAwareNotes: () => ({
+      scrollRef: { current: null }, inputRef: { current: null }, onScroll() {}, reveal() {}, inputStyle: { minHeight: 90, maxHeight: 200 },
+    }) },
     '../context/AuthContext': { useAuth: () => ({ token: 'document-edit-session', user: { id: 7, name: 'Agente', permissions: { takePayments: true } } }) },
     '../context/DraftContext': { useDraft: () => ({ ...draft, items: draftItems }) },
     '../context/BusinessContext': { useMoney: () => (value: number) => `Bs. ${value}`, useBusiness: () => ({ business: sampleBusiness }) },

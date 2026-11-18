@@ -6,6 +6,8 @@ import { feedback } from '../lib/feedback';
 import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -29,6 +31,7 @@ import { useDocumentEditAccess } from '../hooks/useDocumentEditAccess';
 import { ProBadge } from '../components/ProBadge';
 import { changedQuoteOptions } from '../lib/quoteOptions';
 import { IS_NOVALED } from '../lib/backend';
+import { useKeyboardAwareNotes } from '../hooks/useKeyboardAwareNotes';
 
 const METADATA_MAX_LENGTH = IS_NOVALED ? 150 : 100;
 
@@ -45,6 +48,8 @@ function QuoteDetailScreenContent() {
   const { business } = useBusiness();
   const {canEdit,proLocked,requestEdit,access}=useDocumentEditAccess();
   const insets = useSafeAreaInsets();
+  const { scrollRef: notesScrollRef, inputRef: notesInputRef, onScroll: onNotesScroll,
+    reveal: revealNotes, inputStyle: notesInputStyle } = useKeyboardAwareNotes();
 
   const [quote, setQuote] = useState<QuoteDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -313,8 +318,13 @@ function QuoteDetailScreenContent() {
   const statusColor = quote.status === 'convertida' ? colors.primary : STATUS_COLOR[quote.status];
 
   return (
-    <View style={[styles.screen, { backgroundColor: colors.background }]}>
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={[styles.screen, { backgroundColor: colors.background }]}>
       <TutorialScrollView
+        ref={notesScrollRef}
+        onScroll={onNotesScroll}
+        onLayout={revealNotes}
+        onContentSizeChange={revealNotes}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={[
           styles.scroll,
@@ -599,13 +609,21 @@ function QuoteDetailScreenContent() {
           <View><Pressable accessibilityRole="button" onPress={() => {if(!canEdit)requestEdit();}} style={{flexDirection:'row',alignItems:'center',gap:8,marginBottom:8}}>
             <Text style={[styles.toggleLabel,{color:colors.text}]}>Texto de las notas</Text>{proLocked&&<ProBadge/>}
           </Pressable><TextInput
+            ref={notesInputRef}
             style={[
               styles.notesBox,
               { color: colors.text, borderColor: colors.border, backgroundColor: colors.surface },
+              notesInputStyle,
             ]}
             value={notes}
             editable={canEdit}
             onChangeText={setNotes}
+            onFocus={revealNotes}
+            onLayout={revealNotes}
+            onContentSizeChange={revealNotes}
+            onSelectionChange={revealNotes}
+            accessibilityLabel="Texto de las notas adicionales"
+            disableFullscreenUI
             placeholder="Notas adicionales"
             placeholderTextColor={colors.muted}
             multiline
@@ -639,7 +657,7 @@ function QuoteDetailScreenContent() {
               <PrimaryButton title="Cerrar" onPress={() => setClientOpen(false)} />
             </View>
       </FormModal>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
