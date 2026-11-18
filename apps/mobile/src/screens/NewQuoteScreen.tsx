@@ -2,26 +2,35 @@ import { TutorialTarget, TutorialScrollView, TutorialHelpButton, useTutorialAvai
 import { useTutorial } from '../tutorials/TutorialContext';
 import { FormModal } from '../components/FormModal';
 import { feedback } from '../lib/feedback';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useLegacyPending } from '../hooks/useLegacyPending';
 import {
   ActivityIndicator,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
   View,
+  type ScrollView,
+  type TextInput,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
-import { useDraft } from '../context/DraftContext';
+import { useDraft, type DraftItem } from '../context/DraftContext';
 import { useTheme } from '../theme/ThemeContext';
 import { ApiError, api, type Branch } from '../lib/api';
 import { useMoney } from '../context/BusinessContext';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { MagicQuoteScanModal } from '../components/MagicQuoteScanModal';
 import { useLicense } from '../context/LicenseContext';
+import { useReducedMotion } from '../context/MotionContext';
+import { QuoteDraftItemCard } from '../components/QuoteDraftItemCard';
+import { buildQuoteItems, quoteDraftSubtotal, QuoteDraftValidationError, type QuoteDraftField } from '../lib/quoteDraftEditing';
+import { DEFAULT_UNITS, loadUnits } from '../lib/units';
 
 function todayLabel(): string {
   const d = new Date();
@@ -38,9 +47,20 @@ function NewQuoteScreenContent() {
   const { user, token } = useAuth();
   const { refresh: refreshLicense } = useLicense();
   const { colors } = useTheme();
+  const reducedMotion = useReducedMotion();
   const formatMoney = useMoney();
   const insets = useSafeAreaInsets();
-  const { client, setClient, items, addItem, removeItem, clear } = useDraft();
+  const { client, setClient, items, addItem, updateItem, removeItem, clear } = useDraft();
+  const latestItems = useRef(items);
+  useLayoutEffect(() => { latestItems.current = items; }, [items]);
+  const scroll = useRef<ScrollView>(null);
+  const scrollY = useRef(0);
+  const focusedInput = useRef<TextInput | null>(null);
+  const focusSequence = useRef(0);
+  const [focusRequest, setFocusRequest] = useState<{ key: string; field: QuoteDraftField; requestId: number } | null>(null);
+  const [showErrors, setShowErrors] = useState(false);
+  const [unitItemKey, setUnitItemKey] = useState<string | null>(null);
+  const [units, setUnits] = useState<string[]>(DEFAULT_UNITS);
   const [nextNumber, setNextNumber] = useState<number | null>(null);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [branchId, setBranchId] = useState<number | null>(null);
@@ -50,6 +70,42 @@ function NewQuoteScreenContent() {
   const submitLock=useRef(false);
   const pending = useLegacyPending('/api/quotes');
   const restored = useRef<unknown>(null);
+  const keepFocusedVisible = useCallback(() => {
+    const input = focusedInput.current;
+    if (!input?.isFocused() || !scroll.current) return;
+    input.measureInWindow((_x, y, _width, height) => {
+      scroll.current?.getNativeScrollRef()?.measureInWindow((_sx, top, _sw, viewportHeight) => {
+        const bottom = Math.min(top + viewportHeight, Keyboard.metrics()?.screenY ?? Infinity) - 24;
+        if (y + height > bottom) scroll.current?.scrollTo({ y: Math.max(0, scrollY.current + y + height - bottom), animated: !reducedMotion });
+        else if (y < top + 20) scroll.current?.scrollTo({ y: Math.max(0, scrollY.current + y - top - 20), animated: !reducedMotion });
+      });
+    });
+  }, [reducedMotion]);
+  const focusInput = useCallback((input: TextInput) => {
+    focusedInput.current = input;
+    requestAnimationFrame(keepFocusedVisible);
+  }, [keepFocusedVisible]);
+  useEffect(() => {
+    const shown = Keyboard.addListener('keyboardDidShow', keepFocusedVisible);
+    const changed = Keyboard.addListener('keyboardDidChangeFrame', keepFocusedVisible);
+    return () => { shown.remove(); changed.remove(); };
+  }, [keepFocusedVisible]);
+  const editItem = (key: string, patch: Partial<Omit<DraftItem, 'key'>>) => {
+    if (saving || pending || submitLock.current) return;
+    latestItems.current = latestItems.current.map(item => item.key === key ? { ...item, ...patch } : item);
+    updateItem(key, patch);
+  };
+  const deleteItem = (key: string) => {
+    if (saving || pending || submitLock.current) return;
+    latestItems.current = latestItems.current.filter(item => item.key !== key);
+    removeItem(key);
+  };
+  const chooseUnit = (key: string) => {
+    if (saving || pending || submitLock.current) return;
+    Keyboard.dismiss();
+    setUnitItemKey(key);
+    void loadUnits(user?.id ?? null).then(setUnits);
+  };
   useEffect(() => {
     if (!pending || saving || restored.current === pending.body.solicitud_id || !token) return;
     restored.current = pending.body.solicitud_id;
@@ -80,14 +136,34 @@ function NewQuoteScreenContent() {
 
   const branch = branches.find((b) => b.id === branchId) ?? null;
 
-  const total = items.reduce((sum, it) => sum + it.quantity * it.unitPrice, 0);
+  const subtotals = items.map(quoteDraftSubtotal);
+  const total = subtotals.some(value => value === null) ? null
+    : Math.round(subtotals.reduce<number>((sum, value) => sum + (value ?? 0), 0) * 100) / 100;
+  const unitItem = items.find(item => item.key === unitItemKey);
+  const unitOptions = [...new Set([unitItem?.unit, ...units].filter((unit): unit is string => !!unit))];
 
   const save = async () => {
     if (!token || submitLock.current) return;
-    if (items.length === 0) {
+    if (!pending && latestItems.current.length === 0) {
       feedback.alert('Sin artículos', 'Agrega al menos un artículo a la cotización');
       return;
     }
+    let preparedItems: ReturnType<typeof buildQuoteItems> = [];
+    if (!pending) {
+      try { preparedItems = buildQuoteItems(latestItems.current); }
+      catch (error) {
+        setShowErrors(true);
+        const message = error instanceof Error ? error.message : 'Revisa los datos de los artículos.';
+        const focusError = () => {
+          if (error instanceof QuoteDraftValidationError && latestItems.current.some(item => item.key === error.key)) {
+            setFocusRequest({ key: error.key, field: error.field, requestId: ++focusSequence.current });
+          }
+        };
+        feedback.alert('Revisa los artículos', message, [{ text: 'Revisar', onPress: focusError }], { onDismiss: focusError });
+        return;
+      }
+    }
+    Keyboard.dismiss();
     submitLock.current=true;
     setSaving(true);
     try {
@@ -95,16 +171,7 @@ function NewQuoteScreenContent() {
         pending ? { ...pending.body, solicitud_id: undefined } as unknown as Parameters<typeof api.createQuote>[0] : {
           clientId: client?.id ?? null,
           branchId,
-          items: items.map((it) => ({
-            productId: it.productId,
-            description: it.name,
-            quantity: it.quantity,
-            unit: it.unit,
-            unitPrice: it.unitPrice,
-            marca: it.marca,
-            procedencia: it.procedencia,
-            createProduct: it.createProduct,
-          })),
+          items: preparedItems,
         },
         token,
       );
@@ -119,8 +186,15 @@ function NewQuoteScreenContent() {
   };
 
   return (
-    <View style={[styles.screen, { backgroundColor: colors.background }]}>
+    <KeyboardAvoidingView style={[styles.screen, { backgroundColor: colors.background }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <TutorialScrollView
+        ref={scroll}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        onScroll={event => { scrollY.current = event.nativeEvent.contentOffset.y; }}
+        onLayout={() => requestAnimationFrame(keepFocusedVisible)}
+        onContentSizeChange={() => requestAnimationFrame(keepFocusedVisible)}
         contentContainerStyle={[
           styles.scroll,
           { paddingTop: insets.top + 8, paddingBottom: 32 + insets.bottom },
@@ -148,7 +222,7 @@ function NewQuoteScreenContent() {
         </View>
 
         {pending && !saving && <Text style={{ color: colors.muted, fontFamily: 'Poppins', marginVertical: 12 }}>Envío pendiente. Pulsa Guardar para confirmar esta misma cotización.</Text>}
-        <View style={styles.formContent} pointerEvents={pending ? 'none' : 'auto'}>
+        <View style={styles.formContent} pointerEvents={pending || saving ? 'none' : 'auto'}>
         <View style={styles.metaRow}>
           <View style={styles.dateWrap}>
             <Text style={[styles.dateText, { color: colors.muted }]}>Fecha {todayLabel()}</Text>
@@ -210,24 +284,15 @@ function NewQuoteScreenContent() {
           /></TutorialTarget>
         )}
 
-        {items.map((item) => (
-          <View key={item.key} style={[styles.itemRow, { backgroundColor: colors.surface }]}>
-            <View style={styles.itemInfo}>
-              <Text style={[styles.itemName, { color: colors.text }]} numberOfLines={1}>
-                {item.name}
-              </Text>
-              {item.createProduct && <Text style={[styles.scanCaption, { color: colors.primary }]}>Nuevo · Se creará en el catálogo al guardar</Text>}
-              <Text style={[styles.itemDetail, { color: colors.muted }]}>
-                {item.quantity} {item.unit} × {formatMoney(item.unitPrice)}
-              </Text>
-            </View>
-            <Text style={[styles.itemSubtotal, { color: colors.text }]}>
-              {formatMoney(item.quantity * item.unitPrice)}
-            </Text>
-            <Pressable onPress={() => removeItem(item.key)} hitSlop={10}>
-              <Ionicons name="trash-outline" size={20} color={colors.muted} />
-            </Pressable>
-          </View>
+        {items.length > 0 && <View style={styles.itemsHeading}>
+          <Text style={[styles.itemsTitle, { color: colors.text }]}>Artículos ({items.length})</Text>
+          <Text style={[styles.scanCaption, { color: colors.muted }]}>Los cambios se aplican a esta cotización.</Text>
+        </View>}
+        {items.map((item, index) => (
+          <QuoteDraftItemCard key={item.key} item={item} index={index} disabled={saving || !!pending}
+            showErrors={showErrors} focusRequest={focusRequest?.key === item.key ? focusRequest : undefined}
+            onChange={patch => editItem(item.key, patch)} onRemove={() => deleteItem(item.key)}
+            onChooseUnit={() => chooseUnit(item.key)} onInputFocus={focusInput} />
         ))}
 
         <TutorialTarget id="products" ><Pressable
@@ -255,7 +320,7 @@ function NewQuoteScreenContent() {
           <View style={styles.totalRow}>
             <Text style={[styles.totalLabel, { color: colors.muted }]}>TOTAL</Text>
             <Text style={[styles.totalValue, { color: colors.text }]}>
-              {formatMoney(total)}
+              {total === null ? '—' : formatMoney(total)}
             </Text>
           </View>
         )}
@@ -270,6 +335,18 @@ function NewQuoteScreenContent() {
           lines.forEach(line => addItem(line));
           void refreshLicense();
         }} />}
+
+      <FormModal visible={!!unitItem} title="Unidad de medida" icon="resize-outline" onClose={() => setUnitItemKey(null)}>
+        {unitOptions.map(option => <Pressable key={option} accessibilityRole="button"
+          accessibilityLabel={`Usar unidad ${option}`} accessibilityState={{ selected: option === unitItem?.unit }}
+          style={styles.optionRow} onPress={() => {
+            if (unitItemKey) editItem(unitItemKey, { unit: option });
+            setUnitItemKey(null);
+          }}>
+          <Text style={[styles.optionText, { color: option === unitItem?.unit ? colors.primary : colors.text }]}>{option}</Text>
+          {option === unitItem?.unit && <Ionicons name="checkmark" size={18} color={colors.primary} />}
+        </Pressable>)}
+      </FormModal>
 
       <FormModal visible={branchesOpen} title="Elegir sucursal" icon="storefront-outline" onClose={() => setBranchesOpen(false)}>
 
@@ -304,7 +381,7 @@ function NewQuoteScreenContent() {
               </Pressable>
             ))}
       </FormModal>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -413,31 +490,8 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: 'Poppins',
   },
-  itemRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 14,
-    padding: 12,
-    gap: 10,
-  },
-  itemInfo: {
-    flex: 1,
-    gap: 2,
-  },
-  itemName: {
-    fontSize: 15,
-    fontFamily: 'Poppins',
-    fontWeight: '700',
-  },
-  itemDetail: {
-    fontSize: 12,
-    fontFamily: 'Poppins',
-  },
-  itemSubtotal: {
-    fontSize: 14,
-    fontFamily: 'Poppins',
-    fontWeight: '700',
-  },
+  itemsHeading: { gap: 3 },
+  itemsTitle: { fontFamily: 'Poppins-SemiBold', fontSize: 15 },
   actionButton: {
     borderRadius: 16,
     minHeight: 56,

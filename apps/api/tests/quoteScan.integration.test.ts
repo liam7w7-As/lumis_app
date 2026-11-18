@@ -78,8 +78,8 @@ test('escaneo y confirmación: empresa, cupos, reintentos, productos nuevos y so
   assert.equal(snapshot.quotas.scans.used, 1);
   assert.equal((await call('/api/products', a.token)).products.length, 2, 'Escanear no crea productos');
   const body = { solicitud_id: 'scan-confirm-' + randomUUID(), clientId: null, branchId: null, items: [
-    { productId: initial.scan.lines[0].selectedProductId, description: 'Interruptor 32A', quantity: 2, unit: 'Unidad', unitPrice: 65 },
-    { description: 'Artículo nuevo', quantity: 3, unit: 'Unidad', unitPrice: 10, createProduct: true },
+    { productId: initial.scan.lines[0].selectedProductId, description: 'Interruptor 32A para tablero principal', quantity: 2.5, unit: 'Caja', unitPrice: 61.2 },
+    { description: 'Artículo nuevo revisado', quantity: 3.5, unit: 'Metro', unitPrice: 12.3, createProduct: true },
   ] };
   const [created, retry] = await Promise.all([
     call('/api/quotes', a.token, 'POST', body, 201), call('/api/quotes', a.token, 'POST', body, 201),
@@ -87,8 +87,18 @@ test('escaneo y confirmación: empresa, cupos, reintentos, productos nuevos y so
   assert.deepEqual(retry, created);
   const products = (await call('/api/products', a.token)).products;
   assert.equal(products.length, 3);
-  const fresh = products.find((p: {name:string}) => p.name === 'Artículo nuevo');
-  assert.equal(fresh.stock, 0); assert.equal(fresh.price, 10); assert.notEqual(fresh.id, secret.id);
+  const fresh = products.find((p: {name:string}) => p.name === 'Artículo nuevo revisado');
+  assert.equal(fresh.stock, 0); assert.equal(fresh.price, 12.3); assert.equal(fresh.unit, 'Metro'); assert.notEqual(fresh.id, secret.id);
+  const original = products.find((p: {id:number}) => p.id === initial.scan.lines[0].selectedProductId);
+  assert.deepEqual([original.name, original.price, original.unit], ['Interruptor 32A', 65, 'Unidad'],
+    'Editar la línea de una cotización no cambia el nombre, precio o unidad del catálogo');
+  const confirmed = (await call('/api/quotes/' + created.quote.id, a.token)).quote;
+  assert.equal(confirmed.total, 196.05);
+  assert.deepEqual(confirmed.items.map((item: {productId:number;description:string;quantity:number;unit:string;unitPrice:number;subtotal:number}) =>
+    [item.productId, item.description, item.quantity, item.unit, item.unitPrice, item.subtotal]), [
+    [original.id, 'Interruptor 32A para tablero principal', 2.5, 'Caja', 61.2, 153],
+    [fresh.id, 'Artículo nuevo revisado', 3.5, 'Metro', 12.3, 43.05],
+  ], 'El detalle usado por la vista previa conserva los últimos valores revisados de cada artículo');
   assert.equal((await call('/api/license', a.token)).license.quotas.quotes.used, 1);
   await db.query("UPDATE license_usage SET used=5 WHERE business_id=? AND meter='quotes'",[a.user.businessId]);
   assert.deepEqual(await call('/api/quotes', a.token, 'POST', body, 201), created, 'La última cotización puede recuperarse después de agotar el cupo');

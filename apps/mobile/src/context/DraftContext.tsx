@@ -16,8 +16,10 @@ export interface DraftItem {
   productId: number | null;
   name: string;
   quantity: number;
+  quantityText?: string;
   unit: string;
   unitPrice: number;
+  unitPriceText?: string;
   marca: string | null;
   procedencia: string | null;
   createProduct?: boolean;
