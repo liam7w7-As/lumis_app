@@ -696,6 +696,8 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
       />
     </View>}
     <View style={styles.editorRow}>
+      <View style={styles.editorField}>
+      <Text style={[styles.editorLabel, { color: colors.muted }]}>Cantidad</Text>
       <TextInput
         style={[styles.editorInput, { color: colors.text, borderColor: colors.border }]}
         value={editQty}
@@ -703,9 +705,10 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
         accessibilityLabel="Cantidad del producto"
         editable={!lineBusy && !saving}
         keyboardType="decimal-pad"
-        placeholder="Cant."
-        placeholderTextColor={colors.muted}
       />
+      </View>
+      <View style={styles.editorField}>
+      <Text style={[styles.editorLabel, { color: colors.muted }]}>Precio</Text>
       <TextInput
         style={[styles.editorInput, { color: colors.text, borderColor: colors.border }]}
         value={editPrice}
@@ -713,9 +716,8 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
         accessibilityLabel="Precio del producto"
         editable={!lineBusy && !saving}
         keyboardType="decimal-pad"
-        placeholder="Precio"
-        placeholderTextColor={colors.muted}
       />
+      </View>
       <Pressable
         style={[styles.editorDone, { backgroundColor: colors.primary }]}
         onPress={onCommit}
@@ -1364,10 +1366,12 @@ const styles = StyleSheet.create({
   },
   editorRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     gap: 8,
     marginTop: 12,
   },
+  editorField: { flex: 1, minWidth: 0, gap: 4 },
+  editorLabel: { fontFamily: 'Poppins', fontSize: 12, lineHeight: 18 },
   editorNameField: {
     marginTop: 12,
   },
@@ -1377,7 +1381,8 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   editorInput: {
-    flex: 1,
+    minWidth: 0,
+    minHeight: 44,
     borderWidth: 1,
     borderRadius: 10,
     paddingHorizontal: 10,

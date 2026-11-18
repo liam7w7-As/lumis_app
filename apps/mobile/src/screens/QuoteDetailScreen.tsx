@@ -442,9 +442,14 @@ function QuoteDetailScreenContent() {
                       submitBehavior="blurAndSubmit"
                     />
                   </View>
-                  <View style={styles.qtyRow}>
+                  <View style={styles.numericFields}>
+                  <View style={styles.quantityField}>
+                    <Text style={[styles.fieldLabel, { color: colors.muted }]}>Cantidad</Text>
+                    <View style={styles.qtyRow}>
                     <Pressable
                       style={[styles.stepper, { borderColor: colors.border }]}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Disminuir cantidad del artículo ${index + 1}`}
                       onPress={() => {
                         const v = parseNum(editQty);
                         if (Number.isFinite(v) && v > 1) setEditQty(String(Math.round((v - 1) * 100) / 100));
@@ -461,6 +466,8 @@ function QuoteDetailScreenContent() {
                     />
                     <Pressable
                       style={[styles.stepper, { borderColor: colors.border }]}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Aumentar cantidad del artículo ${index + 1}`}
                       onPress={() => {
                         const v = parseNum(editQty);
                         if (Number.isFinite(v)) setEditQty(String(Math.round((v + 1) * 100) / 100));
@@ -468,8 +475,10 @@ function QuoteDetailScreenContent() {
                     >
                       <Ionicons name="add" size={18} color={colors.text} />
                     </Pressable>
-                    <Text style={[styles.unitLabel, { color: colors.muted }]}>{item.unit}</Text>
+                    </View>
                   </View>
+                  <View style={styles.priceField}>
+                    <Text style={[styles.fieldLabel, { color: colors.muted }]}>Precio</Text>
                   <View style={styles.priceRow}>
                     <Text style={[styles.pricePrefix, { color: colors.muted }]}>{business?.moneda ?? 'Bs.'}</Text>
                     <TextInput
@@ -480,6 +489,9 @@ function QuoteDetailScreenContent() {
                       keyboardType="decimal-pad"
                     />
                   </View>
+                  </View>
+                  </View>
+                  <Text style={[styles.unitLabel, { color: colors.muted }]}>Unidad: {item.unit}</Text>
                   <View style={styles.editorActions}>
                     <Pressable
                       style={[styles.editorSave, { backgroundColor: colors.primary }]}
@@ -775,8 +787,12 @@ const styles = StyleSheet.create({
   qtyRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 6,
+    minHeight: 44,
   },
+  numericFields: { flexDirection: 'row', alignItems: 'flex-end', gap: 12 },
+  quantityField: { flex: 1.25, minWidth: 0 },
+  priceField: { flex: 1, minWidth: 0 },
   stepper: {
     width: 34,
     height: 34,
@@ -786,21 +802,24 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   qtyInput: {
+    flex: 1,
     borderBottomWidth: 1,
     fontSize: 16,
     fontFamily: 'Poppins',
-    minWidth: 60,
+    minWidth: 0,
+    minHeight: 44,
     textAlign: 'center',
     paddingBottom: 4,
   },
   unitLabel: {
-    fontSize: 14,
+    fontSize: 12,
     fontFamily: 'Poppins',
   },
   priceRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: 6,
+    minHeight: 44,
   },
   pricePrefix: {
     fontSize: 14,
@@ -808,10 +827,12 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   priceInput: {
+    flex: 1,
     borderBottomWidth: 1,
     fontSize: 16,
     fontFamily: 'Poppins',
-    minWidth: 100,
+    minWidth: 0,
+    minHeight: 44,
     paddingBottom: 8,
   },
   editorActions: {
