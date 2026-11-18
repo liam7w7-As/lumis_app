@@ -914,6 +914,8 @@ salesRouter.patch('/:id/items/:itemId', requireAuth, async (req: AuthRequest, re
         quantity: z.number().positive().optional(),
         unit: z.string().trim().min(1).max(20).optional(),
         unitPrice: z.number().min(0).optional(),
+        marca: z.string().trim().max(100).nullable().optional(),
+        procedencia: z.string().trim().max(100).nullable().optional(),
       })
       .parse(req.body);
 
@@ -939,16 +941,19 @@ salesRouter.patch('/:id/items/:itemId', requireAuth, async (req: AuthRequest, re
     const quantity = patch.quantity ?? Number(current.quantity);
     const unitPrice = patch.unitPrice ?? Number(current.unit_price);
     const subtotal = round2(quantity * unitPrice);
+    const sets = ['description = COALESCE(?, description)', 'quantity = ?',
+      'unit = COALESCE(?, unit)', 'unit_price = ?', 'subtotal = ?'];
+    const params: unknown[] = [patch.description ?? null, quantity, patch.unit ?? null, unitPrice, subtotal];
+    for (const field of ['marca', 'procedencia'] as const) {
+      if (patch[field] !== undefined) {
+        sets.push(`${field} = ?`);
+        params.push(patch[field] || null);
+      }
+    }
 
     await conn.query(
-      `UPDATE sale_items
-       SET description = COALESCE(?, description),
-           quantity = ?,
-           unit = COALESCE(?, unit),
-           unit_price = ?,
-           subtotal = ?
-       WHERE id = ? AND sale_id = ?`,
-      [patch.description ?? null, quantity, patch.unit ?? null, unitPrice, subtotal, itemId, saleId],
+      `UPDATE sale_items SET ${sets.join(', ')} WHERE id = ? AND sale_id = ?`,
+      [...params, itemId, saleId],
     );
     const total = await recalcTotal(conn, saleId);
 

@@ -490,7 +490,7 @@ export const api = {
   updateSaleItem: (
     saleId: number,
     itemId: number,
-    input: Partial<Pick<QuoteItemInput, 'description' | 'quantity' | 'unit' | 'unitPrice'>>,
+    input: Partial<Pick<QuoteItemInput, 'description' | 'quantity' | 'unit' | 'unitPrice' | 'marca' | 'procedencia'>>,
     token: string,
   ) =>
     request<{ item: { id: number; subtotal: number }; total: number }>(
@@ -580,7 +580,7 @@ export const api = {
   updateQuoteItem: (
     quoteId: number,
     itemId: number,
-    input: Partial<Pick<QuoteItemInput, 'description' | 'quantity' | 'unit' | 'unitPrice'>>,
+    input: Partial<Pick<QuoteItemInput, 'description' | 'quantity' | 'unit' | 'unitPrice' | 'marca' | 'procedencia'>>,
     token: string,
   ) =>
     request<{ item: { id: number; subtotal: number }; total: number }>(

@@ -489,6 +489,8 @@ const patchItemSchema = z.object({
   quantity: z.number().positive('La cantidad debe ser mayor a 0').optional(),
   unit: z.string().trim().min(1).max(20).optional(),
   unitPrice: z.number().min(0, 'El precio no puede ser negativo').optional(),
+  marca: z.string().trim().max(100).nullable().optional(),
+  procedencia: z.string().trim().max(100).nullable().optional(),
 });
 
 quotesRouter.patch('/:id/items/:itemId', requireAuth, async (req: AuthRequest, res, next) => {
@@ -524,6 +526,12 @@ quotesRouter.patch('/:id/items/:itemId', requireAuth, async (req: AuthRequest, r
     if (patch.unitPrice !== undefined) {
       sets.push('unit_price = ?');
       params.push(patch.unitPrice);
+    }
+    for (const field of ['marca', 'procedencia'] as const) {
+      if (patch[field] !== undefined) {
+        sets.push(`${field} = ?`);
+        params.push(patch[field] || null);
+      }
     }
     if (sets.length === 0) {
       throw badRequest('Nada que actualizar');

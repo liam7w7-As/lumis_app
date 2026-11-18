@@ -28,6 +28,9 @@ import { STATUS_COLOR, STATUS_LABEL } from '../components/QuoteCard';
 import { useDocumentEditAccess } from '../hooks/useDocumentEditAccess';
 import { ProBadge } from '../components/ProBadge';
 import { changedQuoteOptions } from '../lib/quoteOptions';
+import { IS_NOVALED } from '../lib/backend';
+
+const METADATA_MAX_LENGTH = IS_NOVALED ? 150 : 100;
 
 function parseNum(raw: string): number {
   return Number.parseFloat(raw.replace(',', '.'));
@@ -61,6 +64,9 @@ function QuoteDetailScreenContent() {
   const [expandedItem, setExpandedItem] = useState<number | null>(null);
   const [editName, setEditName] = useState('');
   const editNameRef = useRef('');
+  const [editMarca, setEditMarca] = useState('');
+  const [editProcedencia, setEditProcedencia] = useState('');
+  const editMetadataRef = useRef({ marca: '', procedencia: '', marcaTouched: false, procedenciaTouched: false });
   const [editQty, setEditQty] = useState('1');
   const [editPrice, setEditPrice] = useState('');
   const [itemBusy, setItemBusy] = useState(false);
@@ -128,7 +134,13 @@ function QuoteDetailScreenContent() {
     const quantity = parseNum(editQty), unitPrice = parseNum(editPrice);
     if (!Number.isFinite(quantity) || quantity <= 0) throw new Error('La cantidad debe ser mayor a 0');
     if (!Number.isFinite(unitPrice) || unitPrice < 0) throw new Error('Escribe un precio válido, mayor o igual a 0.');
-    return { description, quantity, unitPrice };
+    const marca = editMetadataRef.current.marca.trim() || null;
+    const procedencia = editMetadataRef.current.procedencia.trim() || null;
+    if ((marca?.length ?? 0) > METADATA_MAX_LENGTH) throw new Error(`La marca admite hasta ${METADATA_MAX_LENGTH} caracteres.`);
+    if ((procedencia?.length ?? 0) > METADATA_MAX_LENGTH) throw new Error(`La procedencia admite hasta ${METADATA_MAX_LENGTH} caracteres.`);
+    return { description, quantity, unitPrice,
+      ...(editMetadataRef.current.marcaTouched ? { marca } : {}),
+      ...(editMetadataRef.current.procedenciaTouched ? { procedencia } : {}) };
   };
   const persistItemDraft = async () => {
     if (!token || !quote || !editable || expandedItem == null) return;
@@ -136,7 +148,8 @@ function QuoteDetailScreenContent() {
     const item = quote.items.find((entry) => entry.id === expandedItem);
     if (!item) return;
     const input = itemDraftInput();
-    if (input.description !== item.description || input.quantity !== item.quantity || input.unitPrice !== item.unitPrice) {
+    if (input.description !== item.description || input.quantity !== item.quantity || input.unitPrice !== item.unitPrice
+      || input.marca !== undefined || input.procedencia !== undefined) {
       await api.updateQuoteItem(quote.id, item.id, input, token);
     }
     setExpandedItem(null);
@@ -232,6 +245,9 @@ function QuoteDetailScreenContent() {
     setExpandedItem(item.id);
     editNameRef.current = item.description;
     setEditName(item.description);
+    editMetadataRef.current = { marca: item.marca ?? '', procedencia: item.procedencia ?? '', marcaTouched: false, procedenciaTouched: false };
+    setEditMarca(item.marca ?? '');
+    setEditProcedencia(item.procedencia ?? '');
     setEditQty(String(item.quantity));
     setEditPrice(String(item.unitPrice));
   };
@@ -435,6 +451,38 @@ function QuoteDetailScreenContent() {
                       accessibilityLabel={`Nombre del artículo ${index + 1}`}
                       editable={!itemBusy && !saving}
                       maxLength={255}
+                      autoCorrect={false}
+                      multiline
+                      textAlignVertical="top"
+                      returnKeyType="done"
+                      submitBehavior="blurAndSubmit"
+                    />
+                  </View>
+                  <View>
+                    <Text style={[styles.fieldLabel, { color: colors.muted }]}>Marca (opcional)</Text>
+                    <TextInput
+                      style={[styles.nameInput, { color: colors.text, borderBottomColor: colors.border }]}
+                      value={editMarca}
+                      onChangeText={value => { editMetadataRef.current.marca = value; editMetadataRef.current.marcaTouched = true; setEditMarca(value); }}
+                      accessibilityLabel={`Marca del artículo ${index + 1}`}
+                      editable={!itemBusy && !saving}
+                      maxLength={METADATA_MAX_LENGTH}
+                      autoCorrect={false}
+                      multiline
+                      textAlignVertical="top"
+                      returnKeyType="done"
+                      submitBehavior="blurAndSubmit"
+                    />
+                  </View>
+                  <View>
+                    <Text style={[styles.fieldLabel, { color: colors.muted }]}>Procedencia (opcional)</Text>
+                    <TextInput
+                      style={[styles.nameInput, { color: colors.text, borderBottomColor: colors.border }]}
+                      value={editProcedencia}
+                      onChangeText={value => { editMetadataRef.current.procedencia = value; editMetadataRef.current.procedenciaTouched = true; setEditProcedencia(value); }}
+                      accessibilityLabel={`Procedencia del artículo ${index + 1}`}
+                      editable={!itemBusy && !saving}
+                      maxLength={METADATA_MAX_LENGTH}
                       autoCorrect={false}
                       multiline
                       textAlignVertical="top"

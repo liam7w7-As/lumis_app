@@ -47,6 +47,7 @@ import { ProBadge } from '../components/ProBadge';
 
 type DocTab = 'venta' | 'entrega';
 type LineKey = string | number;
+const METADATA_MAX_LENGTH = IS_NOVALED ? 150 : 100;
 
 const METODOS: { key: SaleMetodoPago; label: string }[] = [
   { key: 'efectivo', label: 'Efectivo' },
@@ -103,6 +104,9 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
   const [lineBusy, setLineBusy] = useState(false);
   const [expanded, setExpanded] = useState<LineKey | null>(null);
   const [editName, setEditName] = useState('');
+  const [editMarca, setEditMarca] = useState('');
+  const [editProcedencia, setEditProcedencia] = useState('');
+  const [editedMetadata, setEditedMetadata] = useState({ marca: false, procedencia: false });
   const [editQty, setEditQty] = useState('1');
   const [editPrice, setEditPrice] = useState('');
   const [notaPago, setNotaPago] = useState('');
@@ -229,11 +233,14 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
     procedencia: line.procedencia,
   });
 
-  const openEditor = (key: LineKey, quantity: number, unitPrice: number, description = '') => {
+  const openEditor = (key: LineKey, quantity: number, unitPrice: number, description = '', marca: string | null = null, procedencia: string | null = null) => {
     if (!canEditLines || lineBusy || saving || isVoided) return;
     if(isDetail&&!editAccess.requestEdit())return;
     setExpanded(key);
     setEditName(description);
+    setEditMarca(marca ?? '');
+    setEditProcedencia(procedencia ?? '');
+    setEditedMetadata({ marca: false, procedencia: false });
     setEditQty(String(quantity));
     setEditPrice(String(unitPrice));
   };
@@ -246,7 +253,12 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
     if (quantity == null || quantity <= 0 || unitPrice == null || unitPrice < 0) {
       throw new ItemEditError('Revisa la cantidad y el precio.');
     }
-    return { description, quantity, unitPrice };
+    const marca = editMarca.trim() || null, procedencia = editProcedencia.trim() || null;
+    if ((marca?.length ?? 0) > METADATA_MAX_LENGTH) throw new ItemEditError(`La marca admite hasta ${METADATA_MAX_LENGTH} caracteres.`);
+    if ((procedencia?.length ?? 0) > METADATA_MAX_LENGTH) throw new ItemEditError(`La procedencia admite hasta ${METADATA_MAX_LENGTH} caracteres.`);
+    return { description, quantity, unitPrice,
+      ...(editedMetadata.marca ? { marca } : {}),
+      ...(editedMetadata.procedencia ? { procedencia } : {}) };
   };
 
   const saveSavedItem = async (itemId: number) => {
@@ -695,6 +707,36 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
         submitBehavior="blurAndSubmit"
       />
     </View>}
+    {isDetail && <View style={styles.editorNameField}>
+      <Text style={[styles.fieldLabel, { color: colors.muted }]}>Marca (opcional)</Text>
+      <TextInput
+        style={[styles.editorInput, styles.editorName, { color: colors.text, borderColor: colors.border }]}
+        value={editMarca}
+        onChangeText={value => { setEditMarca(value); setEditedMetadata(previous => ({ ...previous, marca: true })); }}
+        accessibilityLabel="Marca del producto"
+        editable={!lineBusy && !saving}
+        maxLength={METADATA_MAX_LENGTH}
+        autoCorrect={false}
+        multiline
+        returnKeyType="done"
+        submitBehavior="blurAndSubmit"
+      />
+    </View>}
+    {isDetail && <View style={styles.editorNameField}>
+      <Text style={[styles.fieldLabel, { color: colors.muted }]}>Procedencia (opcional)</Text>
+      <TextInput
+        style={[styles.editorInput, styles.editorName, { color: colors.text, borderColor: colors.border }]}
+        value={editProcedencia}
+        onChangeText={value => { setEditProcedencia(value); setEditedMetadata(previous => ({ ...previous, procedencia: true })); }}
+        accessibilityLabel="Procedencia del producto"
+        editable={!lineBusy && !saving}
+        maxLength={METADATA_MAX_LENGTH}
+        autoCorrect={false}
+        multiline
+        returnKeyType="done"
+        submitBehavior="blurAndSubmit"
+      />
+    </View>}
     <View style={styles.editorRow}>
       <View style={styles.editorField}>
       <Text style={[styles.editorLabel, { color: colors.muted }]}>Cantidad</Text>
@@ -765,7 +807,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
   const renderLines = () => {
     if (isDetail) {
       return (sale?.items ?? []).map((it, index) => (
-        <ItemSwipe tutorialRow={index === 0} key={it.id} proLocked={editAccess.proLocked} disabled={isVoided || lineBusy || !canEditLines} onEdit={() => openEditor(it.id, it.quantity, it.unitPrice, it.description)}
+        <ItemSwipe tutorialRow={index === 0} key={it.id} proLocked={editAccess.proLocked} disabled={isVoided || lineBusy || !canEditLines} onEdit={() => openEditor(it.id, it.quantity, it.unitPrice, it.description, it.marca, it.procedencia)}
           onDelete={() => {if(editAccess.requestEdit())feedback.alert("Quitar producto", it.description, [{ text: "Cancelar", style: "cancel" }, { text: "Eliminar", style: "destructive", onPress: () => { void removeSavedItem(it.id); } }]);}}
           onDuplicate={() => { void duplicateLine(it.id); }} onMove={() => {if(editAccess.requestEdit())setOrdering(true);}}>
         <View style={[styles.itemCard, { backgroundColor: colors.surface }]}>
@@ -775,7 +817,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
             </View>
             <Pressable
               style={styles.itemInfo}
-              onPress={() => openEditor(it.id, it.quantity, it.unitPrice, it.description)}
+              onPress={() => openEditor(it.id, it.quantity, it.unitPrice, it.description, it.marca, it.procedencia)}
             >
               <Text style={[styles.itemName, { color: colors.text }]} numberOfLines={2}>
                 {it.description}
