@@ -269,8 +269,8 @@ quotesRouter.post('/', requireAuth, async (req: AuthRequest, res, next) => {
       return {
         ...it,
         codigoInterno: snap?.codigo ?? it.codigoInterno ?? null,
-        marca: snap?.marca ?? it.marca ?? null,
-        procedencia: snap?.procedencia ?? it.procedencia ?? null,
+        marca: it.marca === undefined ? snap?.marca ?? null : it.marca || null,
+        procedencia: it.procedencia === undefined ? snap?.procedencia ?? null : it.procedencia || null,
         subtotal: round2(it.quantity * it.unitPrice),
       };
     });
@@ -470,8 +470,8 @@ quotesRouter.post('/:id/items', requireAuth, async (req: AuthRequest, res, next)
       [quoteId, input.productId ?? null, input.description, input.quantity, input.unit,
         input.unitPrice, subtotal,
         snap?.codigo ?? input.codigoInterno ?? null,
-        snap?.marca ?? input.marca ?? null,
-        snap?.procedencia ?? input.procedencia ?? null],
+        input.marca === undefined ? snap?.marca ?? null : input.marca || null,
+        input.procedencia === undefined ? snap?.procedencia ?? null : input.procedencia || null],
     );
     const total = await recalcTotal(conn, quoteId);
     await conn.commit();

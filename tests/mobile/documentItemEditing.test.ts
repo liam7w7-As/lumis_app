@@ -15,7 +15,7 @@ const tick = () => new Promise<void>(resolve => setImmediate(resolve));
 
 // Native events and React commits are separate so Quote's last keystroke can be
 // submitted before blur, while Sale's normal state commit is exercised as well.
-function harness(screen: Screen, novaled: boolean) {
+function harness(screen: Screen, novaled: boolean, newSale = false) {
   const hooks: unknown[] = [];
   let cursor = 0, effects: (() => void)[] = [], tree: Element;
   let access = { canEdit: true, proLocked: false, access: novaled ? 'allowed' : 'pro' };
@@ -24,6 +24,7 @@ function harness(screen: Screen, novaled: boolean) {
   const documentPatches: Record<string, unknown>[] = [];
   const messages: { title: string; message: string }[] = [];
   const routes: string[] = [];
+  const createdSales: Record<string, any>[] = [];
   const record = plain(screen === 'quote' ? sampleQuote : {
     ...sampleSale, estado: 'activa', estadoPago: 'por_cobrar', metodoPago: 'por_pagar',
     branchId: 1, agentId: 7, clientId: null, payments: [], totalPagado: 0,
@@ -77,7 +78,10 @@ function harness(screen: Screen, novaled: boolean) {
   const updateDocument = async (_id: number, body: Record<string, unknown>) => {
     documentPatches.push(plain(body)); Object.assign(record, body); return {};
   };
-  const draft = { client: null, items: [], setClient() {}, addItem() {}, updateItem() {}, removeItem() {}, clear() {} };
+  let draftItems = newSale ? record.items.map(item => ({ ...item, key: `draft-${item.id}`, name: item.description })) : [];
+  const draft = { client: null, setClient() {}, addItem() {},
+    updateItem(key: string, patch: Record<string, unknown>) { draftItems = draftItems.map(item => item.key === key ? { ...item, ...patch } : item); },
+    removeItem(key: string) { draftItems = draftItems.filter(item => item.key !== key); }, clear() { draftItems = []; } };
   const modules: Record<string, unknown> = {
     react, 'react/jsx-runtime': { jsx, jsxs: jsx },
     'react-native': {
@@ -114,7 +118,7 @@ function harness(screen: Screen, novaled: boolean) {
     }) },
     '../hooks/useLegacyPending': { useLegacyPending: () => null },
     '../context/AuthContext': { useAuth: () => ({ token: 'document-edit-session', user: { id: 7, name: 'Agente', permissions: { takePayments: true } } }) },
-    '../context/DraftContext': { useDraft: () => draft },
+    '../context/DraftContext': { useDraft: () => ({ ...draft, items: draftItems }) },
     '../context/BusinessContext': { useMoney: () => (value: number) => `Bs. ${value}`, useBusiness: () => ({ business: sampleBusiness }) },
     '../theme/ThemeContext': { useTheme: () => ({ colors: { background: '#ffffff', surface: '#ffffff', text: '#111111', primary: '#5842f4', onPrimary: '#ffffff', muted: '#666666', border: '#cccccc', icon: '#666666', error: '#ee3333' } }) },
     '../lib/backend': { IS_NOVALED: novaled },
@@ -127,11 +131,12 @@ function harness(screen: Screen, novaled: boolean) {
       branches: async () => ({ branches: [] }), agents: async () => ({ agents: [] }), nextSaleNumber: async () => ({ nextNumber: 1 }),
       updateQuoteItem: updateItem, updateSaleItem: updateItem,
       updateQuote: updateDocument, updateSale: updateDocument,
+      createSale: async (body: Record<string, any>) => { createdSales.push(plain(body)); return { sale: { id: 99, number: 99 } }; },
     } },
   };
   const file = screen === 'quote' ? 'QuoteDetailScreen' : 'SaleEditorScreen';
   const source = readFileSync(new URL(`../../apps/mobile/src/screens/${file}.tsx`, import.meta.url), 'utf8');
-  const { outputText } = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } });
+  const { outputText } = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } });
   const exports: Record<string, (props?: unknown) => Element> = {};
   runInNewContext(outputText, { Error, exports, require(name: string) { assert.ok(name in modules, name); return modules[name]; } });
   function nodes(value: unknown): Element[] {
@@ -150,18 +155,24 @@ function harness(screen: Screen, novaled: boolean) {
   }
   function render() {
     cursor = 0; effects = [];
-    tree = exports[file](screen === 'sale' ? { saleId: record.id } : undefined);
+    tree = exports[file](screen === 'sale' ? { saleId: newSale ? undefined : record.id } : undefined);
     effects.forEach(run => run());
   }
   return {
-    itemPatches, documentPatches, routes, messages, render,
+    itemPatches, documentPatches, createdSales, routes, messages, render,
     async mount() { render(); await tick(); render(); },
-    open(index = 0) { find(node => node.type === 'ItemSwipe' && node.props.children != null && content(node.props.children).includes(record.items[index].description)).onEdit(); render(); },
-    input(field: 'Marca' | 'Procedencia' | 'Nombre', index = 0) {
+    open(index = 0) {
+      if (newSale) find(node => node.type === 'Pressable' && node.props.accessibilityLabel === `Editar artículo ${index + 1}`).onPress();
+      else find(node => node.type === 'ItemSwipe' && node.props.children != null && content(node.props.children).includes(record.items[index].description)).onEdit();
+      render();
+    },
+    input(field: 'Marca' | 'Procedencia' | 'Nombre' | 'Cantidad' | 'Precio', index = 0) {
       const label = screen === 'quote' ? `${field} del artículo ${index + 1}` : `${field} del producto`;
       return find(node => node.type === 'TextInput' && node.props.accessibilityLabel === label);
     },
     hasMetadataInput() { return nodes(tree).some(node => node.type === 'TextInput' && String(node.props.accessibilityLabel).startsWith('Marca del')); },
+    hasNameInput() { return nodes(tree).some(node => node.type === 'TextInput' && String(node.props.accessibilityLabel).startsWith('Nombre del')); },
+    draftItems: () => plain(draftItems),
     commitItem(index = 0) {
       return find(node => node.type === 'Pressable' && node.props.accessibilityLabel === (screen === 'quote' ? `Guardar artículo ${index + 1}` : 'Guardar cambios del producto')).onPress();
     },
@@ -175,6 +186,68 @@ function harness(screen: Screen, novaled: boolean) {
 
 for (const novaled of [false, true]) {
   const variant = novaled ? 'Lumis Novaled' : 'Lumis';
+  test(`${variant}: nueva venta mantiene la lista compacta y guarda nombre e importes desde el acordeón`, async () => {
+    const app = harness('sale', novaled, true); await app.mount();
+    assert.equal(app.hasNameInput(), false);
+    app.open();
+    app.input('Nombre').onChangeText('Nombre revisado');
+    app.input('Cantidad').onChangeText('3,5');
+    app.input('Precio').onChangeText('12,25');
+    app.render(); await app.commitItem(); app.render();
+    assert.equal(app.hasNameInput(), false);
+    assert.equal(app.createdSales.length, 0);
+    const saved = app.draftItems()[0];
+    assert.equal(saved.name, 'Nombre revisado');
+    assert.equal(saved.quantity, 3.5); assert.equal(saved.unitPrice, 12.25);
+    assert.equal(saved.productId, documentItems[0].productId);
+    assert.deepEqual(app.messages, []);
+  });
+  test(`${variant}: guardar nueva venta toma la edición abierta sin exigir Guardar en cada artículo`, async () => {
+    const app = harness('sale', novaled, true); await app.mount(); app.open();
+    app.input('Nombre').onChangeText('  Última edición  ');
+    app.input('Precio').onChangeText('19,75'); app.render();
+    await app.saveHeader();
+    assert.equal(app.createdSales.length, 1);
+    assert.equal(app.createdSales[0].items[0].description, 'Última edición');
+    assert.equal(app.createdSales[0].items[0].unitPrice, 19.75);
+    assert.equal(app.createdSales[0].items[0].productId, documentItems[0].productId);
+    assert.deepEqual(app.itemPatches, []);
+    assert.deepEqual(app.routes, ['/pos/99/preview?created=1']);
+  });
+  test(`${variant}: nueva venta permite cambiar marca y vaciar procedencia desde el mismo acordeón`, async () => {
+    const app = harness('sale', novaled, true); await app.mount(); app.open(1);
+    app.input('Marca').onChangeText('  Marca de la venta  ');
+    app.input('Procedencia').onChangeText('   '); app.render();
+    await app.commitItem(); app.render(); app.open(1);
+    assert.equal(app.input('Marca').value, 'Marca de la venta');
+    assert.equal(app.input('Procedencia').value, '');
+    await app.saveHeader();
+    const sent = app.createdSales[0].items[1];
+    assert.equal(sent.marca, 'Marca de la venta');
+    assert.equal(sent.procedencia, null);
+    assert.equal(sent.productId, documentItems[1].productId);
+    assert.equal(app.createdSales[0].items[0].marca, null);
+    assert.deepEqual(app.itemPatches, []);
+  });
+  test(`${variant}: una cantidad vacía mantiene abierto el artículo y bloquea enviar la venta`, async () => {
+    const app = harness('sale', novaled, true); await app.mount(); app.open();
+    app.input('Cantidad').onChangeText(''); app.render();
+    await app.commitItem(); app.render();
+    assert.equal(app.hasNameInput(), true);
+    await app.saveHeader();
+    assert.equal(app.createdSales.length, 0);
+    assert.equal(app.input('Cantidad').value, '');
+    assert.ok(app.messages.some(message => /cantidad/.test(message.message)), JSON.stringify(app.messages));
+  });
+  test(`${variant}: cambiar de artículo conserva el borrador editado sin mezclar los nombres`, async () => {
+    const app = harness('sale', novaled, true); await app.mount(); app.open();
+    app.input('Nombre').onChangeText('Primero editado'); app.render(); app.open(1);
+    assert.equal(app.draftItems()[0].name, 'Primero editado');
+    assert.equal(app.input('Nombre').value, documentItems[1].description);
+    app.open(1);
+    assert.equal(app.hasNameInput(), false);
+    assert.deepEqual(app.createdSales, []);
+  });
   for (const screen of ['quote', 'sale'] as const) {
     const document = screen === 'quote' ? 'cotización' : 'venta';
 

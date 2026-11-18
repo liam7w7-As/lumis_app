@@ -59,6 +59,7 @@ function NewQuoteScreenContent() {
   const focusSequence = useRef(0);
   const [focusRequest, setFocusRequest] = useState<{ key: string; field: QuoteDraftField; requestId: number } | null>(null);
   const [showErrors, setShowErrors] = useState(false);
+  const [expandedItemKey, setExpandedItemKey] = useState<string | null>(null);
   const [unitItemKey, setUnitItemKey] = useState<string | null>(null);
   const [units, setUnits] = useState<string[]>(DEFAULT_UNITS);
   const [nextNumber, setNextNumber] = useState<number | null>(null);
@@ -156,6 +157,7 @@ function NewQuoteScreenContent() {
         const message = error instanceof Error ? error.message : 'Revisa los datos de los artículos.';
         const focusError = () => {
           if (error instanceof QuoteDraftValidationError && latestItems.current.some(item => item.key === error.key)) {
+            setExpandedItemKey(error.key);
             setFocusRequest({ key: error.key, field: error.field, requestId: ++focusSequence.current });
           }
         };
@@ -284,12 +286,11 @@ function NewQuoteScreenContent() {
           /></TutorialTarget>
         )}
 
-        {items.length > 0 && <View style={styles.itemsHeading}>
-          <Text style={[styles.itemsTitle, { color: colors.text }]}>Artículos ({items.length})</Text>
-          <Text style={[styles.scanCaption, { color: colors.muted }]}>Los cambios se aplican a esta cotización.</Text>
-        </View>}
         {items.map((item, index) => (
           <QuoteDraftItemCard key={item.key} item={item} index={index} disabled={saving || !!pending}
+            expanded={expandedItemKey === item.key} onToggle={() => {
+              Keyboard.dismiss(); setExpandedItemKey(previous => previous === item.key ? null : item.key);
+            }}
             showErrors={showErrors} focusRequest={focusRequest?.key === item.key ? focusRequest : undefined}
             onChange={patch => editItem(item.key, patch)} onRemove={() => deleteItem(item.key)}
             onChooseUnit={() => chooseUnit(item.key)} onInputFocus={focusInput} />
@@ -490,8 +491,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: 'Poppins',
   },
-  itemsHeading: { gap: 3 },
-  itemsTitle: { fontFamily: 'Poppins-SemiBold', fontSize: 15 },
   actionButton: {
     borderRadius: 16,
     minHeight: 56,

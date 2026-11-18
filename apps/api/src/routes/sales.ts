@@ -181,13 +181,13 @@ async function insertItem(
   item: z.infer<typeof itemInputSchema>,
 ): Promise<{ id: number; subtotal: number }> {
   let codigoInterno = item.codigoInterno ?? null;
-  let marca = item.marca ?? null;
-  let procedencia = item.procedencia ?? null;
+  let marca = item.marca || null;
+  let procedencia = item.procedencia || null;
   if (item.productId != null) {
     const snap = await fillFromCatalog(conn, item.productId);
     codigoInterno = snap.codigo ?? codigoInterno;
-    marca = snap.marca ?? marca;
-    procedencia = snap.procedencia ?? procedencia;
+    if (item.marca === undefined) marca = snap.marca;
+    if (item.procedencia === undefined) procedencia = snap.procedencia;
   }
   const subtotal = round2(item.quantity * item.unitPrice);
   const [ins] = await conn.query<ResultSetHeader>(

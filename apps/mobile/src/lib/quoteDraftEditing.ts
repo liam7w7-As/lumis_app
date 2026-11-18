@@ -77,7 +77,7 @@ export function buildQuoteItems(items: DraftItem[]): QuoteItemInput[] {
     if (total > MAX_AMOUNT) throw new QuoteDraftValidationError(item.key, 'unitPrice', 'El total de la cotización supera el máximo permitido. Revisa los importes.');
     return {
       productId: item.productId, description: item.name.trim(), quantity: quantity!, unit: item.unit.trim(),
-      unitPrice: unitPrice!, marca: item.marca, procedencia: item.procedencia,
+      unitPrice: unitPrice!, marca: item.marca?.trim() || null, procedencia: item.procedencia?.trim() || null,
       ...(item.createProduct !== undefined ? { createProduct: item.createProduct } : {}),
     };
   });

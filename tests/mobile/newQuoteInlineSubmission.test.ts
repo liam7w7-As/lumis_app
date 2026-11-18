@@ -136,12 +136,12 @@ test('Guardar toma el último texto enfocado sin esperar blur ni otro render y c
   const app = harness([product(), product({ key: 'scan-new', productId: null, name: 'Nuevo del escaneo', createProduct: true })]);
   app.render();
   const save = app.saveHandler();
-  app.card().onChange({ name: '  Nombre solo para esta cotización  ', quantityText: '2,5', unitPriceText: '30,50', unit: 'Metros' });
+  app.card().onChange({ name: '  Nombre solo para esta cotización  ', quantityText: '2,5', unitPriceText: '30,50', unit: 'Metros', marca: '  Marca editada  ', procedencia: '' });
   app.card(1).onChange({ name: 'Nuevo revisado', quantityText: '3', unitPriceText: '12,25' });
   const sending = save();
   assert.equal(app.requests.length, 1);
   assert.deepEqual(plain(app.requests[0].body.items), [
-    { productId: 42, description: 'Nombre solo para esta cotización', quantity: 2.5, unit: 'Metros', unitPrice: 30.5, marca: 'Marca original', procedencia: 'Bolivia' },
+    { productId: 42, description: 'Nombre solo para esta cotización', quantity: 2.5, unit: 'Metros', unitPrice: 30.5, marca: 'Marca editada', procedencia: null },
     { productId: null, description: 'Nuevo revisado', quantity: 3, unit: 'Unidad', unitPrice: 12.25, marca: 'Marca original', procedencia: 'Bolivia', createProduct: true },
   ]);
   assert.equal(app.requests[0].token, 'quote-test-session');
@@ -165,6 +165,7 @@ test('una cantidad o precio vacío conserva el texto, evita guardar y permite vo
     else app.messages[0].options?.onDismiss?.();
     app.render();
     assert.equal(app.card().focusRequest.field, field);
+    assert.equal(app.card().expanded, true);
     assert.ok(app.card().focusRequest.requestId > 0);
     assert.equal(app.snapshot().clearCalls, 0);
   }

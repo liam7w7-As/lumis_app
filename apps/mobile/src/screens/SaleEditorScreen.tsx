@@ -236,6 +236,11 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
   const openEditor = (key: LineKey, quantity: number, unitPrice: number, description = '', marca: string | null = null, procedencia: string | null = null) => {
     if (!canEditLines || lineBusy || saving || isVoided) return;
     if(isDetail&&!editAccess.requestEdit())return;
+    if (!isDetail && typeof expanded === 'string') {
+      try { updateItem(expanded, draftLinePatch()); }
+      catch (error) { showApiError(error, 'Revisa los datos del artículo'); return; }
+      if (expanded === key) { setExpanded(null); return; }
+    }
     setExpanded(key);
     setEditName(description);
     setEditMarca(marca ?? '');
@@ -259,6 +264,18 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
     return { description, quantity, unitPrice,
       ...(editedMetadata.marca ? { marca } : {}),
       ...(editedMetadata.procedencia ? { procedencia } : {}) };
+  };
+
+  const draftLinePatch = () => {
+    const { description, ...input } = lineDraftInput();
+    return { name: description, ...input };
+  };
+
+  const saveDraftItem = (key: string) => {
+    try {
+      updateItem(key, draftLinePatch());
+      setExpanded(null);
+    } catch (error) { showApiError(error, 'Revisa los datos del artículo'); }
   };
 
   const saveSavedItem = async (itemId: number) => {
@@ -649,6 +666,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
     submitLock.current=true;
     setSaving(true);
     try {
+      const draftPatch = !pending && typeof expanded === 'string' ? draftLinePatch() : null;
       const { sale: created } = await api.createSale(
         pending ? { ...pending.body, solicitud_id: undefined } as unknown as Parameters<typeof api.createSale>[0] : {
           clientId: client?.id ?? null,
@@ -662,7 +680,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
             metodo === 'por_pagar' && pagoInicialNum != null && pagoInicialNum > 0
               ? pagoInicialNum
               : undefined,
-          items: items.map(toInput),
+          items: items.map(item => toInput(draftPatch && item.key === expanded ? { ...item, ...draftPatch } : item)),
         },
         token,
       );
@@ -692,7 +710,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
     onPrice: (v: string) => void,
   ) => (
     <View>
-    {isDetail && <View style={styles.editorNameField}>
+    <View style={styles.editorNameField}>
       <Text style={[styles.fieldLabel, { color: colors.muted }]}>Nombre del artículo</Text>
       <TextInput
         style={[styles.editorInput, styles.editorName, { color: colors.text, borderColor: colors.border }]}
@@ -706,8 +724,8 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
         returnKeyType="done"
         submitBehavior="blurAndSubmit"
       />
-    </View>}
-    {isDetail && <View style={styles.editorNameField}>
+    </View>
+    <View style={styles.editorNameField}>
       <Text style={[styles.fieldLabel, { color: colors.muted }]}>Marca (opcional)</Text>
       <TextInput
         style={[styles.editorInput, styles.editorName, { color: colors.text, borderColor: colors.border }]}
@@ -721,8 +739,8 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
         returnKeyType="done"
         submitBehavior="blurAndSubmit"
       />
-    </View>}
-    {isDetail && <View style={styles.editorNameField}>
+    </View>
+    <View style={styles.editorNameField}>
       <Text style={[styles.fieldLabel, { color: colors.muted }]}>Procedencia (opcional)</Text>
       <TextInput
         style={[styles.editorInput, styles.editorName, { color: colors.text, borderColor: colors.border }]}
@@ -736,7 +754,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
         returnKeyType="done"
         submitBehavior="blurAndSubmit"
       />
-    </View>}
+    </View>
     <View style={styles.editorRow}>
       <View style={styles.editorField}>
       <Text style={[styles.editorLabel, { color: colors.muted }]}>Cantidad</Text>
@@ -841,14 +859,17 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
     }
 
     return items.map((it, index) => (
-      <View key={it.key} style={[styles.itemCard, { backgroundColor: colors.surface }]}>
+      <View key={it.key} style={[styles.itemCard, styles.draftItemCard, { backgroundColor: colors.surface }]}>
         <View style={styles.itemHead}>
           <View style={[styles.itemBadge, { backgroundColor: colors.primary }]}>
             <Text style={styles.itemBadgeText}>{index + 1}</Text>
           </View>
           <Pressable
             style={styles.itemInfo}
-            onPress={() => openEditor(it.key, it.quantity, it.unitPrice)}
+            onPress={() => openEditor(it.key, it.quantity, it.unitPrice, it.name, it.marca, it.procedencia)}
+            accessibilityRole="button"
+            accessibilityLabel={`Editar artículo ${index + 1}`}
+            accessibilityState={{ expanded: expanded === it.key }}
           >
             <Text style={[styles.itemName, { color: colors.text }]} numberOfLines={2}>
               {it.name}
@@ -863,19 +884,13 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
         </View>
         {expanded === it.key &&
           editorRow(
-            () => setExpanded(null),
+            () => saveDraftItem(it.key),
             () => {
               removeItem(it.key);
               setExpanded(null);
             },
-            (v) => {
-              setEditQty(v);
-              updateItem(it.key, { quantity: parseNum(v) ?? it.quantity });
-            },
-            (v) => {
-              setEditPrice(v);
-              updateItem(it.key, { unitPrice: parseNum(v) ?? it.unitPrice });
-            },
+            setEditQty,
+            setEditPrice,
           )}
       </View>
     ));
@@ -1370,6 +1385,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 14,
   },
+  draftItemCard: { marginTop: 12 },
   itemHead: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1444,6 +1460,7 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   outlineButton: {
+    marginTop: 16,
     borderWidth: 1.5,
     borderRadius: 16,
     paddingVertical: 16,

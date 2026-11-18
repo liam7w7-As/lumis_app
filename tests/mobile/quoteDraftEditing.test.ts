@@ -6,6 +6,17 @@ import { buildQuoteItems, parseQuoteDraftDecimal, quoteDraftErrors, quoteDraftSu
 const item = (patch: Partial<DraftItem> = {}): DraftItem => ({ key: 'row-1', productId: 8, name: 'Cable 2.5 mm',
   quantity: 1, unit: 'Unidad', unitPrice: 65, marca: 'Aurora', procedencia: 'Bolivia', ...patch });
 
+test('marca y procedencia editadas conservan texto recortado o un vacío explícito al crear el documento', () => {
+  const original = item({ marca: '  Marca de esta cotización  ', procedencia: '   ' });
+  const saved = buildQuoteItems([original])[0];
+  assert.equal(saved.marca, 'Marca de esta cotización');
+  assert.equal(saved.procedencia, null);
+  assert.equal(saved.productId, original.productId);
+  assert.equal(original.marca, '  Marca de esta cotización  ');
+  assert.equal(buildQuoteItems([item({ marca: '', procedencia: '  Perú  ' })])[0].marca, null);
+  assert.equal(buildQuoteItems([item({ marca: null, procedencia: '  Perú  ' })])[0].procedencia, 'Perú');
+});
+
 test('guardar usa el último texto editado y conserva la identidad del catálogo', () => {
   const original = item({ name: ' Cable de la cotización ', quantityText: '2,50', unitPriceText: '12,40', unit: ' Metro ' });
   const saved = buildQuoteItems([original]);
