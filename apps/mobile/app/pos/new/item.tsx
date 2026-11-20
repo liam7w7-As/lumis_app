@@ -4,7 +4,7 @@ import { AddItemScreen } from '../../../src/screens/AddItemScreen';
 export default function NewSaleItemRoute() {
   return (
     <RequireAuth>
-      <AddItemScreen />
+      <AddItemScreen draftScope="new-sale" />
     </RequireAuth>
   );
 }

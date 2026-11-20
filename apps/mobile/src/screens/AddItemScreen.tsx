@@ -25,13 +25,15 @@ import { UnitSheet } from '../components/UnitSheet';
 import { IS_NOVALED } from '../lib/backend';
 import { usePagedCollection } from '../hooks/usePagedCollection';
 import { CollectionFooter } from '../components/CollectionFooter';
+import { FormDraftNotice } from '../components/FormDraftNotice';
+import { useFormDraft } from '../hooks/useFormDraft';
+import { EMPTY_PRODUCT_FORM, readProductForm } from '../lib/formDrafts';
 
 function parseNumber(raw: string): number {
   return Number.parseFloat(raw.replace(',', '.'));
 }
 
-function AddItemScreenContent({ quoteId, saleId }: { quoteId?: number; saleId?: number }) {
-  useTutorialAvailability({ ready: true });
+function AddItemScreenContent({ quoteId, saleId, draftScope = 'new-quote' }: { quoteId?: number; saleId?: number; draftScope?: string }) {
   const { token, user } = useAuth();
   const { colors } = useTheme();
   const formatMoney = useMoney();
@@ -39,15 +41,11 @@ function AddItemScreenContent({ quoteId, saleId }: { quoteId?: number; saleId?: 
   const insets = useSafeAreaInsets();
   const { addItem } = useDraft();
 
-  const [name, setName] = useState('');
-  const [price, setPrice] = useState('');
-  const [quantity, setQuantity] = useState('');
-  const [unit, setUnit] = useState('Unidad');
+  const scope = quoteId != null ? `quote-${quoteId}` : saleId != null ? `sale-${saleId}` : draftScope;
+  const { value: { name, price, quantity, unit, marca, procedencia, selectedProduct }, ready, status, hasDraft, restored, update, clear, retry } = useFormDraft(`product.${scope}`, EMPTY_PRODUCT_FORM, readProductForm);
+  useTutorialAvailability({ ready });
   const [units, setUnits] = useState<string[]>(DEFAULT_UNITS);
-  const [marca, setMarca] = useState('');
-  const [procedencia, setProcedencia] = useState('');
   const [unitsOpen, setUnitsOpen] = useState(false);
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -58,7 +56,6 @@ function AddItemScreenContent({ quoteId, saleId }: { quoteId?: number; saleId?: 
     loadUnits(userId).then((loaded) => {
       if (!active || loaded.length === 0) return;
       setUnits(loaded);
-      setUnit((prev) => (loaded.includes(prev) ? prev : loaded[0]));
     });
     return () => {
       active = false;
@@ -72,18 +69,18 @@ function AddItemScreenContent({ quoteId, saleId }: { quoteId?: number; saleId?: 
 
   const handleAddUnit = (unitName: string) => {
     persistUnits([...units, unitName]);
-    setUnit(unitName);
+    update({ unit: unitName });
   };
 
   const handleRenameUnit = (oldName: string, newName: string) => {
     persistUnits(units.map((u) => (u === oldName ? newName : u)));
-    setUnit((prev) => (prev === oldName ? newName : prev));
+    if (unit === oldName) update({ unit: newName });
   };
 
   const handleDeleteUnit = (unitName: string) => {
     const next = units.filter((u) => u !== unitName);
     persistUnits(next);
-    setUnit((prev) => (prev === unitName ? (next[0] ?? prev) : prev));
+    if (unit === unitName) update({ unit: next[0] ?? unit });
   };
 
   const query = name.trim().toLowerCase();
@@ -100,16 +97,13 @@ function AddItemScreenContent({ quoteId, saleId }: { quoteId?: number; saleId?: 
       : catalog;
 
   const fillFromProduct = (product: Product) => {
-    setSelectedProduct(product);
-    setName(product.name);
-    setPrice(String(product.price));
-    setUnit(product.unit);
-    setMarca(product.marca ?? '');
-    setProcedencia(product.procedencia ?? '');
+    update({ selectedProduct: { id: product.id, name: product.name, marca: product.marca, procedencia: product.procedencia },
+      name: product.name, price: String(product.price), unit: product.unit,
+      marca: product.marca ?? '', procedencia: product.procedencia ?? '' });
   };
 
   const handleDeleteProduct = (product: Product) => {
-    if (!token) return;
+    if (!token || !ready || saving || status === 'clearing') return;
     feedback.alert('Borrar producto', `¿Borrar "${product.name}" del catálogo?`, [
       { text: 'Cancelar', style: 'cancel' },
       {
@@ -131,7 +125,7 @@ function AddItemScreenContent({ quoteId, saleId }: { quoteId?: number; saleId?: 
   };
 
   const saveLine = async () => {
-    if (!token) return;
+    if (!token || !ready || saving || status === 'clearing') return;
     const trimmedName = name.trim();
     const parsedPrice = parseNumber(price);
     const parsedQty = parseNumber(quantity);
@@ -161,6 +155,7 @@ function AddItemScreenContent({ quoteId, saleId }: { quoteId?: number; saleId?: 
           token,
         );
         productId = product.id;
+        update({ selectedProduct: { id: product.id, name: product.name, marca: product.marca, procedencia: product.procedencia } });
       }
       const line = {
         productId,
@@ -202,6 +197,7 @@ function AddItemScreenContent({ quoteId, saleId }: { quoteId?: number; saleId?: 
       } else {
         addItem(line);
       }
+      await clear().catch(() => feedback.warning('Producto añadido', 'Se añadió el producto, pero no se pudo borrar su borrador local. No lo añadas de nuevo; descarta el borrador cuando regreses.'));
       router.back();
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'No se pudo añadir el artículo.';
@@ -231,7 +227,7 @@ function AddItemScreenContent({ quoteId, saleId }: { quoteId?: number; saleId?: 
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}><TutorialHelpButton  /><TutorialTarget id="save" ><Pressable
             style={[styles.circleButton, { backgroundColor: colors.primary }]}
             onPress={saveLine}
-            disabled={saving}
+            disabled={saving || !ready || status === 'clearing'}
             hitSlop={8}
           >
             {saving ? (
@@ -242,11 +238,13 @@ function AddItemScreenContent({ quoteId, saleId }: { quoteId?: number; saleId?: 
           </Pressable></TutorialTarget></View>
         </View>
 
+        <FormDraftNotice ready={ready} status={status} hasDraft={hasDraft} restored={restored} onRetry={retry} onDiscard={clear} />
+        {ready && <View pointerEvents={saving || status === 'clearing' ? 'none' : 'auto'}>
         <TutorialTarget id="fields" ><AnimatedInput
           icon="cube-outline"
           placeholder="Nombre del artículo"
           value={name}
-          onChangeText={setName}
+          onChangeText={name => update({ name })}
           autoCapitalize="words"
         /></TutorialTarget>
 
@@ -265,7 +263,7 @@ function AddItemScreenContent({ quoteId, saleId }: { quoteId?: number; saleId?: 
                 placeholder="0.00"
                 placeholderTextColor={colors.muted}
                 value={price}
-                onChangeText={setPrice}
+                onChangeText={price => update({ price })}
                 keyboardType="decimal-pad"
               />
             </View>
@@ -275,7 +273,7 @@ function AddItemScreenContent({ quoteId, saleId }: { quoteId?: number; saleId?: 
               style={[styles.miniInput, { color: colors.text, borderBottomColor: colors.border }]}
               accessibilityLabel="Cantidad del producto"
               value={quantity}
-              onChangeText={setQuantity}
+              onChangeText={quantity => update({ quantity })}
               keyboardType="decimal-pad"
             />
           </View>
@@ -298,14 +296,14 @@ function AddItemScreenContent({ quoteId, saleId }: { quoteId?: number; saleId?: 
           icon="pricetag-outline"
           placeholder="Marca (opcional)"
           value={marca}
-          onChangeText={setMarca}
+          onChangeText={marca => update({ marca })}
           autoCapitalize="words"
         />
         <AnimatedInput
           icon="globe-outline"
           placeholder="Procedencia (opcional)"
           value={procedencia}
-          onChangeText={setProcedencia}
+          onChangeText={procedencia => update({ procedencia })}
           autoCapitalize="words"
         />
 
@@ -328,6 +326,7 @@ function AddItemScreenContent({ quoteId, saleId }: { quoteId?: number; saleId?: 
         ))}
         <CollectionFooter loading={catalogLoading || loadingMore} hasMore={hasMore} error={catalogError}
           onMore={() => { void loadMore(); }} onRetry={() => { void (catalog.length ? loadMore(true) : load()); }} />
+        </View>}
       </TutorialScrollView>
 
       <UnitSheet
@@ -335,7 +334,7 @@ function AddItemScreenContent({ quoteId, saleId }: { quoteId?: number; saleId?: 
         units={units}
         selected={unit}
         canDelete={units.length > 1}
-        onSelect={setUnit}
+        onSelect={unit => update({ unit })}
         onAdd={handleAddUnit}
         onRename={handleRenameUnit}
         onDelete={handleDeleteUnit}

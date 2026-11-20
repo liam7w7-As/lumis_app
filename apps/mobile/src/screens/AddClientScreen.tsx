@@ -18,21 +18,22 @@ import { useDraft } from '../context/DraftContext';
 import { useTheme } from '../theme/ThemeContext';
 import { ApiError, api } from '../lib/api';
 import { AnimatedInput } from '../components/AnimatedInput';
+import { FormDraftNotice } from '../components/FormDraftNotice';
+import { useFormDraft } from '../hooks/useFormDraft';
+import { EMPTY_CLIENT_FORM, readClientForm } from '../lib/formDrafts';
 
 function AddClientScreenContent() {
-  useTutorialAvailability({ ready: true });
   const { token } = useAuth();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { setClient } = useDraft();
-  const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [email, setEmail] = useState('');
+  const { value: { name, phone, email }, ready, status, hasDraft, restored, update, clear, retry } = useFormDraft('client', EMPTY_CLIENT_FORM, readClientForm);
+  useTutorialAvailability({ ready });
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const save = async () => {
-    if (!token) return;
+    if (!token || !ready || saving || status === 'clearing') return;
     if (name.trim().length < 2) {
       setError('El nombre del cliente es obligatorio');
       feedback.warning('Revisa el nombre', 'Escribe al menos dos caracteres para registrar al cliente.');
@@ -50,6 +51,7 @@ function AddClientScreenContent() {
         token,
       );
       setClient(client);
+      await clear().catch(() => feedback.warning('Cliente guardado', 'Se guardó el cliente, pero no se pudo borrar su borrador local. No vuelvas a registrarlo; descarta el borrador cuando regreses.'));
       router.back();
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'No se pudo guardar el cliente.';
@@ -77,7 +79,7 @@ function AddClientScreenContent() {
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}><TutorialHelpButton  /><TutorialTarget id="save" ><Pressable
             style={[styles.circleButton, { backgroundColor: colors.primary }]}
             onPress={save}
-            disabled={saving}
+            disabled={saving || !ready || status === 'clearing'}
             hitSlop={8}
           >
             {saving ? (
@@ -88,29 +90,32 @@ function AddClientScreenContent() {
           </Pressable></TutorialTarget></View>
         </View>
 
+        <FormDraftNotice ready={ready} status={status} hasDraft={hasDraft} restored={restored} onRetry={retry} onDiscard={clear} />
+        {ready && <View pointerEvents={saving || status === 'clearing' ? 'none' : 'auto'}>
         <TutorialTarget id="fields" ><AnimatedInput
           icon="person-outline"
           placeholder="Cliente / Empresa"
           value={name}
-          onChangeText={setName}
+          onChangeText={name => update({ name })}
           autoCapitalize="words"
         /></TutorialTarget>
         <AnimatedInput
           icon="call-outline"
           placeholder="Celular"
           value={phone}
-          onChangeText={setPhone}
+          onChangeText={phone => update({ phone })}
           keyboardType="phone-pad"
         />
         <AnimatedInput
           icon="mail-outline"
           placeholder="Email"
           value={email}
-          onChangeText={setEmail}
+          onChangeText={email => update({ email })}
           keyboardType="email-address"
         />
 
         {error && <Text style={[styles.error, { color: colors.error }]}>{error}</Text>}
+        </View>}
       </TutorialScrollView>
     </KeyboardAvoidingView>
   );
