@@ -38,7 +38,12 @@ async function moduleToRawBase64(moduleId: number): Promise<string | null> {
   try {
     const asset = Asset.fromModule(moduleId);
     await asset.downloadAsync();
-    const uri = asset.localUri ?? asset.uri;
+    let uri: string | null = asset.localUri ?? asset.uri;
+    // Android release drawables are resource names, despite being marked downloaded.
+    // A fresh URI asset copies the resource to a real cache file that File can read.
+    if (uri && !uri.includes(':')) {
+      uri = (await Asset.fromURI(uri).downloadAsync()).localUri;
+    }
     if (!uri) {
       return null;
     }
@@ -100,5 +105,9 @@ export async function loadDocImages(overrides: DocAssetOverrides = {}): Promise<
   const images = { logo: null, firma: null, sello: null, ...Object.fromEntries(entries) } as DocImages;
 
   const branding = await resolveDocumentBranding(overrides, remoteToBase64);
-  return { ...images, ...branding, firma: null };
+  const warnings = [...branding.warnings];
+  if (entries.some(([, image]) => !image)) {
+    warnings.push('No se pudieron cargar algunos iconos del documento. Vuelve a intentar.');
+  }
+  return { ...images, ...branding, firma: null, warnings };
 }
