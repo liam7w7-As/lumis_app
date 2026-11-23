@@ -48,7 +48,7 @@ export function AuthScreen() {
       duration: 440,
       easing: Easing.out(Easing.cubic),
       isInteraction: false,
-      useNativeDriver: true,
+      useNativeDriver: Platform.OS !== 'android',
     });
     animation.start();
     return () => animation.stop();

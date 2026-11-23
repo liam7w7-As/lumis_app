@@ -1,5 +1,5 @@
 import { useCallback, useEffect } from 'react';
-import { Animated, useAnimatedValue } from 'react-native';
+import { Animated, Platform, useAnimatedValue } from 'react-native';
 import { useReducedMotion } from '../context/MotionContext';
 
 /** Respuesta breve y amortiguada, sin rebote ni bloqueo del render de las listas. */
@@ -15,7 +15,8 @@ export function usePressMotion(disabled = false) {
     if (reducedMotion || disabled) { scale.setValue(1); return; }
     Animated.spring(scale, {
       toValue: to, stiffness: 360, damping: 30, mass: 0.7,
-      overshootClamping: true, useNativeDriver: true, isInteraction: false,
+      // Android's native graph can disconnect already removed nodes on navigation.
+      overshootClamping: true, useNativeDriver: Platform.OS !== 'android', isInteraction: false,
     }).start();
   }, [reducedMotion, disabled, scale]);
   return {

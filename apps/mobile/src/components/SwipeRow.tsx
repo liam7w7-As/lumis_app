@@ -1,6 +1,6 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
 import type { ReactNode } from 'react';
-import { Animated, PanResponder, StyleSheet, useAnimatedValue, View } from 'react-native';
+import { Animated, PanResponder, Platform, StyleSheet, useAnimatedValue, View } from 'react-native';
 import { useReducedMotion } from '../context/MotionContext';
 
 export interface SwipeRowHandle {
@@ -39,7 +39,7 @@ export const SwipeRow = forwardRef<SwipeRowHandle, SwipeRowProps>(function Swipe
     }
     Animated.spring(translateX, {
       toValue: to,
-      useNativeDriver: true,
+      useNativeDriver: Platform.OS !== 'android',
       stiffness: 300,
       damping: 30,
     }).start(({ finished }) => {

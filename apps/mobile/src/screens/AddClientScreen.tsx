@@ -91,7 +91,7 @@ function AddClientScreenContent() {
         </View>
 
         <FormDraftNotice ready={ready} status={status} hasDraft={hasDraft} restored={restored} onRetry={retry} onDiscard={clear} />
-        {ready && <View pointerEvents={saving || status === 'clearing' ? 'none' : 'auto'}>
+        {ready && <View collapsable={false} pointerEvents={saving || status === 'clearing' ? 'none' : 'auto'}>
         <TutorialTarget id="fields" ><AnimatedInput
           icon="person-outline"
           placeholder="Cliente / Empresa"

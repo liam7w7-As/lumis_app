@@ -239,7 +239,7 @@ function AddItemScreenContent({ quoteId, saleId, draftScope = 'new-quote' }: { q
         </View>
 
         <FormDraftNotice ready={ready} status={status} hasDraft={hasDraft} restored={restored} onRetry={retry} onDiscard={clear} />
-        {ready && <View pointerEvents={saving || status === 'clearing' ? 'none' : 'auto'}>
+        {ready && <View collapsable={false} pointerEvents={saving || status === 'clearing' ? 'none' : 'auto'}>
         <TutorialTarget id="fields" ><AnimatedInput
           icon="cube-outline"
           placeholder="Nombre del artículo"

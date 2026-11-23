@@ -1021,7 +1021,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
         </View>
 
         {!isDetail && pending && !saving && <Text style={{ color: colors.muted, fontFamily: 'Poppins', marginVertical: 12 }}>Envío pendiente. Pulsa Guardar para confirmar esta misma venta.</Text>}
-        <View pointerEvents={!isDetail && pending ? 'none' : 'auto'}>
+        <View collapsable={false} pointerEvents={!isDetail && pending ? 'none' : 'auto'}>
         <View style={styles.metaRow}>
           <TutorialTarget id="date" ><Pressable style={styles.dateWrap} onPress={() => {if(!isDetail||editAccess.requestEdit())setDateOpen(true);}}
             accessibilityRole="button" accessibilityLabel="Editar fecha de la venta" disabled={isVoided || loading || IS_NOVALED}>

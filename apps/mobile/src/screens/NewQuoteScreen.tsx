@@ -224,7 +224,8 @@ function NewQuoteScreenContent() {
         </View>
 
         {pending && !saving && <Text style={{ color: colors.muted, fontFamily: 'Poppins', marginVertical: 12 }}>Envío pendiente. Pulsa Guardar para confirmar esta misma cotización.</Text>}
-        <View style={styles.formContent} pointerEvents={pending || saving ? 'none' : 'auto'}>
+        {/* Keep the native parent stable when saving disables touches on the form. */}
+        <View collapsable={false} style={styles.formContent} pointerEvents={pending || saving ? 'none' : 'auto'}>
         <View style={styles.metaRow}>
           <View style={styles.dateWrap}>
             <Text style={[styles.dateText, { color: colors.muted }]}>Fecha {todayLabel()}</Text>
