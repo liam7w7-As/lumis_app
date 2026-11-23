@@ -3,6 +3,7 @@ import { loadRemoteImage } from '../lib/remoteImage';
 import { NoticeCard } from '../components/NoticeCard';
 import { LicenseStatusCard } from '../components/LicenseStatusCard';
 import { BusinessDocumentPreferences } from '../components/BusinessDocumentPreferences';
+import { BusinessFooterPreferences } from '../components/BusinessFooterPreferences';
 import { StoredImage } from '../components/StoredImage';
 import { feedback } from '../lib/feedback';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -83,7 +84,7 @@ const INFO_FIELDS: InfoField[] = [
   { key: 'telefono', maxLength: 40, label: 'Número de contacto', placeholder: '+591 70000000', keyboardType: 'phone-pad' },
   { key: 'nit', maxLength: 30, label: 'NIT', placeholder: '12345678' },
   { key: 'moneda', maxLength: 10, label: 'Tipo de moneda', placeholder: 'Bs.' },
-  { key: 'redes_sociales', maxLength: 150, label: 'Red Social', placeholder: '@minegocio', autoCapitalize: 'none' },
+  { key: 'redes_sociales', maxLength: 150, label: 'Usuario en redes sociales', placeholder: '@minegocio', autoCapitalize: 'none' },
   { key: 'website', maxLength: 150, label: 'Página Web', placeholder: 'www.minegocio.com', keyboardType: 'url', autoCapitalize: 'none' },
   { key: 'direccion', maxLength: 255, label: 'Dirección', placeholder: 'Av. Principal #123', autoCapitalize: 'words' },
   { key: 'ciudad', maxLength: 150, label: 'Ciudad', placeholder: 'La Paz - Bolivia', autoCapitalize: 'words' },
@@ -641,6 +642,7 @@ function SettingsScreenContent() {
 
             </View>
 
+            <BusinessFooterPreferences />
             <BusinessDocumentPreferences />
             <TutorialTarget id="users" ><TeamUsers onCreated={() => { void load(); }} /></TutorialTarget>
             {!isAdmin && <Text style={{ color: colors.muted }}>La configuración de empresa la administra el administrador.</Text>}

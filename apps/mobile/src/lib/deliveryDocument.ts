@@ -2,6 +2,7 @@ import { contrastText, forBackground } from './brandColors';
 import { monto as montoLetras } from './numeroALetras';
 import type { DocImages, DocFonts } from './docAssets';
 import type { DocBusiness } from './quoteDocument';
+import { buildDocumentFooter } from './documentFooter';
 import type { SaleDetail } from './api';
 import { documentColumns } from './documentColumns';
 
@@ -94,9 +95,6 @@ export function buildDeliveryNoteHtml(input: {
     .join('');
 
   const literal = `${montoLetras(sale.total)} ${escapeHtml(moneda)}${moneda.endsWith('.') ? '' : '.'}`;
-
-  const iconImg = (src: string | null, alt: string) =>
-    src ? `<img src="${src}" class="footer-icon" alt="${alt}">` : '';
 
   // El sello es opcional; las dos líneas de conformidad de entrega son fijas.
   const sealImages = (() => {
@@ -217,19 +215,7 @@ export function buildDeliveryNoteHtml(input: {
 
 <div class="page-footer">
   <div class="footer-divider"></div>
-  <table>
-    <tr>
-      <td class="footer-left">
-        ${business.redes_sociales ? `${iconImg(images.facebook, 'Facebook')}${iconImg(images.tiktok, 'TikTok')}${iconImg(images.instagram, 'Instagram')}${iconImg(images.linkedin, 'LinkedIn')}<span class="footer-text">${escapeHtml(business.redes_sociales)}</span>` : ''}
-      </td>
-      <td class="footer-center">
-        ${business.website ? `${iconImg(images.web, 'Web')}<span class="footer-text">${escapeHtml(business.website)}</span>` : ''}
-      </td>
-      <td class="footer-right">
-        ${direccion ? `${iconImg(images.map, 'Ubicación')}<span class="footer-text">${escapeHtml(direccion)}</span>` : ''}
-      </td>
-    </tr>
-  </table>
+  ${buildDocumentFooter(business, images, direccion ?? '')}
   <div class="footer-bottom-accent"></div>
 </div>
 

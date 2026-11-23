@@ -4,6 +4,7 @@ import { notifySessionExpiry } from './authEvents';
 import { notifyLicenseChange } from './licenseEvents';
 import { runLegacyOperation, rememberLegacyBody } from './legacyOperation';
 import { requestStockSelection, type StockChoiceItem } from './stockSelection';
+import type { PdfFooterPreferences } from './documentFooter';
 export { API_URL } from './backend';
 
 export function mediaUrl(path: string | null): string | null {
@@ -102,7 +103,7 @@ export interface Product {
   procedencia: string | null;
 }
 
-export interface Business {
+export interface Business extends PdfFooterPreferences {
   pdf_mostrar_marca?: boolean;
   pdf_mostrar_procedencia?: boolean;
   id: number;
@@ -121,7 +122,7 @@ export interface Business {
   telefono: string | null;
 }
 
-export interface BusinessUpdateInput {
+export interface BusinessUpdateInput extends PdfFooterPreferences {
   pdf_mostrar_marca?: boolean;
   pdf_mostrar_procedencia?: boolean;
   nombre?: string;

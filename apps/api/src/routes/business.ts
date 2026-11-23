@@ -24,10 +24,17 @@ const businessSchema = z.object({
   telefono: z.string().trim().max(40).nullable().optional(),
   pdf_mostrar_marca: z.boolean().optional(),
   pdf_mostrar_procedencia: z.boolean().optional(),
+  mostrar_facebook: z.boolean().optional(),
+  mostrar_instagram: z.boolean().optional(),
+  mostrar_tiktok: z.boolean().optional(),
+  mostrar_linkedin: z.boolean().optional(),
+  mostrar_website: z.boolean().optional(),
+  mostrar_direccion: z.boolean().optional(),
 });
-const COLUMNS = 'id, nombre, color_primario, moneda, logo_url, sello_url, terminos_default, redes_sociales, website, direccion, ciudad, nit, email, telefono, pdf_mostrar_marca, pdf_mostrar_procedencia';
+const PREFERENCES = ['pdf_mostrar_marca', 'pdf_mostrar_procedencia', 'mostrar_facebook', 'mostrar_instagram', 'mostrar_tiktok', 'mostrar_linkedin', 'mostrar_website', 'mostrar_direccion'] as const;
+const COLUMNS = 'id, nombre, color_primario, moneda, logo_url, sello_url, terminos_default, redes_sociales, website, direccion, ciudad, nit, email, telefono, ' + PREFERENCES.join(', ');
 const publicBusiness = (row: RowDataPacket) => ({ ...row,
-  pdf_mostrar_marca: !!row.pdf_mostrar_marca, pdf_mostrar_procedencia: !!row.pdf_mostrar_procedencia });
+  ...Object.fromEntries(PREFERENCES.map(key => [key, !!row[key]])) });
 export const businessRouter = Router();
 businessRouter.use(requireAuth);
 businessRouter.get('/', async (req: AuthRequest, res, next) => {

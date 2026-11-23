@@ -3,8 +3,9 @@ import { monto as montoLetras } from './numeroALetras';
 import type { DocImages, DocFonts } from './docAssets';
 import type { QuoteDetail } from './api';
 import { documentColumns } from './documentColumns';
+import { buildDocumentFooter, type PdfFooterPreferences } from './documentFooter';
 
-export interface DocBusiness {
+export interface DocBusiness extends PdfFooterPreferences {
   pdf_mostrar_marca?: boolean;
   pdf_mostrar_procedencia?: boolean;
   nombre: string;
@@ -120,9 +121,6 @@ export function buildQuoteHtml(input: {
 
   const literal = `${montoLetras(quote.total)} ${escapeHtml(moneda)}${moneda.endsWith('.') ? '' : '.'}`;
 
-  const iconImg = (src: string | null, alt: string) =>
-    src ? `<img src="${src}" class="footer-icon" alt="${alt}">` : '';
-
   const sealImages = (() => {
     if (!quote.includeSeal) {
       return '';
@@ -178,9 +176,10 @@ export function buildQuoteHtml(input: {
   .client-label { font-size: 7.5pt; font-weight: bold; color: #111827; margin-bottom: 1.5mm; letter-spacing: 0.3px; }
   .client-name { font-size: 17pt; line-height: 1.1; font-weight: bold; color: #000000; }
   .client-detail { margin-top: 1.5mm; color: #6b7280; font-size: 7.2pt; }
-  .meta-side { width: 52%; vertical-align: top; text-align: right; }
+  .meta-side { width: 52%; vertical-align: top; text-align: left; }
   .document-title { font-size: 26pt; font-weight: bold; color: #000000; letter-spacing: 0.8px; line-height: 1; margin-bottom: 2mm; white-space: nowrap; }
-  .meta-table { width: 68mm; margin-left: auto; border-collapse: collapse; }
+  .document-title, .meta-table { width: 68mm; margin-left: auto; }
+  .meta-table { border-collapse: collapse; }
   .meta-table td { padding: 0.3mm 0; font-size: 7.6pt; line-height: 1; vertical-align: middle; }
   .meta-label { width: 25mm; color: #6b7280; text-align: left; }
   .meta-value { color: #111827; text-align: left; }
@@ -245,19 +244,7 @@ export function buildQuoteHtml(input: {
 
 <div class="page-footer">
   <div class="footer-divider"></div>
-  <table>
-    <tr>
-      <td class="footer-left">
-        ${business.redes_sociales ? `${iconImg(images.facebook, 'Facebook')}${iconImg(images.tiktok, 'TikTok')}${iconImg(images.instagram, 'Instagram')}${iconImg(images.linkedin, 'LinkedIn')}<span class="footer-text">${escapeHtml(business.redes_sociales)}</span>` : ''}
-      </td>
-      <td class="footer-center">
-        ${business.website ? `${iconImg(images.web, 'Web')}<span class="footer-text">${escapeHtml(business.website)}</span>` : ''}
-      </td>
-      <td class="footer-right">
-        ${direccion ? `${iconImg(images.map, 'Ubicación')}<span class="footer-text">${escapeHtml(direccion)}</span>` : ''}
-      </td>
-    </tr>
-  </table>
+  ${buildDocumentFooter(business, images, direccion ?? '')}
   <div class="footer-bottom-accent"></div>
 </div>
 

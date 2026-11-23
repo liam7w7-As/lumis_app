@@ -16,5 +16,11 @@ export function documentBusiness(business: Business | null): DocBusiness {
     telefono: business?.telefono ?? null,
     pdf_mostrar_marca: business?.pdf_mostrar_marca ?? true,
     pdf_mostrar_procedencia: business?.pdf_mostrar_procedencia ?? true,
+    mostrar_facebook: business?.mostrar_facebook ?? true,
+    mostrar_instagram: business?.mostrar_instagram ?? true,
+    mostrar_tiktok: business?.mostrar_tiktok ?? true,
+    mostrar_linkedin: business?.mostrar_linkedin ?? true,
+    mostrar_website: business?.mostrar_website ?? true,
+    mostrar_direccion: business?.mostrar_direccion ?? true,
   };
 }
