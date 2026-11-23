@@ -177,7 +177,7 @@ export function buildQuoteHtml(input: {
   .client-name { font-size: 17pt; line-height: 1.1; font-weight: bold; color: #000000; }
   .client-detail { margin-top: 1.5mm; color: #6b7280; font-size: 7.2pt; }
   .meta-side { width: 52%; vertical-align: top; text-align: left; }
-  .document-title { font-size: 26pt; font-weight: bold; color: #000000; letter-spacing: 0.8px; line-height: 1; margin-bottom: 2mm; white-space: nowrap; }
+  .document-title { font-size: 26pt; font-weight: bold; color: #000000; letter-spacing: 4px; line-height: 1; margin-bottom: 2mm; white-space: nowrap; }
   .document-title, .meta-table { width: 68mm; margin-left: auto; }
   .meta-table { border-collapse: collapse; }
   .meta-table td { padding: 0.3mm 0; font-size: 7.6pt; line-height: 1; vertical-align: middle; }
