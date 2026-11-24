@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import { sampleBusiness, sampleQuote, sampleSale, documentItems } from './documentFixtures';
+import { getDocumentClient, verifySavedDocumentClient } from '../../apps/mobile/src/lib/documentClient';
 import { changedQuoteOptions } from '../../apps/mobile/src/lib/quoteOptions';
 
 type Element = { type: unknown; props: Record<string, any> };
@@ -101,6 +102,8 @@ function harness(screen: Screen, novaled: boolean, newSale = false) {
       useTutorialAvailability() {}, withTutorial: (component: unknown) => component,
     },
     '../tutorials/TutorialContext': { useTutorial: () => ({ notify() {} }) },
+    '../components/DocumentClientModal': { DocumentClientModal: 'DocumentClientModal' },
+    '../lib/documentClient': { getDocumentClient, verifySavedDocumentClient },
     '../components/FormModal': { FormModal: 'FormModal' },
     '../components/DatePickerModal': { DatePickerModal: 'DatePickerModal' },
     '../components/ItemSwipe': { ItemSwipe: 'ItemSwipe' },
@@ -164,7 +167,14 @@ function harness(screen: Screen, novaled: boolean, newSale = false) {
   }
   return {
     itemPatches, documentPatches, createdSales, routes, messages, render,
-    clientInput() { return find(node => node.type === 'TextInput' && node.props.accessibilityLabel === 'Nombre del cliente de esta cotización'); },
+    openClient() {
+      const row = nodes(tree).find(node => node.props.accessibilityLabel === 'Editar datos del cliente');
+      if (row) row.props.onPress();
+      else find(node => node.type === 'PrimaryButton' && node.props.title.includes('Añadir cliente')).onPress();
+      render();
+    },
+    clientModal() { return find(node => node.type === 'DocumentClientModal'); },
+    hasClientModal() { return nodes(tree).some(node => node.type === 'DocumentClientModal'); },
     async mount() { render(); await tick(); render(); },
     open(index = 0) {
       if (newSale) find(node => node.type === 'Pressable' && node.props.accessibilityLabel === `Editar artículo ${index + 1}`).onPress();
@@ -191,24 +201,25 @@ function harness(screen: Screen, novaled: boolean, newSale = false) {
 
 for (const novaled of [false, true]) {
   const variant = novaled ? 'Lumis Novaled' : 'Lumis';
-  test(`${variant}: el nombre del cliente se guarda en la cotización antes de generar el PDF`, async () => {
-    const app = harness('quote', novaled); await app.mount();
-    app.clientInput().onChangeText('  Cliente del proyecto  ');
-    app.preview(); await tick();
-    assert.deepEqual(app.documentPatches, [{ clientName: 'Cliente del proyecto' }]);
-    assert.equal(app.routes.length, 1);
-  });
-  test(`${variant}: el nombre del cliente se guarda al salir del campo y no admite quedar vacío`, async () => {
-    const app = harness('quote', novaled); await app.mount();
-    app.clientInput().onChangeText('Nombre personalizado');
-    app.clientInput().onEndEditing(); await tick(); app.render();
-    assert.deepEqual(app.documentPatches, [{ clientName: 'Nombre personalizado' }]);
-    app.clientInput().onChangeText('  ');
-    app.preview(); await tick();
-    assert.equal(app.documentPatches.length, 1);
-    assert.equal(app.routes.length, 0);
-    assert.ok(app.messages.some(message => message.message.includes('nombre del cliente')));
-  });
+  for (const screen of ['quote', 'sale'] as const) {
+    test(`${variant}: ${screen} edita datos del cliente por modal y los conserva al volver a abrir`, async () => {
+      const app = harness(screen, novaled); await app.mount(); app.openClient();
+      const data = { name: 'Cliente del proyecto', phone: '70000000', email: 'proyecto@example.com', address: 'Av. Norte', nit: '12345' };
+      await app.clientModal().onSave(data); app.clientModal().onClose(); app.render();
+      assert.deepEqual(app.documentPatches, [{ clientDetails: data }]);
+      app.openClient(); assert.deepEqual(plain(app.clientModal().initial), data);
+      app.clientModal().onClose(); app.render(); app.preview(); await tick();
+      assert.equal(app.routes.length, 1);
+      assert.equal(app.documentPatches.length, 1);
+    });
+    test(`${variant}: ${screen} cancelar el modal no modifica al cliente y el plan restringido no abre edición`, async () => {
+      const app = harness(screen, novaled); await app.mount(); app.openClient();
+      app.clientModal().onClose(); app.render();
+      assert.equal(app.hasClientModal(), false); assert.deepEqual(app.documentPatches, []);
+      app.lock(); app.openClient(); assert.equal(app.hasClientModal(), false);
+      assert.ok(app.accessRequests() > 0);
+    });
+  }
   test(`${variant}: nueva venta mantiene la lista compacta y guarda nombre e importes desde el acordeón`, async () => {
     const app = harness('sale', novaled, true); await app.mount();
     assert.equal(app.hasNameInput(), false);

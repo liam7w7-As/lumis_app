@@ -15,7 +15,8 @@ export function FormModal({ visible, title, onClose, children, icon = 'create-ou
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={[styles.overlay, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 }]}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessible={false} />
-        <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <Pressable accessible={false} collapsable={false} onPress={event => event.stopPropagation()}
+          style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <View style={styles.header}>
             <View style={[styles.icon, { backgroundColor: colors.primary + '18' }]}>
               <Ionicons name={icon} size={23} color={colors.primary} />
@@ -30,7 +31,7 @@ export function FormModal({ visible, title, onClose, children, icon = 'create-ou
             contentContainerStyle={styles.content}>
             {children}
           </ScrollView>
-        </View>
+        </Pressable>
       </KeyboardAvoidingView>
     </AppModal>
   );

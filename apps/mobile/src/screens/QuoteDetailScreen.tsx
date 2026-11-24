@@ -1,5 +1,7 @@
 import { TutorialTarget, TutorialScrollView, TutorialHelpButton, useTutorialAvailability, withTutorial } from '../tutorials/TutorialElements';
 import { useTutorial } from '../tutorials/TutorialContext';
+import { DocumentClientModal } from '../components/DocumentClientModal';
+import { getDocumentClient, verifySavedDocumentClient } from '../lib/documentClient';
 import { DatePickerModal } from '../components/DatePickerModal';
 import { feedback } from '../lib/feedback';
 import { useCallback, useRef, useState } from 'react';
@@ -18,7 +20,7 @@ import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
-import { ApiError, api, type QuoteDetail, type QuoteItem, type QuoteStatus } from '../lib/api';
+import { ApiError, api, type DocumentClientDetails, type QuoteDetail, type QuoteItem, type QuoteStatus } from '../lib/api';
 import { formatDate } from '../lib/format';
 import { useMoney, useBusiness } from '../context/BusinessContext';
 import { ItemSwipe } from '../components/ItemSwipe';
@@ -62,11 +64,7 @@ function QuoteDetailScreenContent() {
   const [showNotes, setShowNotes] = useState(false);
   const [includeSignature, setIncludeSignature] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [clientName, setClientName] = useState('');
-  const clientDraft = useRef('');
-  const savedClientName = useRef('');
-  const clientWrites = useRef<Promise<void>>(Promise.resolve());
-  const [clientSaving, setClientSaving] = useState(false);
+  const [clientOpen, setClientOpen] = useState(false);
   const [dateOpen, setDateOpen] = useState(false);
 
   const [expandedItem, setExpandedItem] = useState<number | null>(null);
@@ -93,13 +91,10 @@ function QuoteDetailScreenContent() {
     if (loadedQuote.current !== quoteId) setLoading(true);
     setError(null);
     try {
-      await clientWrites.current.catch(() => {});
       const { quote: data } = await api.quoteDetail(quoteId, token);
       if (request !== requestId.current) return;
       loadedQuote.current = quoteId;
       setQuote(data);
-      const name = data.clientName ?? data.client?.name ?? '';
-      setClientName(name); clientDraft.current = name; savedClientName.current = name;
       setNotes(data.notes ?? '');
       setIncludeSeal(data.includeSeal);
       setShowNotes(data.showNotes);
@@ -124,24 +119,12 @@ function QuoteDetailScreenContent() {
   const editable = quote?.status === 'borrador';
   const saveable = quote != null && quote.status !== 'convertida';
 
-  const persistClientName = () => {
-    const write = clientWrites.current.catch(() => {}).then(async () => {
-      const name = clientDraft.current.trim();
-      if (name === savedClientName.current) return;
-      if (!token || !quote || !saveable) throw new Error('Esta cotización está en modo consulta.');
-      if (!requestEdit()) throw new Error('No puedes modificar esta cotización con el acceso actual.');
-      if (!name) throw new Error('Escribe el nombre del cliente.');
-      if (name.length > 150) throw new Error('El nombre admite hasta 150 caracteres.');
-      setClientSaving(true);
-      try {
-        await api.updateQuote(quote.id, { clientName: name }, token);
-        savedClientName.current = name;
-        if (clientDraft.current.trim() === name) { clientDraft.current = name; setClientName(name); }
-        setQuote(current => current?.id === quote.id ? { ...current, clientName: name } : current);
-      } finally { setClientSaving(false); }
-    });
-    clientWrites.current = write;
-    return write;
+  const saveClientDetails = async (clientDetails: DocumentClientDetails) => {
+    if (!token || !quote || !saveable || !requestEdit()) throw new Error('Este documento está en modo consulta.');
+    await api.updateQuote(quote.id, { clientDetails }, token);
+    const updated = await api.quoteDetail(quote.id, token);
+    verifySavedDocumentClient(updated.quote.clientDetails, clientDetails);
+    setQuote(current => current?.id === quote.id ? { ...current, clientDetails, clientName: clientDetails.name } : current);
   };
 
   const saveDate = async (createdAt: string) => {
@@ -213,7 +196,6 @@ function QuoteDetailScreenContent() {
     if (access === 'read_only' || access === 'checking') { requestEdit(); return; }
     setSaving(true);
     try {
-      await persistClientName();
       await persistItemDraft();
       if (!await persistDocumentOptions()) return;
       feedback.alert('Guardado', 'Cambios guardados');
@@ -230,7 +212,6 @@ function QuoteDetailScreenContent() {
     setSaving(true);
     try {
       if(access==='allowed' || access==='pro'){
-        await persistClientName();
         await persistItemDraft();
         if (!await persistDocumentOptions()) return;
       }
@@ -433,19 +414,12 @@ function QuoteDetailScreenContent() {
 
         <TutorialTarget id="client" ><View>
           <Text style={[styles.fieldLabel, { color: colors.muted }]}>Cliente / Empresa</Text>
-          <View collapsable={false} style={styles.clientRow}>
-            {canEdit && saveable ? <TextInput
-              accessibilityLabel="Nombre del cliente de esta cotización"
-              value={clientName} maxLength={150} placeholder="Sin cliente" placeholderTextColor={colors.muted}
-              style={[styles.clientName, { color: colors.text, minHeight: 44 }]}
-              onChangeText={value => { clientDraft.current = value; setClientName(value); }}
-              onEndEditing={() => { void persistClientName().catch(err => feedback.error('No se pudo guardar el nombre', err instanceof Error ? err.message : 'Inténtalo de nuevo.')); }}
-              returnKeyType="done" disableFullscreenUI
-            /> : <Pressable style={{ flex: 1, minHeight: 44, justifyContent: 'center' }} disabled={!saveable} onPress={requestEdit}>
-              <Text style={[styles.clientName, { color: colors.text }]}>{quote.clientName ?? quote.client?.name ?? 'Sin Cliente'}</Text>
-            </Pressable>}
-            {clientSaving ? <ActivityIndicator size="small" color={colors.primary} /> : proLocked && saveable ? <ProBadge /> : null}
-          </View>
+          <Pressable accessibilityRole="button" accessibilityLabel="Editar datos del cliente"
+            collapsable={false} style={styles.clientRow} disabled={!saveable}
+            onPress={() => { if (requestEdit()) setClientOpen(true); }}>
+            <Text style={[styles.clientName, { color: colors.text, minHeight: 44, paddingTop: 8 }]}>{quote.clientName ?? quote.client?.name ?? 'Sin Cliente'}</Text>
+            {proLocked && saveable ? <ProBadge /> : saveable ? <Ionicons name="create-outline" size={20} color={colors.muted} /> : null}
+          </Pressable>
         </View></TutorialTarget>
 
         {quote.items.map((item, index) => {
@@ -670,6 +644,8 @@ function QuoteDetailScreenContent() {
         /></TutorialTarget>
       </TutorialScrollView>
 
+      {clientOpen && <DocumentClientModal initial={getDocumentClient(quote)}
+        onSave={saveClientDetails} onClose={() => setClientOpen(false)} />}
       {dateOpen && <DatePickerModal title="Fecha de la cotización" value={quote.createdAt}
         onClose={() => setDateOpen(false)} onSave={saveDate} />}
       <ReorderItemsModal visible={ordering} items={quote.items} onClose={() => setOrdering(false)} onSave={reorderItems} />

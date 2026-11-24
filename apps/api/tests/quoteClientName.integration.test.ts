@@ -34,7 +34,7 @@ test('quote client names persist only in their document, with tenant and license
   const signup = (username: string) => call('/api/auth/register', undefined, 'POST', { username, name: username, password: 'test-only-12345' }, 201);
   const a = await signup('quote_name_a'), b = await signup('quote_name_b');
   await db.query("UPDATE business_licenses SET plan='pro',expires_at=DATE_ADD(UTC_TIMESTAMP(),INTERVAL 1 YEAR) WHERE business_id IN (?,?)", [a.user.businessId, b.user.businessId]);
-  const client = (await call('/api/clients', a.token, 'POST', { name: 'Cliente del catálogo', phone: '70000000' }, 201)).client;
+  const client = (await call('/api/clients', a.token, 'POST', { name: 'Cliente del catálogo', phone: '70000000', address: 'Dirección del catálogo' }, 201)).client;
   const create = async (clientId: number | null) => (await call('/api/quotes', a.token, 'POST', { clientId, items: [{ description: 'Artículo', quantity: 1, unit: 'Unidad', unitPrice: 50 }] }, 201)).quote;
   const first = await create(client.id), other = await create(client.id), anonymous = await create(null);
   const url = '/api/quotes/' + first.id;
@@ -53,6 +53,38 @@ test('quote client names persist only in their document, with tenant and license
   const { sampleBusiness, sampleFonts, sampleImages } = await import('../../../tests/mobile/documentFixtures');
   const html = buildQuoteHtml({ quote, business: sampleBusiness, fonts: sampleFonts, images: sampleImages, branchName: null });
   assert.ok(html.includes('Cliente &amp; Proyecto &lt;Norte&gt;'));
+  assert.equal(quote.clientDetails.address, 'Dirección del catálogo');
+  const details = { name: custom, phone: '71111111', email: 'proyecto@example.com', address: 'Proyecto <Norte>', nit: '123456' };
+  for (const endpoint of [url, '/api/sales/' + (await call('/api/sales', a.token, 'POST', { clientId: client.id, metodoPago: 'por_pagar', items: [{ description: 'Artículo', quantity: 1, unit: 'Unidad', unitPrice: 50 }] }, 201)).sale.id]) {
+    const key = endpoint.includes('/quotes/') ? 'quote' : 'sale';
+    await call(endpoint, a.token, 'PATCH', { clientDetails: details });
+    const saved = (await call(endpoint, a.token))[key];
+    assert.deepEqual(saved.clientDetails, details); assert.equal(saved.clientName, custom);
+    assert.equal(saved.client.name, client.name); assert.equal(saved.client.phone, '70000000');
+    const copy = (await call(endpoint + '/duplicate', a.token, 'POST', {}, 201))[key];
+    assert.deepEqual((await call(endpoint.split('/').slice(0, -1).join('/') + '/' + copy.id, a.token))[key].clientDetails, details);
+    for (const invalid of [{ ...details, name: '' }, { ...details, email: 'invalid' }, { ...details, address: 'x'.repeat(256) }, { ...details, businessId: b.user.businessId }, null]) {
+      await call(endpoint, a.token, 'PATCH', { clientDetails: invalid }, 400);
+    }
+    assert.deepEqual((await call(endpoint, a.token))[key].clientDetails, details);
+    await call(endpoint, b.token, 'PATCH', { clientDetails: details }, 404);
+    await call(endpoint, undefined, 'PATCH', { clientDetails: details }, 401);
+    await db.query("UPDATE business_licenses SET plan='gratis',expires_at=NULL WHERE business_id=?", [a.user.businessId]);
+    await call(endpoint, a.token, 'PATCH', { clientDetails: details }, 403);
+    await db.query("UPDATE business_licenses SET plan='pro',expires_at=DATE_ADD(UTC_TIMESTAMP(),INTERVAL 1 YEAR) WHERE business_id=?", [a.user.businessId]);
+    await call(endpoint, a.token, 'PATCH', { clientDetails: { ...details, phone: null, address: null } });
+    const cleared = (await call(endpoint, a.token))[key].clientDetails;
+    assert.equal(cleared.phone, null); assert.equal(cleared.address, null);
+    await call(endpoint, a.token, 'PATCH', { clientDetails: details });
+  }
+  assert.equal((await call('/api/clients', a.token)).clients[0].phone, '70000000');
+  assert.equal((await call('/api/quotes/' + other.id, a.token)).quote.clientDetails.phone, '70000000');
+  const converted = (await call('/api/sales/from-quote', a.token, 'POST', { quoteId: first.id }, 201)).sale;
+  assert.deepEqual((await call('/api/sales/' + converted.id, a.token)).sale.clientDetails, details);
+  await call(url, a.token, 'PATCH', { clientDetails: details }, 409);
+  const changed = (await call(url, a.token)).quote;
+  const detailsHtml = buildQuoteHtml({ quote: changed, business: sampleBusiness, fonts: sampleFonts, images: sampleImages, branchName: null });
+  assert.ok(detailsHtml.includes('Proyecto &lt;Norte&gt;')); assert.ok(detailsHtml.includes('proyecto@example.com'));
   for (const value of ['', '   ', null, 'a'.repeat(151)]) await call(url, a.token, 'PATCH', { clientName: value }, 400);
   await call(url, b.token, 'PATCH', { clientName: 'Otra empresa' }, 404);
   await call(url, undefined, 'PATCH', { clientName: 'Sin sesión' }, 401);

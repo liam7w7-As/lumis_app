@@ -43,6 +43,8 @@ import { PrimaryButton } from '../components/PrimaryButton';
 import { DocumentOptions, type DocumentOptionValues } from '../components/DocumentOptions';
 import { SegmentedTabs } from '../components/SegmentedTabs';
 import { SalePaymentSection } from '../components/SalePaymentSection';
+import { DocumentClientModal } from '../components/DocumentClientModal';
+import { getDocumentClient, verifySavedDocumentClient } from '../lib/documentClient';
 import { ClientPickerModal } from '../components/ClientPickerModal';
 import { useDocumentEditAccess } from '../hooks/useDocumentEditAccess';
 import { ProBadge } from '../components/ProBadge';
@@ -98,6 +100,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
   const [dateOpen, setDateOpen] = useState(false);
   const [draftCreatedAt, setDraftCreatedAt] = useState<string | null>(null);
   const [clientsOpen, setClientsOpen] = useState(false);
+  const [clientDetailsOpen, setClientDetailsOpen] = useState(false);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [agentsOpen, setAgentsOpen] = useState(false);
   const [agentId, setAgentId] = useState<number | null>(null);
@@ -201,7 +204,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
     : agentId != null
       ? (agents.find((a) => a.id === agentId)?.name ?? user?.name ?? '')
       : (user?.name ?? '');
-  const clientName = isDetail ? (sale?.client?.name ?? sale?.clientName ?? null) : (client?.name ?? null);
+  const clientName = isDetail ? (sale?.clientName ?? sale?.client?.name ?? null) : (client?.name ?? null);
   const clientId = isDetail ? (sale?.clientId ?? null) : (client?.id ?? null);
   const total = isDetail ? (sale?.total ?? 0) : round2(items.reduce((s, it) => s + it.quantity * it.unitPrice, 0));
   const hasItems = isDetail ? (sale?.items.length ?? 0) > 0 : items.length > 0;
@@ -442,6 +445,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
               ...prev,
               clientId: picked.id,
               clientName: picked.name,
+              clientDetails: undefined,
               client: { id: picked.id, name: picked.name, phone: picked.phone, email: picked.email },
             }
           : prev,
@@ -1105,14 +1109,16 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
         <TutorialTarget id="client" ><View>
           <Text style={[styles.fieldLabel, { color: colors.muted }]}>Cliente / Empresa</Text>
           {clientName ? (
-            <Pressable style={styles.clientRow} onPress={() => {if(!isDetail||editAccess.requestEdit())setClientsOpen(true);}} disabled={sale?.canChangeBranch === false}>
+            <Pressable style={styles.clientRow} accessibilityRole="button" accessibilityLabel={isDetail ? 'Editar datos del cliente' : 'Seleccionar cliente'}
+              onPress={() => { if (isDetail) { if (editAccess.requestEdit()) setClientDetailsOpen(true); } else setClientsOpen(true); }} disabled={!!isVoided}>
               <Text style={[styles.clientName, { color: colors.text }]}>{clientName}</Text>
               {isDetail&&editAccess.proLocked?<ProBadge/>:<Ionicons name="chevron-forward" size={18} color={colors.icon} />}
             </Pressable>
           ) : (
             <PrimaryButton
               title="+  Añadir cliente"
-              onPress={() => {if(isDetail){if(editAccess.requestEdit())setClientsOpen(true);}else{tutorial.notify('client');router.push(`${basePath}/client`);}}}
+              disabled={!!isVoided}
+              onPress={() => {if(isDetail){if(editAccess.requestEdit())setClientDetailsOpen(true);}else{tutorial.notify('client');router.push(`${basePath}/client`);}}}
             />
           )}
           {clientName && sale?.canChangeBranch !== false && (
@@ -1267,6 +1273,14 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
             )}
       </FormModal>
 
+      {clientDetailsOpen && sale && <DocumentClientModal initial={getDocumentClient(sale)}
+        onSave={async clientDetails => {
+          if (!token || !editAccess.requestEdit() || isVoided) throw new Error('Esta venta está en modo consulta.');
+          await api.updateSale(sale.id, { clientDetails }, token);
+          const updated = await api.saleDetail(sale.id, token);
+          verifySavedDocumentClient(updated.sale.clientDetails, clientDetails);
+          setSale(current => current?.id === sale.id ? { ...current, clientDetails, clientName: clientDetails.name } : current);
+        }} onClose={() => setClientDetailsOpen(false)} />}
       {clientsOpen && <ClientPickerModal selectedId={clientId} onPick={client => { void pickClient(client); }} onClose={() => setClientsOpen(false)} />}
     </KeyboardAvoidingView>
   );

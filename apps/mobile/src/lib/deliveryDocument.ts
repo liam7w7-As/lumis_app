@@ -1,3 +1,4 @@
+import { getDocumentClient, documentClientHtml } from './documentClient';
 import { contrastText, forBackground } from './brandColors';
 import { monto as montoLetras } from './numeroALetras';
 import type { DocImages, DocFonts } from './docAssets';
@@ -73,7 +74,8 @@ export function buildDeliveryNoteHtml(input: {
     )
     .join('\n  ');
 
-  const clientName = sale.clientName ?? sale.client?.name ?? 'Sin Cliente';
+  const clientDetails = getDocumentClient(sale);
+  const clientName = clientDetails.name || 'Sin Cliente';
   const documentNumber = sale.number ?? sale.id;
   const paid = Math.max(0, sale.totalPagado ?? 0);
   const subtotal = showPaymentSummary ? Math.round(sale.items.reduce((sum, item) => sum + item.subtotal, 0) * 100) / 100 : sale.total;
@@ -254,6 +256,7 @@ export function buildDeliveryNoteHtml(input: {
       <div class="client-section">
         <div class="client-label">${title} PARA:</div>
         <div class="client-name">${escapeHtml(clientName)}</div>
+        ${documentClientHtml(clientDetails)}
       </div>
     </td>
     <td class="meta-side">

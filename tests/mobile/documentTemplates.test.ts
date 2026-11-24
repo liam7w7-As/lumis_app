@@ -12,6 +12,26 @@ import {
   sampleImages,
   sampleFonts,
 } from "./documentFixtures";
+
+test('PDFs use and escape document client details, including explicit empty values', () => {
+  const details = { name: 'Proyecto <Norte>', phone: '71111111', email: 'norte@example.com', address: 'Av. <Principal>', nit: '12345' };
+  const common = { business: sampleBusiness, branchName: null, images: sampleImages, fonts: sampleFonts };
+  for (const html of [
+    buildQuoteHtml({ ...common, quote: { ...sampleQuote, clientDetails: details } }),
+    buildDeliveryNoteHtml({ ...common, documentType: 'sale', sale: { ...sampleSale, clientDetails: details } }),
+  ]) {
+    assert.ok(html.includes('Proyecto &lt;Norte&gt;'));
+    assert.ok(html.includes('Av. &lt;Principal&gt;'));
+    assert.ok(html.includes('norte@example.com'));
+    assert.ok(html.includes('NIT / CI: 12345'));
+    assert.ok(!html.includes('Proyecto <Norte>'));
+  }
+  const html = buildQuoteHtml({ ...common, quote: { ...sampleQuote,
+    client: { id: 1, name: 'Catálogo', phone: '77777777', email: 'catalog@example.com' },
+    clientDetails: { ...details, phone: null, email: null, address: null, nit: null },
+  } });
+  assert.ok(!html.includes('77777777')); assert.ok(!html.includes('catalog@example.com'));
+});
 const saleHtml = (delivery: boolean, business = sampleBusiness) =>
   buildDeliveryNoteHtml({
     documentType: delivery ? "delivery" : "sale",

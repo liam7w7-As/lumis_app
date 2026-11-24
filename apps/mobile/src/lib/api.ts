@@ -196,7 +196,16 @@ export interface SalePayment {
   createdAt: string;
 }
 
+export interface DocumentClientDetails {
+  name: string;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  nit: string | null;
+}
+
 export interface SaleDetail extends Sale {
+  clientDetails?: DocumentClientDetails;
   client: { id: number; name: string; phone: string | null; email: string | null } | null;
   agentId: number | null;
   comprobanteUrl: string | null;
@@ -212,6 +221,7 @@ export interface SaleDetail extends Sale {
 }
 
 export interface SaleUpdateInput {
+  clientDetails?: DocumentClientDetails;
   confirmDraft?: boolean;
   createdAt?: string;
   estadoPago?: SaleEstadoPago;
@@ -250,6 +260,7 @@ export interface QuoteItem {
 }
 
 export interface QuoteDetail {
+  clientDetails?: DocumentClientDetails;
   id: number;
   number?: number;
   clientName?: string | null;
@@ -299,6 +310,7 @@ export interface QuoteScanLine {
 export interface QuoteScan { id: string; lines: QuoteScanLine[] }
 
 export interface QuoteUpdateInput {
+  clientDetails?: DocumentClientDetails;
   clientName?: string;
   createdAt?: string;
   status?: 'borrador' | 'aprobada' | 'rechazada';

@@ -1,6 +1,7 @@
 import { saveUpload } from '../lib/uploadStorage';
 import { decodeImage } from '../lib/imageUpload';
 import { reconcileCreditSale } from '../lib/saleTotals';
+import { documentClient, documentClientSchema, readClientDetails } from '../lib/documentClient';
 import { Router } from 'express';
 import { consumeUsage, assertWritable } from '../lib/licenses';
 import { documentDateSchema } from '../lib/documentDate';
@@ -248,7 +249,7 @@ salesRouter.get('/', requireAuth, async (req: AuthRequest, res, next) => {
     // Se listan las ventas de todos los vendedores (igual que GET /api/quotes),
     // porque el historial del punto de venta muestra el equipo completo.
     const [rows] = await pool.query<SaleRow[]>(
-      `SELECT s.id, s.client_id, c.name AS client_name,
+      `SELECT s.id, s.client_id, COALESCE(JSON_UNQUOTE(JSON_EXTRACT(s.client_details, '$.name')), c.name) AS client_name,
               s.branch_id, b.name AS branch_name,
               s.total, s.estado_pago, s.metodo_pago, s.estado, s.anulado_at, s.entregada_at,
               s.created_at, COALESCE(s.seller_name, u.name) AS seller_name
@@ -259,7 +260,7 @@ salesRouter.get('/', requireAuth, async (req: AuthRequest, res, next) => {
        WHERE s.business_id = ? AND s.estado = ?
          AND (? IS NULL OR s.estado_pago = ?)
          AND (? IS NULL OR s.branch_id = ?)
-         AND (? IS NULL OR c.name LIKE ? OR CAST(s.id AS CHAR) LIKE ?)
+         AND (? IS NULL OR COALESCE(JSON_UNQUOTE(JSON_EXTRACT(s.client_details, '$.name')), c.name) LIKE ? OR CAST(s.id AS CHAR) LIKE ?)
        ORDER BY s.created_at DESC, s.id DESC
        LIMIT 200`,
       [
@@ -311,7 +312,7 @@ salesRouter.get('/:id', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const id = parseId(req.params.id);
     const [sRows] = await pool.query<SaleRow[]>(
-      `SELECT s.id, s.client_id, c.name AS client_name, c.phone AS client_phone, c.email AS client_email,
+      `SELECT s.id, s.client_id, s.client_details, c.name AS client_name, c.phone AS client_phone, c.email AS client_email, c.address AS client_address,
               s.branch_id, b.name AS branch_name,
               s.total, s.estado_pago, s.metodo_pago, s.estado, s.anulado_at,
               s.comprobante_url, s.nota_pago, s.transferencia_numero,
@@ -349,6 +350,8 @@ salesRouter.get('/:id', requireAuth, async (req: AuthRequest, res, next) => {
       sale: {
         id: s.id,
         clientId: s.client_id,
+        clientDetails: documentClient(s),
+        clientName: documentClient(s).name || null,
         client:
           s.client_id == null
             ? null
@@ -606,7 +609,7 @@ salesRouter.post('/:id/duplicate', requireAuth, async (req: AuthRequest, res, ne
     await consumeUsage(conn,req.businessId!,req.userId!,'sales');
 
     const [sRows] = await conn.query<RowDataPacket[]>(
-      'SELECT client_id, branch_id, total, metodo_pago, notes FROM sales WHERE id = ?',
+      'SELECT client_id, client_details, branch_id, total, metodo_pago, notes FROM sales WHERE id = ?',
       [id],
     );
     const source = sRows[0];
@@ -626,10 +629,10 @@ salesRouter.post('/:id/duplicate', requireAuth, async (req: AuthRequest, res, ne
     // La copia nace activa y por cobrar: es una venta nueva, sin cobrar.
     const [ins] = await conn.query<ResultSetHeader>(
       `INSERT INTO sales (business_id, user_id, client_id, branch_id, total, estado_pago, metodo_pago,
-          notes, include_sello, show_notes, include_signature)
-       VALUES (?, ?, ?, ?, ?, 'por_cobrar', ?, ?, 0, 0, 0)`,
+          notes, include_sello, show_notes, include_signature, client_details)
+       VALUES (?, ?, ?, ?, ?, 'por_cobrar', ?, ?, 0, 0, 0, ?)`,
       [req.businessId, req.userId, source.client_id, source.branch_id, source.total, source.metodo_pago,
-        source.notes ?? null],
+        source.notes ?? null, source.client_details == null ? null : JSON.stringify(readClientDetails(source.client_details))],
     );
     for (const it of items) {
       await conn.query(
@@ -654,6 +657,7 @@ salesRouter.post('/:id/duplicate', requireAuth, async (req: AuthRequest, res, ne
 });
 
 const updateSaleSchema = z.object({
+  clientDetails: documentClientSchema.optional(),
   createdAt: documentDateSchema.optional(),
   estadoPago: z.enum(['por_cobrar', 'pagado']).optional(),
   metodoPago: z.enum(['efectivo', 'qr', 'transferencia', 'por_pagar']).optional(),
@@ -687,8 +691,10 @@ salesRouter.patch('/:id', requireAuth, async (req: AuthRequest, res, next) => {
       notes,
       showNotes,
       includeSignature,
+      clientDetails,
     } = updateSaleSchema.parse(req.body);
     if (
+      clientDetails === undefined &&
       createdAt === undefined &&
       !estadoPago &&
       !metodoPago &&
@@ -745,6 +751,9 @@ salesRouter.patch('/:id', requireAuth, async (req: AuthRequest, res, next) => {
       }
     }
 
+    if (clientDetails !== undefined || clientId !== undefined) {
+      await conn.query('UPDATE sales SET client_details = ? WHERE id = ?', [clientDetails === undefined ? null : JSON.stringify(clientDetails), id]);
+    }
     await conn.query(
       `UPDATE sales
        SET created_at = COALESCE(?, created_at),
@@ -1017,7 +1026,7 @@ salesRouter.post('/from-quote', requireAuth, async (req: AuthRequest, res, next)
     await consumeUsage(conn,req.businessId!,req.userId!,'sales');
 
     const [qRows] = await conn.query<RowDataPacket[]>(
-      'SELECT id, client_id, branch_id, status, total, notes FROM quotes WHERE id = ? FOR UPDATE',
+      'SELECT id, client_id, client_details, client_name_override, branch_id, status, total, notes FROM quotes WHERE id = ? FOR UPDATE',
       [quoteId],
     );
     const quote = qRows[0];
@@ -1043,8 +1052,9 @@ salesRouter.post('/from-quote', requireAuth, async (req: AuthRequest, res, next)
     );
     const [sale] = await conn.query<ResultSetHeader>(
       `INSERT INTO sales (business_id, user_id, client_id, branch_id, quote_id, total,
-          notes, include_sello, show_notes, include_signature) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0)`,
-      [req.businessId, req.userId, quote.client_id, quote.branch_id, quoteId, quote.total, quote.notes ?? null],
+          notes, include_sello, show_notes, include_signature, client_details) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?)`,
+      [req.businessId, req.userId, quote.client_id, quote.branch_id, quoteId, quote.total, quote.notes ?? null,
+        quote.client_details != null || quote.client_name_override != null ? JSON.stringify({ ...readClientDetails(quote.client_details), ...(quote.client_name_override == null ? {} : { name: quote.client_name_override }) }) : null],
     );
     for (const it of items) {
       await conn.query(

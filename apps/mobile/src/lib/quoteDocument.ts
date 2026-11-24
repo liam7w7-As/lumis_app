@@ -1,3 +1,4 @@
+import { getDocumentClient, documentClientHtml } from './documentClient';
 import { contrastText, forBackground } from './brandColors';
 import { monto as montoLetras } from './numeroALetras';
 import type { DocImages, DocFonts } from './docAssets';
@@ -87,7 +88,8 @@ export function buildQuoteHtml(input: {
     )
     .join('\n  ');
 
-  const clientName = quote.clientName ?? quote.client?.name ?? 'Sin Cliente';
+  const clientDetails = getDocumentClient(quote);
+  const clientName = clientDetails.name || 'Sin Cliente';
 
   const validez = quote.fechaVencimiento
     ? `Válida hasta el ${fmtVencimiento(quote.fechaVencimiento)}.`
@@ -261,6 +263,7 @@ export function buildQuoteHtml(input: {
       <div class="client-section">
         <div class="client-label">COTIZACIÓN PARA:</div>
         <div class="client-name">${escapeHtml(clientName)}</div>
+        ${documentClientHtml(clientDetails)}
         ${validez ? `<div class="client-detail">Válida hasta el ${validez.replace('Válida hasta el ', '')}</div>` : ''}
       </div>
     </td>
