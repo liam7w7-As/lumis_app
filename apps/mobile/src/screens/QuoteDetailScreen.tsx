@@ -1,6 +1,5 @@
 import { TutorialTarget, TutorialScrollView, TutorialHelpButton, useTutorialAvailability, withTutorial } from '../tutorials/TutorialElements';
 import { useTutorial } from '../tutorials/TutorialContext';
-import { FormModal } from '../components/FormModal';
 import { DatePickerModal } from '../components/DatePickerModal';
 import { feedback } from '../lib/feedback';
 import { useCallback, useRef, useState } from 'react';
@@ -63,7 +62,11 @@ function QuoteDetailScreenContent() {
   const [showNotes, setShowNotes] = useState(false);
   const [includeSignature, setIncludeSignature] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [clientOpen, setClientOpen] = useState(false);
+  const [clientName, setClientName] = useState('');
+  const clientDraft = useRef('');
+  const savedClientName = useRef('');
+  const clientWrites = useRef<Promise<void>>(Promise.resolve());
+  const [clientSaving, setClientSaving] = useState(false);
   const [dateOpen, setDateOpen] = useState(false);
 
   const [expandedItem, setExpandedItem] = useState<number | null>(null);
@@ -90,10 +93,13 @@ function QuoteDetailScreenContent() {
     if (loadedQuote.current !== quoteId) setLoading(true);
     setError(null);
     try {
+      await clientWrites.current.catch(() => {});
       const { quote: data } = await api.quoteDetail(quoteId, token);
       if (request !== requestId.current) return;
       loadedQuote.current = quoteId;
       setQuote(data);
+      const name = data.clientName ?? data.client?.name ?? '';
+      setClientName(name); clientDraft.current = name; savedClientName.current = name;
       setNotes(data.notes ?? '');
       setIncludeSeal(data.includeSeal);
       setShowNotes(data.showNotes);
@@ -117,6 +123,26 @@ function QuoteDetailScreenContent() {
 
   const editable = quote?.status === 'borrador';
   const saveable = quote != null && quote.status !== 'convertida';
+
+  const persistClientName = () => {
+    const write = clientWrites.current.catch(() => {}).then(async () => {
+      const name = clientDraft.current.trim();
+      if (name === savedClientName.current) return;
+      if (!token || !quote || !saveable) throw new Error('Esta cotización está en modo consulta.');
+      if (!requestEdit()) throw new Error('No puedes modificar esta cotización con el acceso actual.');
+      if (!name) throw new Error('Escribe el nombre del cliente.');
+      if (name.length > 150) throw new Error('El nombre admite hasta 150 caracteres.');
+      setClientSaving(true);
+      try {
+        await api.updateQuote(quote.id, { clientName: name }, token);
+        savedClientName.current = name;
+        if (clientDraft.current.trim() === name) { clientDraft.current = name; setClientName(name); }
+        setQuote(current => current?.id === quote.id ? { ...current, clientName: name } : current);
+      } finally { setClientSaving(false); }
+    });
+    clientWrites.current = write;
+    return write;
+  };
 
   const saveDate = async (createdAt: string) => {
     if(!requestEdit())return;
@@ -178,7 +204,7 @@ function QuoteDetailScreenContent() {
     if(Object.keys(patch).length===0)return true;
     if(patch.notes!==undefined && !requestEdit())return false;
     await api.updateQuote(quote.id, patch, token);
-    setQuote({ ...quote, ...patch });
+    setQuote(current => current ? { ...current, ...patch } : current);
     return true;
   };
 
@@ -187,6 +213,7 @@ function QuoteDetailScreenContent() {
     if (access === 'read_only' || access === 'checking') { requestEdit(); return; }
     setSaving(true);
     try {
+      await persistClientName();
       await persistItemDraft();
       if (!await persistDocumentOptions()) return;
       feedback.alert('Guardado', 'Cambios guardados');
@@ -203,6 +230,7 @@ function QuoteDetailScreenContent() {
     setSaving(true);
     try {
       if(access==='allowed' || access==='pro'){
+        await persistClientName();
         await persistItemDraft();
         if (!await persistDocumentOptions()) return;
       }
@@ -405,16 +433,19 @@ function QuoteDetailScreenContent() {
 
         <TutorialTarget id="client" ><View>
           <Text style={[styles.fieldLabel, { color: colors.muted }]}>Cliente / Empresa</Text>
-          <Pressable
-            style={styles.clientRow}
-            onPress={() => quote.client && setClientOpen(true)}
-            disabled={!quote.client}
-          >
-            <Text style={[styles.clientName, { color: colors.text }]} numberOfLines={1}>
-              {quote.client?.name ?? quote.clientName ?? 'Sin Cliente'}
-            </Text>
-            {quote.client && <Ionicons name="chevron-forward" size={20} color={colors.muted} />}
-          </Pressable>
+          <View collapsable={false} style={styles.clientRow}>
+            {canEdit && saveable ? <TextInput
+              accessibilityLabel="Nombre del cliente de esta cotización"
+              value={clientName} maxLength={150} placeholder="Sin cliente" placeholderTextColor={colors.muted}
+              style={[styles.clientName, { color: colors.text, minHeight: 44 }]}
+              onChangeText={value => { clientDraft.current = value; setClientName(value); }}
+              onEndEditing={() => { void persistClientName().catch(err => feedback.error('No se pudo guardar el nombre', err instanceof Error ? err.message : 'Inténtalo de nuevo.')); }}
+              returnKeyType="done" disableFullscreenUI
+            /> : <Pressable style={{ flex: 1, minHeight: 44, justifyContent: 'center' }} disabled={!saveable} onPress={requestEdit}>
+              <Text style={[styles.clientName, { color: colors.text }]}>{quote.clientName ?? quote.client?.name ?? 'Sin Cliente'}</Text>
+            </Pressable>}
+            {clientSaving ? <ActivityIndicator size="small" color={colors.primary} /> : proLocked && saveable ? <ProBadge /> : null}
+          </View>
         </View></TutorialTarget>
 
         {quote.items.map((item, index) => {
@@ -642,21 +673,6 @@ function QuoteDetailScreenContent() {
       {dateOpen && <DatePickerModal title="Fecha de la cotización" value={quote.createdAt}
         onClose={() => setDateOpen(false)} onSave={saveDate} />}
       <ReorderItemsModal visible={ordering} items={quote.items} onClose={() => setOrdering(false)} onSave={reorderItems} />
-      <FormModal visible={clientOpen} title="Datos del cliente" icon="person-outline" onClose={() => setClientOpen(false)}>
-
-            <Text style={[styles.clientCardName, { color: colors.text }]}>
-              {quote.client?.name}
-            </Text>
-            <Text style={[styles.clientCardDetail, { color: colors.muted }]}>
-              {quote.client?.phone ?? 'Sin teléfono'}
-            </Text>
-            <Text style={[styles.clientCardDetail, { color: colors.muted }]}>
-              {quote.client?.email ?? 'Sin email'}
-            </Text>
-            <View style={styles.clientCardButton}>
-              <PrimaryButton title="Cerrar" onPress={() => setClientOpen(false)} />
-            </View>
-      </FormModal>
     </KeyboardAvoidingView>
   );
 }

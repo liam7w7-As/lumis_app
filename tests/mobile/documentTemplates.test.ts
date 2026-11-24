@@ -22,6 +22,28 @@ const saleHtml = (delivery: boolean, business = sampleBusiness) =>
     fonts: sampleFonts,
   });
 
+test('Novaled móvil usa la plantilla de venta de Lumis y detalla crédito, abonos y saldo', () => {
+  for (const [paid, status, credit] of [[0, 'Por cobrar', true], [50, 'Abono parcial', true], [200, 'Pagado', false]] as const) {
+    const html = buildDeliveryNoteHtml({ documentType: 'sale', showPaymentSummary: true,
+      sale: { ...sampleSale, id: 999, number: 42, total: 200, totalPagado: paid, clientName: 'Cliente del documento', client: { id: 1, name: 'Nombre de catálogo', phone: null, email: null } },
+      business: sampleBusiness, branchName: null, images: sampleImages, fonts: sampleFonts });
+    assert.ok(html.includes('NOTA DE VENTA #42'));
+    assert.ok(html.includes('Cliente del documento'));
+    assert.ok(!html.includes('Nombre de catálogo'));
+    assert.ok(html.includes(`<td>${status}</td>`));
+    assert.equal(html.includes('Venta a crédito'), credit);
+    assert.ok(html.includes(`Total abonado:</td><td>Bs. ${paid.toFixed(2)}`));
+    assert.ok(html.includes(`Saldo pendiente:</td><td>Bs. ${(200 - paid).toFixed(2)}`));
+    assert.ok(!html.includes('Entregué conforme') && !html.includes('Recibí conforme'));
+  }
+  assert.ok(!saleHtml(false).includes('class="payment-summary"'));
+  assert.ok(!saleHtml(true).includes('class="payment-summary"'));
+  const discounted = buildDeliveryNoteHtml({ documentType: 'sale', showPaymentSummary: true,
+    sale: { ...sampleSale, total: sampleSale.total - 10, totalPagado: 20 },
+    business: sampleBusiness, branchName: null, images: sampleImages, fonts: sampleFonts });
+  assert.ok(discounted.includes('Descuento:</td><td class="value">- Bs. 10.00'));
+});
+
 test("venta sin firmas de recepción; entrega conserva sus firmas y los mismos totales", () => {
   const sale = saleHtml(false),
     delivery = saleHtml(true);

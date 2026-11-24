@@ -38,6 +38,7 @@ function fmtHora(iso: string): string {
 
 export function buildDeliveryNoteHtml(input: {
   documentType?: 'sale' | 'delivery';
+  showPaymentSummary?: boolean;
   sale: SaleDetail;
   business: DocBusiness;
   branchName: string | null;
@@ -47,6 +48,7 @@ export function buildDeliveryNoteHtml(input: {
   const { sale, business, branchName, images, fonts } = input;
   const columns=documentColumns(business,sale.items);
   const isDelivery=input.documentType!=='sale';
+  const showPaymentSummary = !!input.showPaymentSummary && !isDelivery;
 
   const title = input.documentType === 'sale' ? 'NOTA DE VENTA' : 'NOTA DE ENTREGA';
   const label = input.documentType === 'sale' ? 'Nota de venta' : 'Nota de entrega';
@@ -71,7 +73,21 @@ export function buildDeliveryNoteHtml(input: {
     )
     .join('\n  ');
 
-  const clientName = sale.client?.name ?? 'Sin Cliente';
+  const clientName = sale.clientName ?? sale.client?.name ?? 'Sin Cliente';
+  const documentNumber = sale.number ?? sale.id;
+  const paid = Math.max(0, sale.totalPagado);
+  const subtotal = showPaymentSummary ? Math.round(sale.items.reduce((sum, item) => sum + item.subtotal, 0) * 100) / 100 : sale.total;
+  const discount = Math.max(0, Math.round((subtotal - sale.total) * 100) / 100);
+  const balance = Math.max(0, Math.round((sale.total - paid) * 100) / 100);
+  const credit = balance > 0.009 && sale.estado !== 'anulada';
+  const paymentStatus = sale.estado === 'anulada' ? 'Anulada' : credit ? paid > 0 ? 'Abono parcial' : 'Por cobrar' : 'Pagado';
+  const paymentSummary = showPaymentSummary
+    ? `<div class="payment-summary">
+        ${credit ? '<div class="payment-title">Venta a crédito</div>' : ''}
+        <table><tr><td>Estado de pago:</td><td>${paymentStatus}</td></tr>
+        <tr><td>Total abonado:</td><td>${escapeHtml(moneda)} ${fmtMoney(paid)}</td></tr>
+        <tr><td>Saldo pendiente:</td><td>${escapeHtml(moneda)} ${fmtMoney(balance)}</td></tr></table>
+      </div>` : '';
 
   const dirPart = (business.direccion ?? '').trim();
   const ciudadPart = (business.ciudad ?? '').trim();
@@ -131,9 +147,14 @@ export function buildDeliveryNoteHtml(input: {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>${title} #${sale.id}</title>
+<title>${title} #${documentNumber}</title>
 <style>
   ${fontFaces}
+  .sale-closing { page-break-inside: avoid; }
+  .payment-summary { width: 39.5%; margin: 3mm 0 0 auto; border-top: 1px solid #d1d5db; padding-top: 2mm; font-size: 8pt; page-break-inside: avoid; }
+  .payment-title { font-weight: 600; margin-bottom: 1.5mm; }
+  .payment-summary td { padding: 0.8mm 0; }
+  .payment-summary td:last-child { text-align: right; white-space: nowrap; }
   @page { size: letter portrait; margin: 10mm 12mm 0 12mm; }
   * { box-sizing: border-box; font-family: 'Poppins', 'DejaVu Sans', sans-serif; }
   /* El espacio del tfoot se repite en cada página de la tabla para que
@@ -237,7 +258,7 @@ export function buildDeliveryNoteHtml(input: {
     <td class="meta-side">
       <div class="document-title">${title}</div>
       <table class="meta-table">
-        <tr><td class="meta-label">${label} No:</td><td class="meta-value">${sale.id}</td></tr>
+        <tr><td class="meta-label">${label} No:</td><td class="meta-value">${documentNumber}</td></tr>
         ${branchName ? `<tr><td class="meta-label">Sucursal:</td><td class="meta-value">${escapeHtml(branchName)}</td></tr>` : ''}
         <tr><td class="meta-label">Fecha:</td><td class="meta-value">${fmtFecha(sale.createdAt)} ${fmtHora(sale.createdAt)}</td></tr>
         ${business.nit ? `<tr><td class="meta-label">NIT:</td><td class="meta-value">${escapeHtml(business.nit)}</td></tr>` : ''}
@@ -269,11 +290,13 @@ export function buildDeliveryNoteHtml(input: {
   <tfoot aria-hidden="true"><tr><td colspan="${columns.count}"></td></tr></tfoot>
 </table>
 
+${showPaymentSummary ? '<div class="sale-closing">' : ''}
 <table class="totals-wrap">
   <tr class="subtotal-row">
     <td class="label">Sub total:</td>
-    <td class="value">${escapeHtml(moneda)} ${fmtMoney(sale.total)}</td>
+    <td class="value">${escapeHtml(moneda)} ${fmtMoney(subtotal)}</td>
   </tr>
+  ${showPaymentSummary && discount > 0.009 ? `<tr class="subtotal-row"><td class="label">Descuento:</td><td class="value">- ${escapeHtml(moneda)} ${fmtMoney(discount)}</td></tr>` : ''}
   <tr class="grand-total-row">
     <td class="label">TOTAL</td>
     <td class="value">${escapeHtml(moneda)} ${fmtMoney(sale.total)}</td>
@@ -283,6 +306,8 @@ export function buildDeliveryNoteHtml(input: {
   </tr>
 </table>
 
+${paymentSummary}
+${showPaymentSummary ? '</div>' : ''}
 ${isDelivery?`<div class="signature-section">
   <table class="signature-table">
     <tr>

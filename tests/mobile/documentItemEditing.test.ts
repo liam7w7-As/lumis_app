@@ -164,6 +164,7 @@ function harness(screen: Screen, novaled: boolean, newSale = false) {
   }
   return {
     itemPatches, documentPatches, createdSales, routes, messages, render,
+    clientInput() { return find(node => node.type === 'TextInput' && node.props.accessibilityLabel === 'Nombre del cliente de esta cotización'); },
     async mount() { render(); await tick(); render(); },
     open(index = 0) {
       if (newSale) find(node => node.type === 'Pressable' && node.props.accessibilityLabel === `Editar artículo ${index + 1}`).onPress();
@@ -190,6 +191,24 @@ function harness(screen: Screen, novaled: boolean, newSale = false) {
 
 for (const novaled of [false, true]) {
   const variant = novaled ? 'Lumis Novaled' : 'Lumis';
+  test(`${variant}: el nombre del cliente se guarda en la cotización antes de generar el PDF`, async () => {
+    const app = harness('quote', novaled); await app.mount();
+    app.clientInput().onChangeText('  Cliente del proyecto  ');
+    app.preview(); await tick();
+    assert.deepEqual(app.documentPatches, [{ clientName: 'Cliente del proyecto' }]);
+    assert.equal(app.routes.length, 1);
+  });
+  test(`${variant}: el nombre del cliente se guarda al salir del campo y no admite quedar vacío`, async () => {
+    const app = harness('quote', novaled); await app.mount();
+    app.clientInput().onChangeText('Nombre personalizado');
+    app.clientInput().onEndEditing(); await tick(); app.render();
+    assert.deepEqual(app.documentPatches, [{ clientName: 'Nombre personalizado' }]);
+    app.clientInput().onChangeText('  ');
+    app.preview(); await tick();
+    assert.equal(app.documentPatches.length, 1);
+    assert.equal(app.routes.length, 0);
+    assert.ok(app.messages.some(message => message.message.includes('nombre del cliente')));
+  });
   test(`${variant}: nueva venta mantiene la lista compacta y guarda nombre e importes desde el acordeón`, async () => {
     const app = harness('sale', novaled, true); await app.mount();
     assert.equal(app.hasNameInput(), false);

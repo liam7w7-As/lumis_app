@@ -25,11 +25,10 @@ export function DeliveryPreviewScreen({ saleId, documentType = 'delivery' }: {
   const [optionError, setOptionError] = useState<string | null>(null);
   const loadDocument = useCallback(async (token: string): Promise<DocumentSource> => {
     if (!Number.isSafeInteger(saleId) || saleId <= 0) throw new Error('Venta no encontrada.');
-    if (IS_NOVALED) {
+    if (IS_NOVALED && documentType !== 'sale') {
       const { sale } = await api.saleDetail(saleId, token);
-      const kind = documentType === 'sale' ? 'sale' : 'delivery';
-      const fileName = kind + '-' + (sale.number ?? sale.id) + '.pdf';
-      return { pdf: await downloadNovaledPdf(kind, saleId, fileName, token, kind === 'delivery' ? signature : undefined), fileName, title: (kind === 'sale' ? 'Venta #' : 'Nota de entrega de venta #') + (sale.number ?? sale.id), warnings: [] };
+      const fileName = 'delivery-' + (sale.number ?? sale.id) + '.pdf';
+      return { pdf: await downloadNovaledPdf('delivery', saleId, fileName, token, signature), fileName, title: 'Nota de entrega de venta #' + (sale.number ?? sale.id), warnings: [] };
     }
     const [{ sale }, { business }, fonts] = await Promise.all([
       api.saleDetail(saleId, token), api.business(token), loadDocFonts(),
@@ -39,9 +38,10 @@ export function DeliveryPreviewScreen({ saleId, documentType = 'delivery' }: {
       logoUrl: mediaUrl(business?.logo_url ?? null), selloUrl: mediaUrl(business?.sello_url ?? null),
     });
     return {
-      html: buildDeliveryNoteHtml({ documentType, sale, business: documentBusiness(business), branchName: sale.branchName, images, fonts }),
-      fileName: 'nota-' + (documentType === 'sale' ? 'venta' : 'entrega') + '-' + sale.id + '.pdf',
-      title: (documentType === 'sale' ? 'Nota de venta #' : 'Nota de entrega #') + sale.id,
+      html: buildDeliveryNoteHtml({ documentType, sale, business: documentBusiness(business), branchName: sale.branchName, images, fonts,
+        showPaymentSummary: IS_NOVALED && documentType === 'sale' }),
+      fileName: 'nota-' + (documentType === 'sale' ? 'venta' : 'entrega') + '-' + (sale.number ?? sale.id) + '.pdf',
+      title: (documentType === 'sale' ? 'Nota de venta #' : 'Nota de entrega #') + (sale.number ?? sale.id),
       warnings: images.warnings,
     };
   }, [saleId, documentType, signature]);

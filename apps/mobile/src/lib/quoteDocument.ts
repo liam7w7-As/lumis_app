@@ -87,7 +87,7 @@ export function buildQuoteHtml(input: {
     )
     .join('\n  ');
 
-  const clientName = quote.client?.name ?? 'Sin Cliente';
+  const clientName = quote.clientName ?? quote.client?.name ?? 'Sin Cliente';
 
   const validez = quote.fechaVencimiento
     ? `Válida hasta el ${fmtVencimiento(quote.fechaVencimiento)}.`

@@ -299,6 +299,7 @@ export interface QuoteScanLine {
 export interface QuoteScan { id: string; lines: QuoteScanLine[] }
 
 export interface QuoteUpdateInput {
+  clientName?: string;
   createdAt?: string;
   status?: 'borrador' | 'aprobada' | 'rechazada';
   notes?: string | null;

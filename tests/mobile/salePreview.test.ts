@@ -1,0 +1,44 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
+import ts from 'typescript';
+import { buildDeliveryNoteHtml } from '../../apps/mobile/src/lib/deliveryDocument';
+import { sampleBusiness, sampleFonts, sampleImages, sampleSale } from './documentFixtures';
+
+for (const novaled of [false, true]) {
+  test(`${novaled ? 'Novaled' : 'Lumis'} sale preview uses the shared mobile template; Novaled delivery keeps its server PDF`, async () => {
+    const downloads: string[] = [];
+    const jsx = (type: unknown, props: any) => ({ type, props });
+    const modules: Record<string, unknown> = {
+      react: { useCallback: (fn: unknown) => fn, useState: (value: unknown) => [value, () => {}] },
+      'react/jsx-runtime': { jsx, jsxs: jsx },
+      'react-native': { Pressable: 'Pressable', Text: 'Text', TextInput: 'TextInput', View: 'View' },
+      '@expo/vector-icons/Ionicons': 'Icon',
+      'expo-router': { router: {}, useLocalSearchParams: () => ({}) },
+      '../components/FormModal': { FormModal: 'FormModal' }, '../components/PrimaryButton': { PrimaryButton: 'Button' },
+      '../theme/ThemeContext': { useTheme: () => ({ colors: {} }) },
+      '../components/DocumentPreviewScreen': { DocumentPreviewScreen: 'Preview' },
+      '../lib/api': { api: { saleDetail: async () => ({ sale: { ...sampleSale, number: 42, total: 200, totalPagado: 50 } }), business: async () => ({ business: sampleBusiness }) }, mediaUrl: (url: unknown) => url },
+      '../lib/documentBusiness': { documentBusiness: (value: unknown) => value },
+      '../lib/docAssets': { loadDocFonts: async () => sampleFonts, loadDocImages: async () => ({ ...sampleImages, warnings: [] }) },
+      '../lib/deliveryDocument': { buildDeliveryNoteHtml },
+      '../lib/backend': { IS_NOVALED: novaled },
+      '../lib/pdfFile': { downloadNovaledPdf: async (kind: string) => { downloads.push(kind); return { uri: 'file:///server.pdf', base64: 'pdf', fileName: 'server.pdf' }; } },
+    };
+    const source = readFileSync(new URL('../../apps/mobile/src/screens/DeliveryPreviewScreen.tsx', import.meta.url), 'utf8');
+    const { outputText } = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } });
+    const exports: any = {};
+    runInNewContext(outputText, { exports, require: (key: string) => { assert.ok(key in modules, key); return modules[key]; } });
+    const saleScreen = exports.DeliveryPreviewScreen({ saleId: 1, documentType: 'sale' });
+    const result = await saleScreen.props.children[0].props.loadDocument('session');
+    assert.ok(result.html.includes('NOTA DE VENTA #42'));
+    assert.equal(result.html.includes('class="payment-summary"'), novaled);
+    if (novaled) assert.ok(result.html.includes('Abono parcial') && result.html.includes('Bs. 150.00'));
+    assert.equal(downloads.length, 0);
+    const deliveryScreen = exports.DeliveryPreviewScreen({ saleId: 1, documentType: 'delivery' });
+    const delivery = await deliveryScreen.props.children[0].props.loadDocument('session');
+    if (novaled) { assert.equal(delivery.pdf.uri, 'file:///server.pdf'); assert.deepEqual(downloads, ['delivery']); }
+    else assert.ok(delivery.html.includes('NOTA DE ENTREGA'));
+  });
+}

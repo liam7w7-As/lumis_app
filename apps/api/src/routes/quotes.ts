@@ -67,7 +67,7 @@ registerItemActions(quotesRouter, 'quote');
 quotesRouter.get('/', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const [rows] = await pool.query<QuoteRow[]>(
-      `SELECT q.id, q.client_id, c.name AS client_name, q.status, q.total,
+      `SELECT q.id, q.client_id, COALESCE(q.client_name_override, c.name) AS client_name, q.status, q.total,
               q.created_at, u.name AS seller_name
        FROM quotes q
        LEFT JOIN clients c ON c.id = q.client_id
@@ -137,7 +137,7 @@ quotesRouter.get('/:id', requireAuth, async (req: AuthRequest, res, next) => {
     const [qRows] = await pool.query<RowDataPacket[]>(
       `SELECT q.id, q.client_id, q.branch_id, q.status, q.notes, q.include_seal, q.show_notes,
               q.include_signature, q.version_numero, q.fecha_vencimiento, q.terminos,
-              q.total, q.created_at,
+              q.total, q.created_at, q.client_name_override,
               c.name AS client_name, c.phone AS client_phone, c.email AS client_email,
               b.name AS branch_name,
               u.name AS seller_name
@@ -162,6 +162,7 @@ quotesRouter.get('/:id', requireAuth, async (req: AuthRequest, res, next) => {
       quote: {
         id: q.id as number,
         clientId: (q.client_id as number | null) ?? null,
+        clientName: q.client_name_override ?? q.client_name ?? null,
         client:
           q.client_id == null
             ? null
@@ -319,7 +320,7 @@ quotesRouter.post('/:id/duplicate', requireAuth, async (req: AuthRequest, res, n
     await consumeUsage(conn,req.businessId!,req.userId!,'quotes');
 
     const [qRows] = await conn.query<RowDataPacket[]>(
-      'SELECT client_id, branch_id, notes, total FROM quotes WHERE id = ?',
+      'SELECT client_id, client_name_override, branch_id, notes, total FROM quotes WHERE id = ?',
       [id],
     );
     const quote = qRows[0];
@@ -328,9 +329,9 @@ quotesRouter.post('/:id/duplicate', requireAuth, async (req: AuthRequest, res, n
     }
     const [ins] = await conn.query<ResultSetHeader>(
       `INSERT INTO quotes (business_id, user_id, client_id, branch_id, status, notes, total,
-          include_seal, show_notes, include_signature)
-       VALUES (?, ?, ?, ?, 'borrador', ?, ?, 0, 0, 0)`,
-      [req.businessId, req.userId, quote.client_id, quote.branch_id, quote.notes, quote.total],
+          include_seal, show_notes, include_signature, client_name_override)
+       VALUES (?, ?, ?, ?, 'borrador', ?, ?, 0, 0, 0, ?)`,
+      [req.businessId, req.userId, quote.client_id, quote.branch_id, quote.notes, quote.total, quote.client_name_override],
     );
     const [items] = await conn.query<RowDataPacket[]>(
       `SELECT product_id, description, quantity, unit, unit_price, subtotal,
@@ -363,6 +364,7 @@ quotesRouter.post('/:id/duplicate', requireAuth, async (req: AuthRequest, res, n
 });
 
 const updateQuoteSchema = z.object({
+  clientName: z.string().trim().min(1, 'Escribe el nombre del cliente').max(150).optional(),
   createdAt: documentDateSchema.optional(),
   status: z.enum(['borrador', 'aprobada', 'rechazada']).optional(),
   notes: z.string().trim().max(1000).nullable().optional(),
@@ -390,6 +392,10 @@ quotesRouter.patch('/:id', requireAuth, async (req: AuthRequest, res, next) => {
     }
     const sets: string[] = [];
     const params: unknown[] = [];
+    if (patch.clientName !== undefined) {
+      sets.push('client_name_override = ?');
+      params.push(patch.clientName);
+    }
     if (patch.createdAt !== undefined) {
       sets.push('created_at = ?');
       params.push(new Date(patch.createdAt));
