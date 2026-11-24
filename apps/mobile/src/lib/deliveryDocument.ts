@@ -75,13 +75,14 @@ export function buildDeliveryNoteHtml(input: {
 
   const clientName = sale.clientName ?? sale.client?.name ?? 'Sin Cliente';
   const documentNumber = sale.number ?? sale.id;
-  const paid = Math.max(0, sale.totalPagado);
+  const paid = Math.max(0, sale.totalPagado ?? 0);
   const subtotal = showPaymentSummary ? Math.round(sale.items.reduce((sum, item) => sum + item.subtotal, 0) * 100) / 100 : sale.total;
   const discount = Math.max(0, Math.round((subtotal - sale.total) * 100) / 100);
   const balance = Math.max(0, Math.round((sale.total - paid) * 100) / 100);
   const credit = balance > 0.009 && sale.estado !== 'anulada';
+  const hasInstallments = showPaymentSummary && (sale.payments ?? []).some(payment => payment.monto > 0 && payment.monto < sale.total - 0.009);
   const paymentStatus = sale.estado === 'anulada' ? 'Anulada' : credit ? paid > 0 ? 'Abono parcial' : 'Por cobrar' : 'Pagado';
-  const paymentSummary = showPaymentSummary
+  const paymentSummary = showPaymentSummary && (credit || hasInstallments || sale.estado === 'anulada')
     ? `<div class="payment-summary">
         ${credit ? '<div class="payment-title">Venta a crédito</div>' : ''}
         <table><tr><td>Estado de pago:</td><td>${paymentStatus}</td></tr>

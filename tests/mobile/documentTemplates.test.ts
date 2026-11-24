@@ -30,10 +30,13 @@ test('Novaled móvil usa la plantilla de venta de Lumis y detalla crédito, abon
     assert.ok(html.includes('NOTA DE VENTA #42'));
     assert.ok(html.includes('Cliente del documento'));
     assert.ok(!html.includes('Nombre de catálogo'));
-    assert.ok(html.includes(`<td>${status}</td>`));
+    assert.equal(html.includes('class="payment-summary"'), credit);
     assert.equal(html.includes('Venta a crédito'), credit);
-    assert.ok(html.includes(`Total abonado:</td><td>Bs. ${paid.toFixed(2)}`));
-    assert.ok(html.includes(`Saldo pendiente:</td><td>Bs. ${(200 - paid).toFixed(2)}`));
+    if (credit) {
+      assert.ok(html.includes(`<td>${status}</td>`));
+      assert.ok(html.includes(`Total abonado:</td><td>Bs. ${paid.toFixed(2)}`));
+      assert.ok(html.includes(`Saldo pendiente:</td><td>Bs. ${(200 - paid).toFixed(2)}`));
+    }
     assert.ok(!html.includes('Entregué conforme') && !html.includes('Recibí conforme'));
   }
   assert.ok(!saleHtml(false).includes('class="payment-summary"'));
@@ -42,6 +45,27 @@ test('Novaled móvil usa la plantilla de venta de Lumis y detalla crédito, abon
     sale: { ...sampleSale, total: sampleSale.total - 10, totalPagado: 20 },
     business: sampleBusiness, branchName: null, images: sampleImages, fonts: sampleFonts });
   assert.ok(discounted.includes('Descuento:</td><td class="value">- Bs. 10.00'));
+});
+
+test('Novaled oculta el resumen si se pagó de una vez y lo conserva cuando hubo abonos', () => {
+  const render = (payments: typeof sampleSale.payments) => buildDeliveryNoteHtml({ documentType: 'sale', showPaymentSummary: true,
+    sale: { ...sampleSale, total: 200, totalPagado: 200, estadoPago: 'pagado', payments },
+    business: sampleBusiness, branchName: null, images: sampleImages, fonts: sampleFonts });
+  const payment = { id: 1, monto: 200, nota: null, createdAt: sampleSale.createdAt };
+  for (const payments of [[], [payment]]) {
+    const html = render(payments);
+    assert.ok(!html.includes('class="payment-summary"'));
+    assert.ok(!html.includes('Estado de pago:') && !html.includes('Total abonado:') && !html.includes('Saldo pendiente:'));
+    assert.ok(html.includes('Descuento:'));
+  }
+  const paidInParts = render([{ ...payment, monto: 50 }, { ...payment, id: 2, monto: 150 }]);
+  assert.ok(paidInParts.includes('class="payment-summary"'));
+  assert.ok(paidInParts.includes('<td>Pagado</td>'));
+  assert.ok(paidInParts.includes('Total abonado:</td><td>Bs. 200.00'));
+  const cancelled = buildDeliveryNoteHtml({ documentType: 'sale', showPaymentSummary: true,
+    sale: { ...sampleSale, estado: 'anulada', totalPagado: 0, payments: [] },
+    business: sampleBusiness, branchName: null, images: sampleImages, fonts: sampleFonts });
+  assert.ok(cancelled.includes('<td>Anulada</td>'));
 });
 
 test("venta sin firmas de recepción; entrega conserva sus firmas y los mismos totales", () => {
