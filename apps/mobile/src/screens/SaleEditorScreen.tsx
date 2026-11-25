@@ -591,15 +591,15 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
     return true;
   };
 
-  const openSalePreview = async () => {
+  const openDocumentPreview = async () => {
     if (!isDetail || saleId == null || saving || optionsBusy) return;
     setSaving(true);
     try {
       await persistLineDraft();
       if (!await persistDocumentNotes()) return;
-      router.push(`/pos/${saleId}/preview`);
+      router.push(docTab === 'entrega' ? `/pos/${saleId}/delivery` : `/pos/${saleId}/preview`);
     } catch (err) {
-      showApiError(err, 'No se pudo abrir el PDF de la venta');
+      showApiError(err, docTab === 'entrega' ? 'No se pudo abrir el PDF de la entrega' : 'No se pudo abrir el PDF de la venta');
     } finally {
       setSaving(false);
     }
@@ -1211,7 +1211,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
           </>
         )}
         </View>
-        {isDetail&&<PrimaryButton title="Ver PDF de la venta" onPress={() => { void openSalePreview(); }} loading={saving} disabled={optionsBusy}/>}
+        {isDetail&&<PrimaryButton title={docTab === 'entrega' ? 'Ver PDF de la entrega' : 'Ver PDF de la venta'} onPress={() => { void openDocumentPreview(); }} loading={saving} disabled={optionsBusy}/>}
       </TutorialScrollView>
 
       {dateOpen && <DatePickerModal value={sale?.createdAt ?? draftCreatedAt ?? new Date().toISOString()}

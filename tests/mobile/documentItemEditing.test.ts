@@ -192,7 +192,9 @@ function harness(screen: Screen, novaled: boolean, newSale = false) {
       return find(node => node.type === 'Pressable' && node.props.accessibilityLabel === (screen === 'quote' ? `Guardar artículo ${index + 1}` : 'Guardar cambios del producto')).onPress();
     },
     saveHeader() { return find(node => node.type === 'Pressable' && !node.props.accessibilityLabel && content(node.props.children) === 'Guardar').onPress(); },
-    preview() { return find(node => node.type === 'PrimaryButton' && node.props.title === (screen === 'quote' ? 'Generar vista previa' : 'Ver PDF de la venta')).onPress(); },
+    selectDocument(tab: 'venta' | 'entrega') { find(node => node.type === 'SegmentedTabs').onChange(tab); render(); },
+    previewTitle() { return find(node => node.type === 'PrimaryButton' && (screen === 'quote' ? node.props.title === 'Generar vista previa' : node.props.title.startsWith('Ver PDF de la '))).title; },
+    preview() { return find(node => node.type === 'PrimaryButton' && (screen === 'quote' ? node.props.title === 'Generar vista previa' : node.props.title.startsWith('Ver PDF de la '))).onPress(); },
     lock() { access = { canEdit: false, proLocked: true, access: 'free' }; render(); },
     accessRequests: () => accessRequests,
     swipe() { return find(node => node.type === 'ItemSwipe'); },
@@ -201,6 +203,20 @@ function harness(screen: Screen, novaled: boolean, newSale = false) {
 
 for (const novaled of [false, true]) {
   const variant = novaled ? 'Lumis Novaled' : 'Lumis';
+  test(`${variant}: la pestaña activa determina el botón y la ruta del PDF sin registrar una entrega`, async () => {
+    const app = harness('sale', novaled); await app.mount();
+    assert.equal(app.previewTitle(), 'Ver PDF de la venta');
+    app.preview(); await tick(); app.render();
+    app.selectDocument('entrega');
+    assert.equal(app.previewTitle(), 'Ver PDF de la entrega');
+    app.preview(); await tick(); app.render();
+    app.selectDocument('venta');
+    assert.equal(app.previewTitle(), 'Ver PDF de la venta');
+    app.preview(); await tick(); app.render();
+    assert.deepEqual(app.routes, [`/pos/${sampleSale.id}/preview`, `/pos/${sampleSale.id}/delivery`, `/pos/${sampleSale.id}/preview`]);
+    assert.deepEqual(app.documentPatches, []);
+    assert.deepEqual(app.messages, []);
+  });
   for (const screen of ['quote', 'sale'] as const) {
     test(`${variant}: ${screen} edita datos del cliente por modal y los conserva al volver a abrir`, async () => {
       const app = harness(screen, novaled); await app.mount(); app.openClient();
