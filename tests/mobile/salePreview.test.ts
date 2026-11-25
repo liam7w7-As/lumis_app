@@ -7,7 +7,7 @@ import { buildDeliveryNoteHtml } from '../../apps/mobile/src/lib/deliveryDocumen
 import { sampleBusiness, sampleFonts, sampleImages, sampleSale } from './documentFixtures';
 
 for (const novaled of [false, true]) {
-  test(`${novaled ? 'Novaled' : 'Lumis'} sale preview uses the shared mobile template; Novaled delivery keeps its server PDF`, async () => {
+  test(`${novaled ? 'Novaled' : 'Lumis'} previews select the correct PDF source for sale and delivery`, async () => {
     const downloads: string[] = [];
     const jsx = (type: unknown, props: any) => ({ type, props });
     const modules: Record<string, unknown> = {
@@ -32,13 +32,16 @@ for (const novaled of [false, true]) {
     runInNewContext(outputText, { exports, require: (key: string) => { assert.ok(key in modules, key); return modules[key]; } });
     const saleScreen = exports.DeliveryPreviewScreen({ saleId: 1, documentType: 'sale' });
     const result = await saleScreen.props.children[0].props.loadDocument('session');
-    assert.ok(result.html.includes('NOTA DE VENTA #42'));
-    assert.equal(result.html.includes('class="payment-summary"'), novaled);
-    if (novaled) assert.ok(result.html.includes('Abono parcial') && result.html.includes('Bs. 150.00'));
-    assert.equal(downloads.length, 0);
+    if (novaled) {
+      assert.equal(result.pdf.uri, 'file:///server.pdf'); assert.deepEqual(downloads, ['sale']);
+      assert.equal(result.html, undefined);
+    } else {
+      assert.ok(result.html.includes('NOTA DE VENTA #42') && result.html.includes('class="sale-summary"'));
+      assert.equal(downloads.length, 0);
+    }
     const deliveryScreen = exports.DeliveryPreviewScreen({ saleId: 1, documentType: 'delivery' });
     const delivery = await deliveryScreen.props.children[0].props.loadDocument('session');
-    if (novaled) { assert.equal(delivery.pdf.uri, 'file:///server.pdf'); assert.deepEqual(downloads, ['delivery']); }
+    if (novaled) { assert.equal(delivery.pdf.uri, 'file:///server.pdf'); assert.deepEqual(downloads, ['sale', 'delivery']); }
     else assert.ok(delivery.html.includes('NOTA DE ENTREGA'));
   });
 }

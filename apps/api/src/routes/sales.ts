@@ -315,7 +315,7 @@ salesRouter.get('/:id', requireAuth, async (req: AuthRequest, res, next) => {
       `SELECT s.id, s.client_id, s.client_details, c.name AS client_name, c.phone AS client_phone, c.email AS client_email, c.address AS client_address,
               s.branch_id, b.name AS branch_name,
               s.total, s.estado_pago, s.metodo_pago, s.estado, s.anulado_at,
-              s.comprobante_url, s.nota_pago, s.transferencia_numero,
+              s.comprobante_url, s.nota_pago, s.transferencia_numero, s.initial_payment,
               s.entregada_at, s.include_sello, s.notes, s.show_notes, s.include_signature, s.agent_id,
               s.created_at, COALESCE(s.seller_name, u.name) AS seller_name
        FROM sales s
@@ -376,6 +376,7 @@ salesRouter.get('/:id', requireAuth, async (req: AuthRequest, res, next) => {
         comprobanteUrl: (s.comprobante_url as string | null) ?? null,
         notaPago: (s.nota_pago as string | null) ?? null,
         transferenciaNumero: (s.transferencia_numero as string | null) ?? null,
+        initialPayment: s.initial_payment == null ? null : Number(s.initial_payment),
         totalPagado: round2(paymentsOut.reduce((sum, p) => sum + p.monto, 0)),
         payments: paymentsOut,
         createdAt: s.created_at instanceof Date ? s.created_at.toISOString() : String(s.created_at),
@@ -629,8 +630,8 @@ salesRouter.post('/:id/duplicate', requireAuth, async (req: AuthRequest, res, ne
     // La copia nace activa y por cobrar: es una venta nueva, sin cobrar.
     const [ins] = await conn.query<ResultSetHeader>(
       `INSERT INTO sales (business_id, user_id, client_id, branch_id, total, estado_pago, metodo_pago,
-          notes, include_sello, show_notes, include_signature, client_details)
-       VALUES (?, ?, ?, ?, ?, 'por_cobrar', ?, ?, 0, 0, 0, ?)`,
+          notes, include_sello, show_notes, include_signature, client_details, initial_payment)
+       VALUES (?, ?, ?, ?, ?, 'por_cobrar', ?, ?, 0, 0, 0, ?, 0)`,
       [req.businessId, req.userId, source.client_id, source.branch_id, source.total, source.metodo_pago,
         source.notes ?? null, source.client_details == null ? null : JSON.stringify(readClientDetails(source.client_details))],
     );
@@ -834,12 +835,14 @@ salesRouter.post('/', requireAuth, async (req: AuthRequest, res, next) => {
 
     const total = round2(items.reduce((sum, it) => sum + it.quantity * it.unitPrice, 0));
     let estadoPago: SaleEstadoPago = metodoPago === 'por_pagar' ? 'por_cobrar' : 'pagado';
+    const initialPayment = metodoPago === 'por_pagar' ? round2(pagoInicial ?? 0) : total;
+    if (initialPayment > total + .005) throw badRequest('El pago inicial no puede superar el total de la venta');
 
     const [ins] = await conn.query<ResultSetHeader>(
       `INSERT INTO sales (business_id, user_id, client_id, branch_id, agent_id, seller_name, total, estado_pago,
          metodo_pago, nota_pago, transferencia_numero, paid_at, created_at,
-         notes, show_notes, include_signature, include_sello)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         notes, show_notes, include_signature, include_sello, initial_payment)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         req.businessId, req.userId,
         clientId,
@@ -857,6 +860,7 @@ salesRouter.post('/', requireAuth, async (req: AuthRequest, res, next) => {
         showNotes ? 1 : 0,
         includeSignature ? 1 : 0,
         includeSello ? 1 : 0,
+        initialPayment,
       ],
     );
     for (const it of items) {
@@ -1052,7 +1056,7 @@ salesRouter.post('/from-quote', requireAuth, async (req: AuthRequest, res, next)
     );
     const [sale] = await conn.query<ResultSetHeader>(
       `INSERT INTO sales (business_id, user_id, client_id, branch_id, quote_id, total,
-          notes, include_sello, show_notes, include_signature, client_details) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?)`,
+          notes, include_sello, show_notes, include_signature, client_details, initial_payment) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, 0)`,
       [req.businessId, req.userId, quote.client_id, quote.branch_id, quoteId, quote.total, quote.notes ?? null,
         quote.client_details != null || quote.client_name_override != null ? JSON.stringify({ ...readClientDetails(quote.client_details), ...(quote.client_name_override == null ? {} : { name: quote.client_name_override }) }) : null],
     );

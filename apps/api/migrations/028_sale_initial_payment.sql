@@ -1,0 +1,1 @@
+ALTER TABLE sales ADD COLUMN initial_payment DECIMAL(12,2) NULL;

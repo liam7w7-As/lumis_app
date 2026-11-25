@@ -25,10 +25,10 @@ export function DeliveryPreviewScreen({ saleId, documentType = 'delivery' }: {
   const [optionError, setOptionError] = useState<string | null>(null);
   const loadDocument = useCallback(async (token: string): Promise<DocumentSource> => {
     if (!Number.isSafeInteger(saleId) || saleId <= 0) throw new Error('Venta no encontrada.');
-    if (IS_NOVALED && documentType !== 'sale') {
+    if (IS_NOVALED) {
       const { sale } = await api.saleDetail(saleId, token);
-      const fileName = 'delivery-' + (sale.number ?? sale.id) + '.pdf';
-      return { pdf: await downloadNovaledPdf('delivery', saleId, fileName, token, signature), fileName, title: 'Nota de entrega de venta #' + (sale.number ?? sale.id), warnings: [] };
+      const fileName = 'nota-' + (documentType === 'sale' ? 'venta' : 'entrega') + '-' + (sale.number ?? sale.id) + '.pdf';
+      return { pdf: await downloadNovaledPdf(documentType, saleId, fileName, token, documentType === 'delivery' ? signature : undefined), fileName, title: (documentType === 'sale' ? 'Nota de venta #' : 'Nota de entrega de venta #') + (sale.number ?? sale.id), warnings: [] };
     }
     const [{ sale }, { business }, fonts] = await Promise.all([
       api.saleDetail(saleId, token), api.business(token), loadDocFonts(),
@@ -38,14 +38,13 @@ export function DeliveryPreviewScreen({ saleId, documentType = 'delivery' }: {
       logoUrl: mediaUrl(business?.logo_url ?? null), selloUrl: mediaUrl(business?.sello_url ?? null),
     });
     return {
-      html: buildDeliveryNoteHtml({ documentType, sale, business: documentBusiness(business), branchName: sale.branchName, images, fonts,
-        showPaymentSummary: IS_NOVALED && documentType === 'sale' }),
+      html: buildDeliveryNoteHtml({ documentType, sale, business: documentBusiness(business), branchName: sale.branchName, images, fonts, deliverySignature: signature }),
       fileName: 'nota-' + (documentType === 'sale' ? 'venta' : 'entrega') + '-' + (sale.number ?? sale.id) + '.pdf',
       title: (documentType === 'sale' ? 'Nota de venta #' : 'Nota de entrega #') + (sale.number ?? sale.id),
       warnings: images.warnings,
     };
   }, [saleId, documentType, signature]);
-  const canChooseSignature = IS_NOVALED && documentType === 'delivery';
+  const canChooseSignature = documentType === 'delivery';
   return <><DocumentPreviewScreen key={documentType + ':' + saleId} loadDocument={loadDocument} onBack={created==='1'?()=>router.replace(`/pos/${saleId}`):undefined} headerAction={canChooseSignature ?
     <Pressable accessibilityLabel="Nombre en firma de entrega" hitSlop={10} onPress={() => setOptionsOpen(true)}><Ionicons name="options-outline" size={23} color={colors.text} /></Pressable> : undefined} />
     <FormModal visible={optionsOpen} title="Entregué conforme" icon="create-outline" onClose={() => setOptionsOpen(false)}>

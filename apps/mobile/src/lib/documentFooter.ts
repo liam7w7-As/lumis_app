@@ -31,20 +31,20 @@ export function buildDocumentFooter(
   images: Pick<DocImages, 'facebook' | 'instagram' | 'tiktok' | 'linkedin' | 'web' | 'map'>,
   address: string,
 ): string {
-  const icon = (src: string | null, alt: string) => src ? `<img class="footer-icon" src="${escapeHtml(src)}" alt="${alt}">` : '';
+  const icon = (src: string | null, alt: string) => src ? `<td class="footer-icon-cell"><img class="footer-icon" src="${escapeHtml(src)}" alt="${alt}"></td>` : '';
   const blocks: { className: string; weight: number; html: string }[] = [];
   const networks = PDF_FOOTER_NETWORKS.filter(network => business[network.key] !== false);
   if (networks.length && business.redes_sociales?.trim()) {
     blocks.push({ className: 'footer-left', weight: 30, html: networks.map(network => icon(images[network.image], network.label)).join('')
-      + `<span class="footer-text">${escapeHtml(business.redes_sociales)}</span>` });
+      + `<td><span class="footer-text">${escapeHtml(business.redes_sociales)}</span></td>` });
   }
   if (business.mostrar_website !== false && business.website?.trim()) {
-    blocks.push({ className: 'footer-center', weight: 30, html: icon(images.web, 'Web') + `<span class="footer-text">${escapeHtml(business.website)}</span>` });
+    blocks.push({ className: 'footer-center', weight: 30, html: icon(images.web, 'Web') + `<td><span class="footer-text">${escapeHtml(business.website)}</span></td>` });
   }
   if (business.mostrar_direccion !== false && address.trim()) {
-    blocks.push({ className: 'footer-right', weight: 40, html: icon(images.map, 'Ubicación') + `<span class="footer-text">${escapeHtml(address)}</span>` });
+    blocks.push({ className: 'footer-right', weight: 40, html: icon(images.map, 'Ubicación') + `<td><span class="footer-text">${escapeHtml(address)}</span></td>` });
   }
   if (!blocks.length) return '';
   const weight = blocks.reduce((sum, block) => sum + block.weight, 0);
-  return `<table><tr>${blocks.map(block => `<td class="${block.className}" style="width:${100 * block.weight / weight}%">${block.html}</td>`).join('')}</tr></table>`;
+  return `<table><tr>${blocks.map(block => `<td class="${block.className}" style="width:${100 * block.weight / weight}%"><table class="footer-group${block.className === 'footer-left' ? '' : ' footer-web'}" role="presentation"><tr>${block.html}</tr></table></td>`).join('')}</tr></table>`;
 }

@@ -21,7 +21,7 @@ export function QuotePreviewScreen({ quoteId }: { quoteId: number }) {
       api.quoteDetail(quoteId, token), api.business(token), loadDocFonts(),
     ]);
     const images = await loadDocImages({
-      token, includeSeal: quote.includeSeal && quote.includeSignature,
+      token, includeSeal: quote.includeSeal,
       logoUrl: mediaUrl(business?.logo_url ?? null), selloUrl: mediaUrl(business?.sello_url ?? null),
     });
     return {

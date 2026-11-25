@@ -205,6 +205,7 @@ export interface DocumentClientDetails {
 }
 
 export interface SaleDetail extends Sale {
+  initialPayment?: number | null;
   clientDetails?: DocumentClientDetails;
   client: { id: number; name: string; phone: string | null; email: string | null } | null;
   agentId: number | null;

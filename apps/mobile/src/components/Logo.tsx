@@ -1,3 +1,4 @@
+import { IS_NOVALED } from '../lib/backend';
 import { useState } from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
@@ -5,6 +6,8 @@ import { useBusiness } from '../context/BusinessContext';
 import { useAuth } from '../context/AuthContext';
 import { StoredImage } from './StoredImage';
 
+const NOVALED_LOGO = require('../../assets/novaled/logo.png');
+const NOVALED_LOGO_DARK = require('../../assets/novaled/logo-dark.png');
 const LUMIS_LOGO = require('../../assets/brand/lumis-logo.png');
 
 export function Logo({ size = 34, showTagline = true, imageOnly = false }: {
@@ -27,9 +30,9 @@ export function Logo({ size = 34, showTagline = true, imageOnly = false }: {
           resizeMode="contain"
           accessibilityLabel={name ? 'Logo de ' + name : 'Logo de la empresa'}
           style={{ width, height: size * 1.7 }}
-        /> : <Image source={LUMIS_LOGO} resizeMode="contain"
-          accessibilityLabel="Lumis · Cotiza y vende"
-          style={{ width, height: width * 342 / 768, tintColor: dark ? colors.logoInk : undefined }} />}
+        /> : <Image source={IS_NOVALED ? (dark ? NOVALED_LOGO_DARK : NOVALED_LOGO) : LUMIS_LOGO} resizeMode="contain"
+          accessibilityLabel={IS_NOVALED ? 'Novaled App' : 'Lumis · Cotiza y vende'}
+          style={{ width, height: width * 342 / 768, tintColor: dark && !IS_NOVALED ? colors.logoInk : undefined }} />}
       </View>
       {showTagline && !imageOnly && companyLogo && !!name &&
         <Text numberOfLines={1} style={[styles.sub, { color: colors.muted }]}>{name}</Text>}

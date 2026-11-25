@@ -42,68 +42,39 @@ const saleHtml = (delivery: boolean, business = sampleBusiness) =>
     fonts: sampleFonts,
   });
 
-test('Novaled móvil usa la plantilla de venta de Lumis y detalla crédito, abonos y saldo', () => {
-  for (const [paid, status, credit] of [[0, 'Por cobrar', true], [50, 'Abono parcial', true], [200, 'Pagado', false]] as const) {
-    const html = buildDeliveryNoteHtml({ documentType: 'sale', showPaymentSummary: true,
-      sale: { ...sampleSale, id: 999, number: 42, total: 200, totalPagado: paid, clientName: 'Cliente del documento', client: { id: 1, name: 'Nombre de catálogo', phone: null, email: null } },
+test('venta sigue el resumen de Novaled web con abono inicial, saldo original y estado', () => {
+  for (const [initial, status] of [[0, 'POR COBRAR'], [50, 'ABONO PARCIAL'], [200, 'PAGADO']] as const) {
+    const html = buildDeliveryNoteHtml({ documentType: 'sale',
+      sale: { ...sampleSale, id: 999, number: 42, total: 200, initialPayment: initial, totalPagado: 200, estadoPago: 'pagado', metodoPago: 'por_pagar', clientName: 'Cliente del documento' },
       business: sampleBusiness, branchName: null, images: sampleImages, fonts: sampleFonts });
-    assert.ok(html.includes('NOTA DE VENTA #42'));
-    assert.ok(html.includes('Cliente del documento'));
-    assert.ok(!html.includes('Nombre de catálogo'));
-    assert.equal(html.includes('class="payment-summary"'), credit);
-    assert.equal(html.includes('Venta a crédito'), credit);
-    if (credit) {
-      assert.ok(html.includes(`<td>${status}</td>`));
-      assert.ok(html.includes(`Total abonado:</td><td>Bs. ${paid.toFixed(2)}`));
-      assert.ok(html.includes(`Saldo pendiente:</td><td>Bs. ${(200 - paid).toFixed(2)}`));
-    }
+    assert.ok(html.includes('NOTA DE VENTA #42') && html.includes('Cliente del documento'));
+    assert.ok(html.includes('class="sale-summary"') && html.includes(status));
+    assert.match(html, new RegExp('Abono:</span><span class="payment-value">Bs. ' + initial.toFixed(2)));
+    assert.match(html, new RegExp('Saldo pendiente:</span><span class="payment-value">Bs. ' + (200-initial).toFixed(2)));
     assert.ok(!html.includes('Entregué conforme') && !html.includes('Recibí conforme'));
   }
-  assert.ok(!saleHtml(false).includes('class="payment-summary"'));
-  assert.ok(!saleHtml(true).includes('class="payment-summary"'));
-  const discounted = buildDeliveryNoteHtml({ documentType: 'sale', showPaymentSummary: true,
-    sale: { ...sampleSale, total: sampleSale.total - 10, totalPagado: 20 },
-    business: sampleBusiness, branchName: null, images: sampleImages, fonts: sampleFonts });
-  assert.ok(discounted.includes('Descuento:</td><td class="value">- Bs. 10.00'));
 });
 
-test('Novaled oculta el resumen si se pagó de una vez y lo conserva cuando hubo abonos', () => {
-  const render = (payments: typeof sampleSale.payments) => buildDeliveryNoteHtml({ documentType: 'sale', showPaymentSummary: true,
-    sale: { ...sampleSale, total: 200, totalPagado: 200, estadoPago: 'pagado', payments },
-    business: sampleBusiness, branchName: null, images: sampleImages, fonts: sampleFonts });
-  const payment = { id: 1, monto: 200, nota: null, createdAt: sampleSale.createdAt };
-  for (const payments of [[], [payment]]) {
-    const html = render(payments);
-    assert.ok(!html.includes('class="payment-summary"'));
-    assert.ok(!html.includes('Estado de pago:') && !html.includes('Total abonado:') && !html.includes('Saldo pendiente:'));
-    assert.ok(html.includes('Descuento:'));
-  }
-  const paidInParts = render([{ ...payment, monto: 50 }, { ...payment, id: 2, monto: 150 }]);
-  assert.ok(paidInParts.includes('class="payment-summary"'));
-  assert.ok(paidInParts.includes('<td>Pagado</td>'));
-  assert.ok(paidInParts.includes('Total abonado:</td><td>Bs. 200.00'));
-  const cancelled = buildDeliveryNoteHtml({ documentType: 'sale', showPaymentSummary: true,
-    sale: { ...sampleSale, estado: 'anulada', totalPagado: 0, payments: [] },
-    business: sampleBusiness, branchName: null, images: sampleImages, fonts: sampleFonts });
-  assert.ok(cancelled.includes('<td>Anulada</td>'));
+test('venta pagada conserva el resumen y los documentos antiguos usan el acumulado disponible', () => {
+  const common = { business: sampleBusiness, branchName: null, images: sampleImages, fonts: sampleFonts };
+  const paid = buildDeliveryNoteHtml({ ...common, documentType: 'sale', sale: { ...sampleSale, total: 200, initialPayment: 200, totalPagado: 200, estadoPago: 'pagado' } });
+  assert.ok(paid.includes('class="sale-summary"') && paid.includes('PAGADO'));
+  assert.ok(paid.includes('Saldo pendiente:</span><span class="payment-value">Bs. 0.00'));
+  const legacy = buildDeliveryNoteHtml({ ...common, documentType: 'sale', sale: { ...sampleSale, total: 200, initialPayment: null, totalPagado: 80 } });
+  assert.ok(legacy.includes('Abono:</span><span class="payment-value">Bs. 80.00'));
+  const cancelled = buildDeliveryNoteHtml({ ...common, documentType: 'sale', sale: { ...sampleSale, estado: 'anulada' } });
+  assert.ok(cancelled.includes('ANULADO'));
 });
 
-test("venta sin firmas de recepción; entrega conserva sus firmas y los mismos totales", () => {
-  const sale = saleHtml(false),
-    delivery = saleHtml(true);
-  assert.match(sale, /NOTA DE VENTA/);
-  assert.doesNotMatch(
-    sale,
-    /Entregué conforme|Recibí conforme|class="signature-section"/,
-  );
-  assert.match(delivery, /NOTA DE ENTREGA/);
-  assert.match(delivery, /Entregué conforme/);
-  assert.match(delivery, /Recibí conforme/);
-  for (const html of [sale, delivery]) {
-    assert.match(html, /890\.00/);
-    assert.match(html, /650\.00/);
-    assert.match(html, /240\.00/);
-  }
+test('entrega imprime cantidades, estado y saldo sin precios ni el total de venta', () => {
+  const sale = saleHtml(false), delivery = saleHtml(true);
+  assert.ok(sale.includes('Precio unitario') && sale.includes('TOTAL'));
+  assert.ok(!sale.includes('Entregué conforme') && !sale.includes('Recibí conforme'));
+  assert.ok(delivery.includes('Entregué conforme') && delivery.includes('Recibí conforme'));
+  assert.ok(delivery.includes('Estado de pago:') && delivery.includes('Saldo pendiente:'));
+  assert.ok(!delivery.includes('Precio unitario') && !delivery.includes('Sub total:'));
+  assert.ok(!delivery.includes('<th class="col-code">') && !delivery.includes('<th class="col-unit">'));
+  assert.match(delivery, /colspan="3"/);
 });
 
 test('la entrega conserva ambas conformidades con todos los adicionales apagados', () => {
@@ -111,6 +82,16 @@ test('la entrega conserva ambas conformidades con todos los adicionales apagados
   assert.match(html, /Entregué conforme/);
   assert.match(html, /Recibí conforme/);
   assert.doesNotMatch(html, /alt="Sello"|class="document-notes"/);
+});
+
+test('nombre en firma de entrega es una opción de impresión y se escapa sin modificar al vendedor', () => {
+  const render = (mode: 'asesor' | 'otro' | 'sin_nombre', name = '') => buildDeliveryNoteHtml({
+    documentType: 'delivery', deliverySignature: { mode, name }, sale: { ...sampleSale, sellerName: 'Vendedor original' },
+    business: sampleBusiness, branchName: null, images: sampleImages, fonts: sampleFonts,
+  });
+  assert.match(render('asesor'), /data-pdf-delivery-sender>Vendedor original/);
+  assert.match(render('otro', 'Ana <Norte>'), /data-pdf-delivery-sender>Ana &lt;Norte&gt;/);
+  assert.match(render('sin_nombre'), /data-pdf-delivery-sender><\/td>/);
 });
 
 test('notas, firma de empresa y sello se pueden activar por separado en la venta', () => {
@@ -157,15 +138,15 @@ test("preferencias de empresa ocultan columnas completas y aprovechan el ancho l
     saleHtml(true, business),
   ]) {
     assert.doesNotMatch(html, /<t[dh] class="col-(brand|origin)"/);
-    assert.match(html, /colspan="7"/);
-    assert.match(html, /width: 48%/);
+    assert.match(html, /colspan="[37]"/);
     assert.match(html, /Interruptor termomagnético/);
     assert.match(html, /890\.00/);
   }
   const normal = saleHtml(false);
-  assert.match(normal, /<th class="col-brand">Marca/);
-  assert.match(normal, /<th class="col-origin">Procedencia/);
-  assert.match(normal, /colspan="9"/);
+  assert.ok(!normal.includes('<th class="col-brand">') && !normal.includes('<th class="col-origin">'));
+  assert.match(normal, /Marca: Aurora/);
+  assert.match(normal, /Procedencia: Bolivia/);
+  assert.match(normal, /colspan="7"/);
   assert.equal(
     sampleSale.items[0].marca,
     "Aurora",

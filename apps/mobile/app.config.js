@@ -3,7 +3,7 @@ module.exports = ({ config }) => {
   const connected = process.env.APP_VARIANT === 'novaled' || process.env.EXPO_PUBLIC_BACKEND === 'novaled';
   const variant = connected ? {
     ...config,
-    name: 'Lumis Novaled',
+    name: 'Novaled App',
     scheme: 'lumis-novaled',
     icon: './assets/novaled/icon.png',
     android: {

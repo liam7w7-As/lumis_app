@@ -32,6 +32,7 @@ const FONT_MODULES: Record<string, number> = {
   medium: require('../../assets/fonts/Poppins-Medium.ttf'),
   semibold: require('../../assets/fonts/Poppins-SemiBold.ttf'),
   bold: require('../../assets/fonts/Poppins-Bold.ttf'),
+  footer: require('../../assets/fonts/Prompt-Regular.ttf'),
 };
 
 async function moduleToRawBase64(moduleId: number): Promise<string | null> {
@@ -70,6 +71,7 @@ async function remoteToBase64(url: string, token?: string): Promise<string> {
 export type DocImages = Record<DocAssetKey, string | null>;
 
 export type DocFonts = {
+  footer?: string | null;
   regular: string | null;
   medium: string | null;
   semibold: string | null;
