@@ -7,18 +7,25 @@ import { loadDocFonts, loadDocImages } from '../lib/docAssets';
 import { buildQuoteHtml } from '../lib/quoteDocument';
 import { IS_NOVALED } from '../lib/backend';
 import { downloadNovaledQuotePdf } from '../lib/pdfFile';
+import { getOfflineGateway } from '../offline/bridge';
 
 export function QuotePreviewScreen({ quoteId }: { quoteId: number }) {
   const {created}=useLocalSearchParams<{created?:string}>();
   const loadDocument = useCallback(async (token: string): Promise<DocumentSource> => {
     if (!Number.isSafeInteger(quoteId) || quoteId <= 0) throw new Error('Cotización no encontrada.');
-    if (IS_NOVALED) {
-      const { quote } = await api.quoteDetail(quoteId, token);
+    const { quote } = await api.quoteDetail(quoteId, token);
+    const offline = getOfflineGateway()?.status();
+    if (IS_NOVALED && quoteId < 1e12 && offline?.online !== false && !offline?.pending) {
       const fileName = 'cotizacion-' + (quote.number ?? quote.id) + '.pdf';
-      return { pdf: await downloadNovaledQuotePdf(quoteId, fileName, token), fileName, title: 'Cotización #' + (quote.number ?? quote.id), warnings: [] };
+      try {
+        return { pdf: await downloadNovaledQuotePdf(quoteId, fileName, token), fileName, title: 'Cotización #' + (quote.number ?? quote.id), warnings: [] };
+      } catch (error) {
+        if (!/network request failed|failed to fetch|networkerror|tardó demasiado/i.test(String(error))) throw error;
+        // A connection can disappear after the last sync: the local snapshot still renders.
+      }
     }
-    const [{ quote }, { business }, fonts] = await Promise.all([
-      api.quoteDetail(quoteId, token), api.business(token), loadDocFonts(),
+    const [{ business }, fonts] = await Promise.all([
+      api.business(token), loadDocFonts(),
     ]);
     const images = await loadDocImages({
       token, includeSeal: quote.includeSeal,
@@ -26,8 +33,8 @@ export function QuotePreviewScreen({ quoteId }: { quoteId: number }) {
     });
     return {
       html: buildQuoteHtml({ quote, business: documentBusiness(business), branchName: quote.branchName, images, fonts }),
-      fileName: 'cotizacion-' + quote.id + '.pdf',
-      title: 'Cotización #' + quote.id,
+      fileName: 'cotizacion-' + (quote.number ?? quote.id) + '.pdf',
+      title: 'Cotización #' + (quote.number ?? quote.id),
       warnings: images.warnings,
     };
   }, [quoteId]);

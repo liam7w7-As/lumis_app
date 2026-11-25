@@ -23,6 +23,7 @@ function authHarness(remoteLogout: (token: string) => Promise<unknown>, connecte
       if (!(index in states)) states[index] = initial;
       return [states[index], (value: unknown) => { states[index] = value; }];
     },
+    useRef(initial: unknown) { const index = cursor++; if (!(index in states)) states[index] = { current: initial }; return states[index]; },
     useEffect() {},
     useCallback: (callback: unknown) => callback,
     useMemo: (factory: () => unknown) => factory(),
@@ -42,6 +43,7 @@ function authHarness(remoteLogout: (token: string) => Promise<unknown>, connecte
     '../lib/novaled': { novaled: { logout: remoteLogout } },
     '../lib/authEvents': { subscribeSessionExpiry() {} },
     '../lib/legacyOperation': { bindLegacySession() {}, configureLegacyStorage() {} },
+    '../offline/runtime': { async openOfflineSession() {}, closeOfflineSession() {} },
   };
   const source = readFileSync(new URL('../../apps/mobile/src/context/AuthContext.tsx', import.meta.url), 'utf8');
   const { outputText } = ts.transpileModule(source, {
@@ -66,7 +68,7 @@ for (const failure of ['Sin conexión', 'Tiempo de espera agotado', 'Error del s
     const calls: string[] = [];
     const auth = authHarness(async token => { calls.push(token); throw new Error(failure); });
     await auth.session().login('asesor', 'password');
-    assert.equal(auth.storage.size, 1);
+    assert.equal(auth.storage.size, 2);
 
     await assert.doesNotReject(() => auth.session().logout());
 

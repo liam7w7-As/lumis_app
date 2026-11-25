@@ -12,6 +12,7 @@ import { loadDocFonts, loadDocImages } from '../lib/docAssets';
 import { buildDeliveryNoteHtml } from '../lib/deliveryDocument';
 import { IS_NOVALED } from '../lib/backend';
 import { downloadNovaledPdf } from '../lib/pdfFile';
+import { getOfflineGateway } from '../offline/bridge';
 
 export function DeliveryPreviewScreen({ saleId, documentType = 'delivery' }: {
   saleId: number; documentType?: 'sale' | 'delivery';
@@ -25,22 +26,35 @@ export function DeliveryPreviewScreen({ saleId, documentType = 'delivery' }: {
   const [optionError, setOptionError] = useState<string | null>(null);
   const loadDocument = useCallback(async (token: string): Promise<DocumentSource> => {
     if (!Number.isSafeInteger(saleId) || saleId <= 0) throw new Error('Venta no encontrada.');
-    if (IS_NOVALED) {
-      const { sale } = await api.saleDetail(saleId, token);
+    const { sale } = await api.saleDetail(saleId, token);
+    const offline = getOfflineGateway()?.status();
+    if (IS_NOVALED && saleId < 1e12 && offline?.online !== false && !offline?.pending) {
       const fileName = 'nota-' + (documentType === 'sale' ? 'venta' : 'entrega') + '-' + (sale.number ?? sale.id) + '.pdf';
-      return { pdf: await downloadNovaledPdf(documentType, saleId, fileName, token, documentType === 'delivery' ? signature : undefined), fileName, title: (documentType === 'sale' ? 'Nota de venta #' : 'Nota de entrega de venta #') + (sale.number ?? sale.id), warnings: [] };
+      try {
+        return { pdf: await downloadNovaledPdf(documentType, saleId, fileName, token, documentType === 'delivery' ? signature : undefined), fileName, title: (documentType === 'sale' ? 'Nota de venta #' : 'Nota de entrega de venta #') + (sale.number ?? sale.id), warnings: [] };
+      } catch (error) {
+        if (!/network request failed|failed to fetch|networkerror|tardó demasiado/i.test(String(error))) throw error;
+      }
     }
-    const [{ sale }, { business }, fonts] = await Promise.all([
-      api.saleDetail(saleId, token), api.business(token), loadDocFonts(),
+    const [{ business }, fonts] = await Promise.all([
+      api.business(token), loadDocFonts(),
     ]);
     const images = await loadDocImages({
       token, includeSeal: sale.includeSello,
       logoUrl: mediaUrl(business?.logo_url ?? null), selloUrl: mediaUrl(business?.sello_url ?? null),
     });
+    // The delivery keeps its own issued lines, client and number. Payment and
+    // printing options belong to its source sale, matching the server PDF.
+    const localSale = documentType === 'delivery' && sale.deliverySnapshot ? {
+      ...sale, ...sale.deliverySnapshot,
+      total: sale.total, totalPagado: sale.totalPagado, initialPayment: sale.initialPayment,
+      estadoPago: sale.estadoPago, estado: sale.estado, metodoPago: sale.metodoPago, payments: sale.payments,
+      includeSello: sale.includeSello, includeSignature: sale.includeSignature, showNotes: sale.showNotes, notes: sale.notes,
+    } : sale;
     return {
-      html: buildDeliveryNoteHtml({ documentType, sale, business: documentBusiness(business), branchName: sale.branchName, images, fonts, deliverySignature: signature }),
+      html: buildDeliveryNoteHtml({ documentType, sale: localSale, business: documentBusiness(business), branchName: localSale.branchName, images, fonts, deliverySignature: signature }),
       fileName: 'nota-' + (documentType === 'sale' ? 'venta' : 'entrega') + '-' + (sale.number ?? sale.id) + '.pdf',
-      title: (documentType === 'sale' ? 'Nota de venta #' : 'Nota de entrega #') + (sale.number ?? sale.id),
+      title: (documentType === 'sale' ? 'Nota de venta #' : 'Nota de entrega #') + (localSale.number ?? localSale.id),
       warnings: images.warnings,
     };
   }, [saleId, documentType, signature]);

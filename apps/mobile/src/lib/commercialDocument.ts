@@ -53,9 +53,14 @@ export function buildCommercialDocument(input: CommercialInput): string {
   const status = sale?.estado === 'anulada' ? 'ANULADO' : balance <= .009 ? 'PAGADO' : (delivery ? paid : initial) > 0 ? 'ABONO PARCIAL' : 'POR COBRAR';
   const tableSubtotal = Math.round(doc.items.reduce((sum, item) => sum + item.subtotal, 0) * 100) / 100;
   const discount = Math.max(0, Math.round((tableSubtotal - doc.total) * 100) / 100);
+  const deliveryDate = sale?.deliveryDate;
+  // Laravel's date-only delivery field is a calendar day, not a UTC instant.
+  const documentDate = delivery && deliveryDate
+    ? /^\d{4}-\d{2}-\d{2}$/.test(deliveryDate) ? deliveryDate.split('-').reverse().join('/') : date(deliveryDate)
+    : date(delivery && deliveryDate === undefined && sale?.entregadaAt ? sale.entregadaAt : doc.createdAt);
   const meta = [
     [title.number, escape(String(number)) + (quote ? `<span class="document-version">Versión ${quote.versionNumero}</span>` : '')],
-    ['Fecha:', escape(date(delivery && sale?.entregadaAt ? sale.entregadaAt : doc.createdAt) + (delivery ? '' : ' ' + time(doc.createdAt)))],
+    ['Fecha:', escape(documentDate + (delivery ? '' : ' ' + time(doc.createdAt)))],
     ['Sucursal:', escape(branchName || '-')],
     ...(delivery ? [['Entrega:', sale?.estado === 'anulada' ? 'ANULADA' : sale?.entregadaAt ? 'CONFIRMADA' : 'PENDIENTE']] : [
       ...(quote || business.nit ? [['NIT:', escape(business.nit || '-')]] : []),

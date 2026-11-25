@@ -24,6 +24,7 @@ for (const novaled of [false, true]) {
       '../lib/docAssets': { loadDocFonts: async () => sampleFonts, loadDocImages: async () => ({ ...sampleImages, warnings: [] }) },
       '../lib/deliveryDocument': { buildDeliveryNoteHtml },
       '../lib/backend': { IS_NOVALED: novaled },
+      '../offline/bridge': { getOfflineGateway: () => null },
       '../lib/pdfFile': { downloadNovaledPdf: async (kind: string) => { downloads.push(kind); return { uri: 'file:///server.pdf', base64: 'pdf', fileName: 'server.pdf' }; } },
     };
     const source = readFileSync(new URL('../../apps/mobile/src/screens/DeliveryPreviewScreen.tsx', import.meta.url), 'utf8');

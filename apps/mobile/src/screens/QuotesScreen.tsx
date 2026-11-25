@@ -97,8 +97,7 @@ function QuotesScreenContent() {
     closeRow();
     try {
       const { sale } = await api.saleFromQuote(quote.id, token);
-      feedback.alert('Venta generada', `Se generó la venta #${sale.number ?? sale.id}`);
-      load(true);
+      router.push(`/pos/${sale.id}`);
     } catch (err) {
       showApiError(err, 'No se pudo generar la venta');
     }

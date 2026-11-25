@@ -5,6 +5,7 @@ import { notifyLicenseChange } from './licenseEvents';
 import { runLegacyOperation, rememberLegacyBody } from './legacyOperation';
 import { requestStockSelection, type StockChoiceItem } from './stockSelection';
 import type { PdfFooterPreferences } from './documentFooter';
+import { offlineRequest } from '../offline/bridge';
 export { API_URL } from './backend';
 
 export function mediaUrl(path: string | null): string | null {
@@ -75,7 +76,7 @@ export type QuoteStatus = 'borrador' | 'aprobada' | 'rechazada' | 'convertida';
 
 export interface Quote {
   id: number;
-  number?: number;
+  number?: number | string;
   clientId: number | null;
   clientName: string | null;
   status: QuoteStatus;
@@ -158,7 +159,7 @@ export type SaleEstado = 'activa' | 'anulada';
 
 export interface Sale {
   id: number;
-  number?: number;
+  number?: number | string;
   canEditItems?: boolean;
   canEditDate?: boolean;
   canChangeBranch?: boolean;
@@ -206,6 +207,8 @@ export interface DocumentClientDetails {
 
 export interface SaleDetail extends Sale {
   initialPayment?: number | null;
+  deliverySnapshot?: Partial<SaleDetail>;
+  deliveryDate?: string | null;
   clientDetails?: DocumentClientDetails;
   client: { id: number; name: string; phone: string | null; email: string | null } | null;
   agentId: number | null;
@@ -263,7 +266,7 @@ export interface QuoteItem {
 export interface QuoteDetail {
   clientDetails?: DocumentClientDetails;
   id: number;
-  number?: number;
+  number?: number | string;
   clientName?: string | null;
   canEditDate?: boolean;
   allowedStatuses?: QuoteStatus[];
@@ -326,6 +329,7 @@ interface RequestOptions {
   body?: unknown;
   token?: string;
   timeoutMs?: number;
+  headers?: Record<string, string>;
 }
 
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -338,13 +342,23 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     return runLegacyOperation(path, options.token, body, keyField, () => createDocument ? newRequestId() : newPaymentId(),
       payload => request<T>(path, { ...options, body: payload }), error => error instanceof ApiError && [400, 403, 404, 409, 422].includes(error.status));
   }
+  // Preserve the idempotency keys of requests left by older installations before
+  // handing their payload to the durable SQLite outbox.
+  const local = offlineRequest(path, options);
+  if (local) return local as Promise<T>;
+  return (await requestOnline<T>(path,options)).data;
+}
+
+/** Network-only transport. Offline synchronization must never enqueue itself. */
+export async function requestOnline<T>(path: string, options: RequestOptions = {}): Promise<{data:T; version?:string; capability:boolean}> {
+  const body = options.body && typeof options.body === 'object' ? options.body as Record<string,unknown> : {};
   const resolvedPath = backendPath(path);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? 30000);
   try {
     const res = await fetch(API_URL + resolvedPath, {
       method: options.method ?? 'GET', signal: controller.signal,
-      headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...(options.token ? { Authorization: 'Bearer ' + options.token } : {}) },
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...(options.token ? { Authorization: 'Bearer ' + options.token } : {}), ...options.headers },
       ...(options.body !== undefined ? { body: JSON.stringify(options.body) } : {}),
     });
     const data = await res.json().catch(() => null) as { error?: string; message?: string; code?: string; stock?: StockChoiceItem[]; errors?: Record<string, string[]>; details?: Record<string, string[]> } | null;
@@ -354,7 +368,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
         if (!selections) throw new ApiError(422, 'Selección cancelada. La venta no se guardó.', 'CANCELLED');
         const payload = { ...body, stock_selections: selections };
         if (body.solicitud_id) await rememberLegacyBody(path, options.token, payload);
-        return request<T>(path, { ...options, body: payload });
+        return requestOnline<T>(path, { ...options, body: payload });
       }
       if (res.status === 401 && options.token) notifySessionExpiry(options.token);
       if (!IS_NOVALED && path !== '/api/license' && /^(LICENSE_|PLAN_|USER_LIMIT)/.test(data?.code ?? '')) notifyLicenseChange();
@@ -363,7 +377,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
       throw new ApiError(res.status, detail ?? data?.message ?? data?.error ?? 'El servidor no pudo completar la solicitud. Inténtalo de nuevo.', data?.code);
     }
     if (data == null) throw new ApiError(502, 'El servidor respondió de forma inesperada. Inténtalo de nuevo.', 'INVALID_RESPONSE');
-    return data as T;
+    return {data:data as T,version:res.headers.get('X-Lumis-Document-Version')??undefined,capability:res.headers.get('X-Lumis-Offline-Version')==='1'};
   } catch (err) {
     if (err instanceof ApiError) throw err;
     throw new ApiError(0, controller.signal.aborted ? 'La solicitud tardó demasiado. Comprueba tu conexión y vuelve a intentarlo.'
@@ -422,7 +436,7 @@ export const api = {
   deleteQuote: (id: number, token: string) =>
     request<unknown>(`/api/quotes/${id}`, { method: 'DELETE', token }),
   saleFromQuote: (quoteId: number, token: string) =>
-    request<{ sale: { id: number; number?: number; quoteId: number; total: number } }>(
+    request<{ sale: { id: number; number?: number | string; quoteId: number; total: number } }>(
       '/api/sales/from-quote',
       { method: 'POST', body: { quoteId }, token },
     ),
@@ -450,7 +464,7 @@ export const api = {
     ),
   saleDetail: (id: number, token: string) =>
     request<{ sale: SaleDetail }>(`/api/sales/${id}`, { token }),
-  nextSaleNumber: (token: string) => request<{ nextNumber: number }>('/api/sales/next-number', { token }),
+  nextSaleNumber: (token: string) => request<{ nextNumber: number | string }>('/api/sales/next-number', { token }),
   updateSale: (id: number, input: SaleUpdateInput, token: string) =>
     request<{ ok: boolean; estadoPago?: SaleEstadoPago; metodoPago?: SaleMetodoPago; sellerName?: string; createdAt?: string }>(
       `/api/sales/${id}`,
@@ -493,7 +507,7 @@ export const api = {
     },
     token: string,
   ) =>
-    request<{ sale: { id: number; number?: number; total: number; estadoPago: SaleEstadoPago; metodoPago: SaleMetodoPago } }>(
+    request<{ sale: { id: number; number?: number | string; total: number; estadoPago: SaleEstadoPago; metodoPago: SaleMetodoPago } }>(
       '/api/sales',
       { method: 'POST', body: input, token },
     ),
@@ -546,13 +560,13 @@ export const api = {
     input: { clientId: number | null; branchId: number | null; items: QuoteItemInput[]; notes?: string | null; solicitud_id?: string },
     token: string,
   ) =>
-    request<{ quote: { id: number; number?: number; total: number } }>('/api/quotes', {
+    request<{ quote: { id: number; number?: number | string; total: number } }>('/api/quotes', {
       method: 'POST',
       body: input,
       token,
     }),
   nextQuoteNumber: (token: string) =>
-    request<{ nextNumber: number }>('/api/quotes/next-number', { token }),
+    request<{ nextNumber: number | string }>('/api/quotes/next-number', { token }),
   scanQuote: (input: { scanId: string; base64: string }, token: string) =>
     request<{ scan: QuoteScan }>('/api/quotes/scan', { method: 'POST', body: input, token, timeoutMs: 100000 }),
   business: (token: string) =>

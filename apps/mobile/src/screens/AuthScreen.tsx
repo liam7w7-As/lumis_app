@@ -34,7 +34,7 @@ export function AuthScreen() {
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [remember, setRemember] = useState(false);
+  const [remember, setRemember] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -174,7 +174,7 @@ export function AuthScreen() {
                 {remember && <Ionicons name="checkmark" size={14} color={colors.onPrimary} />}
               </View>
               <Text style={[styles.rememberText, { color: colors.muted }]}>
-                Recordar contraseña
+                Recordar sesión
               </Text>
             </Pressable>
           </Animated.View>

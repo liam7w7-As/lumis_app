@@ -29,10 +29,12 @@ test('imágenes privadas: reapertura, sesiones, archivos ausentes y validación 
   process.env.EXPO_PUBLIC_API_URL = base;
   class FakeFile {
     uri: string;
-    constructor(_parent: unknown, name: string) { this.uri = 'file:///cache/' + name; }
+    constructor(parent: string, name?: string) { this.uri = name ? parent.replace(/\/$/, '') + '/' + name : parent; }
     get exists() { return files.has(this.uri); }
     get size() { return files.get(this.uri)?.length ?? 0; }
     async base64() { return files.get(this.uri)!.toString('base64'); }
+    create() { assert.ok(!files.has(this.uri)); files.set(this.uri, Buffer.alloc(0)); }
+    write(value: string, options?: { encoding: string }) { files.set(this.uri, Buffer.from(value, options?.encoding === 'base64' ? 'base64' : 'utf8')); }
     delete() { files.delete(this.uri); }
     static async downloadFileAsync(url: string, file: FakeFile, options: { headers?: HeadersInit }) {
       downloads++;
@@ -43,7 +45,7 @@ test('imágenes privadas: reapertura, sesiones, archivos ausentes y validación 
     }
   }
   const mocks = globalThis as typeof globalThis & { __lumisImageMocks?: unknown };
-  mocks.__lumisImageMocks = { File: FakeFile, Paths: { cache: 'file:///cache/' }, Image: {
+  mocks.__lumisImageMocks = { File: FakeFile, Paths: { cache: 'file:///cache/', document: 'file:///documents/' }, Image: {
     async getSize(uri: string) {
       decoded++;
       assert.ok(files.has(uri), 'El decodificador debe recibir el archivo descargado');
@@ -73,12 +75,15 @@ test('imágenes privadas: reapertura, sesiones, archivos ausentes y validación 
     else process.env.EXPO_PUBLIC_API_URL = previousUrl;
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   });
-  const { loadRemoteImage, ImageLoadError } = await import('../../apps/mobile/src/lib/remoteImage');
+  const { loadRemoteImage, ImageLoadError, warmDocumentImages } = await import('../../apps/mobile/src/lib/remoteImage');
+  const { setOfflineGateway } = await import('../../apps/mobile/src/offline/bridge');
+  t.after(() => setOfflineGateway(null, null));
   await t.test('el logo se conserva al reabrir y ambas solicitudes envían la sesión', async () => {
     const first = await loadRemoteImage(base + '/logo.png', 'admin-a', true);
     const reopened = await loadRemoteImage(base + '/logo.png', 'admin-a');
     assert.equal(first.uri, reopened.uri);
     assert.match(first.uri, /\.png$/);
+    assert.match(first.uri, /^file:\/\/\/documents\//);
     assert.equal(first.dataUri, 'data:image/png;base64,' + png.toString('base64'));
     assert.equal(downloads, 1);
     assert.equal(decoded, 2, 'El éxito requiere que el decodificador nativo abra la imagen');
@@ -125,5 +130,43 @@ test('imágenes privadas: reapertura, sesiones, archivos ausentes y validación 
     rejectDecode = false;
     const recovered = await loadRemoteImage(base + '/corrupt.png', 'admin-a');
     assert.ok(files.has(recovered.uri));
+  });
+  await t.test('offline: los logos privados persistidos no validan HTTP ni se pierden al reabrir', async () => {
+    const { getOfflineGateway } = await import('../../apps/mobile/src/offline/bridge');
+    assert.equal(getOfflineGateway(), null);
+    const before = requests.length;
+    setOfflineGateway({ status: () => ({ online: false, pending: 0, syncing: false, errors: 0, preparing: false }), request: async () => { throw Error('No HTTP expected'); } }, 'admin-a');
+    const image = await loadRemoteImage(base + '/logo.png', 'admin-a', true);
+    assert.equal(image.dataUri, 'data:image/png;base64,' + png.toString('base64'));
+    assert.equal(requests.length, before);
+    await assert.rejects(loadRemoteImage(base + '/not-downloaded.png', 'admin-a', true), (error: unknown) => error instanceof ImageLoadError && error.code === 'connection');
+    await assert.rejects(loadRemoteImage(base + '/logo.png', 'new-account', true), (error: unknown) => error instanceof ImageLoadError && error.code === 'connection');
+    assert.equal(requests.length, before);
+  });
+  await t.test('un logo subido sin conexión se materializa y valida sin peticiones HTTP', async () => {
+    const before = requests.length;
+    const uri = 'data:image/png;base64,' + png.toString('base64');
+    const image = await loadRemoteImage(uri, 'admin-a', true);
+    const again = await loadRemoteImage(uri, 'admin-a', true);
+    assert.equal(image.uri, again.uri); assert.equal(image.dataUri, uri);
+    assert.match(image.uri, /^file:\/\/\/documents\//); assert.equal(requests.length, before);
+  });
+  await t.test('una caída de red durante HEAD conserva el logo ya descargado', async () => {
+    setOfflineGateway(null, null);
+    const previousFetch = globalThis.fetch;
+    globalThis.fetch = async () => { throw new TypeError('Network request failed'); };
+    try {
+      const image = await loadRemoteImage(base + '/logo.png', 'admin-a', true);
+      assert.equal(image.dataUri, 'data:image/png;base64,' + png.toString('base64'));
+      assert.ok(files.has(image.uri));
+    } finally { globalThis.fetch = previousFetch; }
+  });
+  await t.test('la primera sincronización descarga también el sello para futuras entregas offline', async () => {
+    const warnings = await warmDocumentImages({ logo_url: base + '/logo.png', sello_url: base + '/seal.png' }, 'admin-a');
+    assert.deepEqual(warnings, []);
+    const before = requests.length;
+    setOfflineGateway({ status: () => ({ online: false, pending: 0, syncing: false, errors: 0, preparing: false }), request: async () => { throw Error('No HTTP expected'); } }, 'admin-a');
+    const seal = await loadRemoteImage(base + '/seal.png', 'admin-a', true);
+    assert.equal(seal.dataUri, 'data:image/png;base64,' + png.toString('base64')); assert.equal(requests.length, before);
   });
 });

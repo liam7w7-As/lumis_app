@@ -1,5 +1,5 @@
 import { feedback } from '../lib/feedback';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { api, type User } from '../lib/api';
@@ -17,6 +17,7 @@ export function TeamUsers({ onCreated }: { onCreated: () => void }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
+  const submitLock = useRef(false);
   const load = useCallback(async () => {
     if (!token || user?.role !== 'admin') return;
     try { setUsers((await api.users(token)).users); }
@@ -24,11 +25,12 @@ export function TeamUsers({ onCreated }: { onCreated: () => void }) {
   }, [token, user?.role]);
   useFocusEffect(useCallback(() => { void load(); }, [load]));
   const save = async () => {
-    if (!token || busy) return;
-    if (name.trim().length < 2 || !/^[a-zA-Z0-9._-]{3,60}$/.test(username.trim()) || password.length < 8) {
-      feedback.alert('Revisa los datos', 'Escribe el nombre, un usuario de al menos 3 caracteres y una contraseña de al menos 8 caracteres.');
+    if (!token || user?.role !== 'admin' || submitLock.current) return;
+    if (name.trim().length < 2 || name.trim().length > 120 || !/^[a-zA-Z0-9._-]{3,60}$/.test(username.trim()) || password.length < 8 || password.length > 72) {
+      feedback.alert('Revisa los datos', 'Escribe un nombre de 2 a 120 caracteres, un usuario de 3 a 60 caracteres (letras, números, punto, guion o guion bajo) y una contraseña de 8 a 72 caracteres.');
       return;
     }
+    submitLock.current = true;
     setBusy(true);
     try {
       const { user: created } = await api.createUser({ name: name.trim(), username: username.trim(), password }, token);
@@ -37,7 +39,7 @@ export function TeamUsers({ onCreated }: { onCreated: () => void }) {
       onCreated();
       feedback.alert('Vendedor registrado', 'Ya puede iniciar sesión con su usuario y contraseña en esta empresa.');
     } catch (err) { feedback.alert('Error', err instanceof Error ? err.message : 'No se pudo registrar'); }
-    finally { setBusy(false); }
+    finally { submitLock.current = false; setBusy(false); }
   };
   if (user?.role !== 'admin') return null;
   return (
@@ -53,11 +55,11 @@ export function TeamUsers({ onCreated }: { onCreated: () => void }) {
       <FormModal visible={open} title="Registrar vendedor" icon="person-add-outline" onClose={() => { if (!busy) { setOpen(false); setPassword(''); } }}>
         <Text style={{ color: colors.muted }}>Tendrá acceso a las ventas, cotizaciones y catálogo de esta empresa.</Text>
         <TextInput accessibilityLabel="Nombre del vendedor" placeholder="Nombre completo" value={name} onChangeText={setName}
-          autoFocus autoCapitalize="words" placeholderTextColor={colors.muted} style={[styles.input, { color: colors.text, borderColor: colors.border }]} />
+          autoFocus autoCapitalize="words" maxLength={120} editable={!busy} placeholderTextColor={colors.muted} style={[styles.input, { color: colors.text, borderColor: colors.border }]} />
         <TextInput accessibilityLabel="Usuario del vendedor" placeholder="Usuario" value={username} onChangeText={setUsername}
-          autoCapitalize="none" autoCorrect={false} placeholderTextColor={colors.muted} style={[styles.input, { color: colors.text, borderColor: colors.border }]} />
+          autoCapitalize="none" autoCorrect={false} maxLength={60} editable={!busy} placeholderTextColor={colors.muted} style={[styles.input, { color: colors.text, borderColor: colors.border }]} />
         <TextInput accessibilityLabel="Contraseña del vendedor" placeholder="Contraseña (mínimo 8 caracteres)" value={password}
-          onChangeText={setPassword} secureTextEntry autoCapitalize="none" autoCorrect={false}
+          onChangeText={setPassword} secureTextEntry autoCapitalize="none" autoCorrect={false} maxLength={72} editable={!busy}
           placeholderTextColor={colors.muted} style={[styles.input, { color: colors.text, borderColor: colors.border }]} />
         <PrimaryButton title="Guardar vendedor" onPress={save} loading={busy} />
       </FormModal>

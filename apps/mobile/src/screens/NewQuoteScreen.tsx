@@ -62,7 +62,7 @@ function NewQuoteScreenContent() {
   const [expandedItemKey, setExpandedItemKey] = useState<string | null>(null);
   const [unitItemKey, setUnitItemKey] = useState<string | null>(null);
   const [units, setUnits] = useState<string[]>(DEFAULT_UNITS);
-  const [nextNumber, setNextNumber] = useState<number | null>(null);
+  const [nextNumber, setNextNumber] = useState<number | string | null>(null);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [branchId, setBranchId] = useState<number | null>(null);
   const [branchesOpen, setBranchesOpen] = useState(false);

@@ -93,7 +93,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
   const [sale, setSale] = useState<SaleDetail | null>(null);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [branchId, setBranchId] = useState<number | null>(null);
-  const [nextNumber, setNextNumber] = useState<number | null>(null);
+  const [nextNumber, setNextNumber] = useState<number | string | null>(null);
   const [docTab, setDocTab] = useState<DocTab>('venta');
   const [metodo, setMetodo] = useState<SaleMetodoPago>(IS_NOVALED && !user?.permissions?.takePayments ? 'por_pagar' : 'efectivo');
   const [branchesOpen, setBranchesOpen] = useState(false);

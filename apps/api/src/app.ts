@@ -20,11 +20,12 @@ import { platformRouter } from './routes/platform';
 import { licenseRouter } from './routes/license';
 import { createQuoteScanRouter } from './routes/quoteScan';
 import type { QuoteImageReader } from './lib/quoteVision';
+import { offlineSync } from './middlewares/offlineSync';
 
 export function createApp(options: { quoteImageReader?: QuoteImageReader } = {}) {
   const app = express();
   app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
-  app.use(cors({ origin: config.corsOrigin }));
+  app.use(cors({ origin: config.corsOrigin, exposedHeaders: ['X-Lumis-Offline-Version', 'X-Lumis-Document-Version', 'X-Lumis-Operation-Replayed'] }));
   // La subida de comprobantes (ventas) y de logo/sello (negocio) viaja en
   // base64; esas ramas necesitan más margen que el resto de la API
   // (body-parser no re-parsea si ya se leyó el body).
@@ -32,6 +33,7 @@ export function createApp(options: { quoteImageReader?: QuoteImageReader } = {})
   app.use('/api/business', express.json({ limit: '12mb' }));
   app.use('/api/quotes/scan', express.json({ limit: '12mb' }));
   app.use(express.json({ limit: '1mb' }));
+  app.use('/api', offlineSync);
 
   app.use('/uploads', uploadsRouter);
   app.use('/health', healthRouter);

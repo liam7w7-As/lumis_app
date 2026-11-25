@@ -1,6 +1,7 @@
 import { TutorialProvider } from '../src/tutorials/TutorialProvider';
 import { FeedbackDialogHost } from '../src/components/FeedbackDialog';
 import { StockSelectionHost } from '../src/components/StockSelectionHost';
+import { OfflineStatus } from '../src/components/OfflineStatus';
 import { useEffect, useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider as NavigationThemeProvider } from 'expo-router';
@@ -65,6 +66,7 @@ function ThemedNavigator() {
           <Stack.Screen name="login" options={{ animation: reducedMotion ? 'none' : 'fade', animationDuration: 220 }} />
           <Stack.Screen name="dashboard" options={{ animation: reducedMotion ? 'none' : 'fade', animationDuration: 220 }} />
         </Stack>
+        <OfflineStatus />
       </View>
     </NavigationThemeProvider>
   );
