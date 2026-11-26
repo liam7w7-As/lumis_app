@@ -1,6 +1,7 @@
 import type { Product, QuoteScanLine } from './api';
 
 export interface ScannedQuoteItem {
+  fromScan: true;
   productId: number | null;
   name: string;
   quantity: number;
@@ -42,7 +43,7 @@ export function selectScanProduct(row: ScanReviewRow, product: Product): ScanRev
 export function newScanProduct(row: ScanReviewRow): ScanReviewRow {
   if (row.mode === 'new') return row;
   return { ...row, mode: 'new', productId: null, name: scanFieldText(row.source.name), unit: scanFieldText(row.source.unit),
-    unitPrice: scanFieldText(row.source.unitPrice) };
+    unitPrice: scanFieldText(row.source.unitPrice) || '0' };
 }
 
 export function reviewScanLines(lines: QuoteScanLine[]): ScanReviewRow[] {
@@ -53,7 +54,7 @@ export function reviewScanLines(lines: QuoteScanLine[]): ScanReviewRow[] {
       key: String(index), source, included: true,
       mode: source.candidates.length ? 'catalog' : 'new', productId: null,
       name: source.name, quantity: scanFieldText(source.quantity),
-      unit: scanFieldText(source.unit), unitPrice: scanFieldText(source.unitPrice),
+      unit: scanFieldText(source.unit), unitPrice: scanFieldText(source.unitPrice) || '0',
     };
     // A suggestion is never silently treated as a confirmed match.
     const exact = source.match === 'exact'
@@ -71,10 +72,10 @@ function decimal(value: string): number | null {
 
 export function scanReviewError(row: ScanReviewRow): string | null {
   if (!row.included) return null;
-  const nameLimit = row.mode === 'new' ? 150 : 255;
+  const nameLimit = 255;
   if (row.name.trim().length > nameLimit) return `Indica un nombre de hasta ${nameLimit} caracteres.`;
   const quantity = decimal(row.quantity);
-  if (row.quantity.trim() && (quantity === null || quantity <= 0)) return 'Indica una cantidad mayor a cero, con hasta 2 decimales.';
+  if (row.quantity.trim() && quantity === null) return 'Indica una cantidad válida, con hasta 2 decimales, o deja el campo vacío.';
   if (row.unit.trim().length > 20) return 'Indica una unidad de hasta 20 caracteres.';
   if (row.unitPrice.trim() && decimal(row.unitPrice) === null) return 'Indica un precio válido, con hasta 2 decimales.';
   return null;
@@ -92,15 +93,15 @@ export function scannedQuoteItems(rows: ScanReviewRow[]): ScannedQuoteItem[] {
     const product = row.mode === 'catalog'
       ? row.source.candidates.find(candidate => candidate.id === row.productId) : undefined;
     return {
+      fromScan: true,
       productId: product?.id ?? null,
       name: row.name.trim(), quantity: decimal(row.quantity) ?? 0, unit: row.unit.trim(),
       ...(!row.quantity.trim() ? { quantityText: '' } : {}),
       unitPrice: decimal(row.unitPrice) ?? 0,
-      ...(!row.unitPrice.trim() ? { unitPriceText: '' } : {}),
       marca: scanFieldText(product?.marca) || null,
       procedencia: scanFieldText(product?.procedencia) || null,
       codigoInterno: scanFieldText(product?.codigoInterno ?? row.source.codigoInterno) || null,
-      ...(product ? {} : { createProduct: row.mode === 'new' }),
+      ...(product ? {} : { createProduct: row.mode === 'new' && !!row.name.trim() && row.name.trim().length <= 150 && !!row.unit.trim() }),
     };
   });
 }

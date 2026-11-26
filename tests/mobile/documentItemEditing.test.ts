@@ -16,7 +16,7 @@ const tick = () => new Promise<void>(resolve => setImmediate(resolve));
 
 // Native events and React commits are separate so Quote's last keystroke can be
 // submitted before blur, while Sale's normal state commit is exercised as well.
-function harness(screen: Screen, novaled: boolean, newSale = false) {
+function harness(screen: Screen, novaled: boolean, newSale = false, firstItem: Record<string, unknown> = {}) {
   const hooks: unknown[] = [];
   let cursor = 0, effects: (() => void)[] = [], tree: Element;
   let access = { canEdit: true, proLocked: false, access: novaled ? 'allowed' : 'pro' };
@@ -37,6 +37,7 @@ function harness(screen: Screen, novaled: boolean, newSale = false) {
   record.items = documentItems.map((item, index) => ({
     ...item, marca: index === 0 ? null : 'Marca del segundo',
     procedencia: index === 0 ? null : 'Procedencia del segundo',
+    ...(index === 0 ? firstItem : {}),
   }));
   const react = {
     useState(initial: unknown) {
@@ -182,7 +183,7 @@ function harness(screen: Screen, novaled: boolean, newSale = false) {
       render();
     },
     input(field: 'Marca' | 'Procedencia' | 'Nombre' | 'Cantidad' | 'Precio', index = 0) {
-      const label = screen === 'quote' ? `${field} del artículo ${index + 1}` : `${field} del producto`;
+      const label = screen === 'quote' ? `${field === 'Precio' ? 'Precio unitario' : field} del artículo ${index + 1}` : `${field} del producto`;
       return find(node => node.type === 'TextInput' && node.props.accessibilityLabel === label);
     },
     hasMetadataInput() { return nodes(tree).some(node => node.type === 'TextInput' && String(node.props.accessibilityLabel).startsWith('Marca del')); },
@@ -203,6 +204,34 @@ function harness(screen: Screen, novaled: boolean, newSale = false) {
 
 for (const novaled of [false, true]) {
   const variant = novaled ? 'Lumis Novaled' : 'Lumis';
+  test(`${variant}: el detalle conserva vacíos los datos escaneados y guarda el precio vacío como cero`, async () => {
+    const app = harness('quote', novaled, false, { fromScan: true, description: '', quantity: 0, unit: '', unitPrice: 0, subtotal: 0 });
+    await app.mount(); app.open();
+    assert.equal(app.input('Nombre').value, '');
+    assert.equal(app.input('Cantidad').value, '');
+    assert.equal(app.input('Precio').value, '0');
+    app.input('Precio').onChangeText(''); app.render();
+    await app.commitItem();
+    assert.equal(app.itemPatches.length, 1);
+    assert.deepEqual(app.itemPatches[0].body, { description: '', quantity: 0, unitPrice: 0 });
+    app.render(); app.open();
+    assert.equal(app.input('Cantidad').value, '');
+    assert.equal(app.input('Precio').value, '0');
+    await app.preview(); await tick();
+    assert.deepEqual(app.routes, ['/quotes/42/preview']);
+    assert.deepEqual(app.messages, []);
+  });
+  test(`${variant}: un artículo manual sigue exigiendo cantidad y nombre al guardar`, async () => {
+    const app = harness('quote', novaled); await app.mount(); app.open();
+    app.input('Cantidad').onChangeText(''); app.render();
+    await app.commitItem();
+    assert.equal(app.itemPatches.length, 0);
+    assert.ok(app.messages.some(message => /cantidad/.test(message.message)));
+    app.input('Cantidad').onChangeText('1'); app.input('Nombre').onChangeText(''); app.render();
+    await app.commitItem();
+    assert.equal(app.itemPatches.length, 0);
+    assert.ok(app.messages.some(message => /nombre/.test(message.message)));
+  });
   test(`${variant}: la pestaña activa determina el botón y la ruta del PDF sin registrar una entrega`, async () => {
     const app = harness('sale', novaled); await app.mount();
     assert.equal(app.previewTitle(), 'Ver PDF de la venta');

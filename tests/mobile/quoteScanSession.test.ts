@@ -206,7 +206,7 @@ test('añadir permanece en el pie fijo y los controles llevan al inicio o al fin
   assert.deepEqual(app.scrollCalls, [{ to: 'end', animated: false }, { to: 'start', animated: false }]);
 });
 
-test('se incorporan datos incompletos para editarlos después, sin escribir cantidad uno ni precio cero', async () => {
+test('se incorporan datos incompletos sin inventar cantidad y con precio cero', async () => {
   let saved: scanReview.ScannedQuoteItem[] = [];
   const app = harness(items => { saved = items; }); app.render();
   app.press('Elegir imagen'); await tick();
@@ -217,7 +217,9 @@ test('se incorporan datos incompletos para editarlos después, sin escribir cant
   app.press('Añadir 1 producto'); await tick();
   assert.equal(saved.length, 1);
   assert.equal(saved[0].quantityText, '');
-  assert.equal(saved[0].unitPriceText, '');
+  assert.equal(saved[0].unitPrice, 0);
+  assert.equal(saved[0].fromScan, true);
+  assert.equal(app.find('Precio del producto 1').props.value, '0');
   assert.equal(saved[0].unit, '');
   assert.equal(app.closed(), true);
 });

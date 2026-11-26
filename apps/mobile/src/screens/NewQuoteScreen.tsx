@@ -113,7 +113,8 @@ function NewQuoteScreenContent() {
     const body = pending.body as unknown as Parameters<typeof api.createQuote>[0];
     void Promise.resolve().then(async () => {
       clear(); setBranchId(body.branchId);
-      for (const item of body.items) addItem({ productId: item.productId ?? null, name: item.description, quantity: item.quantity, unit: item.unit, unitPrice: item.unitPrice, marca: item.marca ?? null, procedencia: item.procedencia ?? null, createProduct: item.createProduct });
+      for (const item of body.items) addItem({ productId: item.productId ?? null, name: item.description, quantity: item.quantity, unit: item.unit, unitPrice: item.unitPrice, marca: item.marca ?? null, procedencia: item.procedencia ?? null, createProduct: item.createProduct,
+        ...(item.fromScan ? { fromScan: true, ...(item.quantity === 0 ? { quantityText: '' } : {}) } : {}) });
       if (body.clientId) { const result = await api.clients(token, { id: body.clientId }); setClient(result.clients.find(item => item.id === body.clientId) ?? null); }
     }).catch(() => {});
   }, [pending, saving, token, clear, addItem, setClient]);

@@ -251,6 +251,7 @@ export interface SaleFilters {
 }
 
 export interface QuoteItem {
+  fromScan?: boolean;
   id: number;
   productId: number | null;
   description: string;
@@ -289,6 +290,8 @@ export interface QuoteDetail {
 }
 
 export interface QuoteItemInput {
+  /** A scanned quotation line can retain missing descriptive fields and quantity. */
+  fromScan?: boolean;
   productId?: number | null;
   description: string;
   quantity: number;

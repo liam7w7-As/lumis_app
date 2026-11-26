@@ -12,6 +12,7 @@ export interface DraftClient {
 }
 
 export interface DraftItem {
+  fromScan?: boolean;
   key: string;
   productId: number | null;
   name: string;

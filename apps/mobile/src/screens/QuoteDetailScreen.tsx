@@ -37,7 +37,8 @@ import { useKeyboardAwareNotes } from '../hooks/useKeyboardAwareNotes';
 const METADATA_MAX_LENGTH = IS_NOVALED ? 150 : 100;
 
 function parseNum(raw: string): number {
-  return Number.parseFloat(raw.replace(',', '.'));
+  const value = raw.trim().replace(',', '.');
+  return /^(?:\d+(?:\.\d*)?|\.\d+)$/.test(value) ? Number(value) : NaN;
 }
 
 function QuoteDetailScreenContent() {
@@ -141,12 +142,13 @@ function QuoteDetailScreenContent() {
     const { quote: updated } = await api.quoteDetail(quote.id, token);
     setQuote((current) => current ? { ...current, items: updated.items, total: updated.total } : current);
   };
-  const itemDraftInput = () => {
+  const itemDraftInput = (item: QuoteItem) => {
     const description = editNameRef.current.trim();
-    if (!description) throw new Error('El nombre del artículo no puede quedar vacío.');
+    if (!description && !item.fromScan) throw new Error('El nombre del artículo no puede quedar vacío.');
     if (description.length > 255) throw new Error('El nombre del artículo admite hasta 255 caracteres.');
-    const quantity = parseNum(editQty), unitPrice = parseNum(editPrice);
-    if (!Number.isFinite(quantity) || quantity <= 0) throw new Error('La cantidad debe ser mayor a 0');
+    const quantity = item.fromScan && !editQty.trim() ? 0 : parseNum(editQty);
+    const unitPrice = item.fromScan && !editPrice.trim() ? 0 : parseNum(editPrice);
+    if (!Number.isFinite(quantity) || (item.fromScan ? quantity < 0 : quantity <= 0)) throw new Error(item.fromScan ? 'Escribe una cantidad válida, mayor o igual a 0.' : 'La cantidad debe ser mayor a 0');
     if (!Number.isFinite(unitPrice) || unitPrice < 0) throw new Error('Escribe un precio válido, mayor o igual a 0.');
     const marca = editMetadataRef.current.marca.trim() || null;
     const procedencia = editMetadataRef.current.procedencia.trim() || null;
@@ -161,7 +163,7 @@ function QuoteDetailScreenContent() {
     if(!canEdit) return;
     const item = quote.items.find((entry) => entry.id === expandedItem);
     if (!item) return;
-    const input = itemDraftInput();
+    const input = itemDraftInput(item);
     if (input.description !== item.description || input.quantity !== item.quantity || input.unitPrice !== item.unitPrice
       || input.marca !== undefined || input.procedencia !== undefined) {
       await api.updateQuoteItem(quote.id, item.id, input, token);
@@ -262,7 +264,7 @@ function QuoteDetailScreenContent() {
     editMetadataRef.current = { marca: item.marca ?? '', procedencia: item.procedencia ?? '', marcaTouched: false, procedenciaTouched: false };
     setEditMarca(item.marca ?? '');
     setEditProcedencia(item.procedencia ?? '');
-    setEditQty(String(item.quantity));
+    setEditQty(item.fromScan && item.quantity === 0 ? '' : String(item.quantity));
     setEditPrice(String(item.unitPrice));
   };
 
@@ -270,7 +272,7 @@ function QuoteDetailScreenContent() {
     if(!requestEdit())return;
     if (!token || !quote || itemBusy || saving) return;
     try {
-      const input = itemDraftInput();
+      const input = itemDraftInput(item);
       setItemBusy(true);
       await api.updateQuoteItem(quote.id, item.id, input, token);
       setExpandedItem(null);
@@ -440,7 +442,7 @@ function QuoteDetailScreenContent() {
                       {item.description}
                     </Text>
                     <Text style={[styles.itemDetail, { color: colors.muted }]}>
-                      {item.quantity} x {formatMoney(item.unitPrice)}
+                      {item.fromScan && item.quantity === 0 ? '' : item.quantity} x {formatMoney(item.unitPrice)}
                     </Text>
                   </View>
                   <Text style={[styles.itemSubtotal, { color: colors.text }]}>

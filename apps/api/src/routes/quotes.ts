@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { documentDateSchema } from '../lib/documentDate';
 import { assertWritable, consumeUsage } from '../lib/licenses';
 import { resolveQuoteProducts } from '../lib/quoteProducts';
+import { quoteItemSchema, quoteItemPatchSchema } from '../lib/quoteItem';
 import { registerItemActions } from './itemActions';
 import { PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import { z } from 'zod';
@@ -35,6 +36,7 @@ async function recalcTotal(conn: PoolConnection, quoteId: number): Promise<numbe
     [quoteId],
   );
   const total = round2(Number(rows[0]?.total ?? 0));
+  if (total > 9999999999.99) throw badRequest('El total de la cotización supera el máximo permitido');
   await conn.query('UPDATE quotes SET total = ? WHERE id = ?', [total, quoteId]);
   return total;
 }
@@ -105,19 +107,7 @@ const createQuoteSchema = z.object({
   showNotes: z.boolean().default(false),
   includeSignature: z.boolean().default(false),
   items: z
-    .array(
-      z.object({
-        productId: z.number().int().positive().nullable().optional(),
-        createProduct: z.boolean().optional(),
-        description: z.string().trim().min(1, 'La descripción es obligatoria').max(255),
-        quantity: z.number().positive('La cantidad debe ser mayor a 0'),
-        unit: z.string().trim().min(1).max(20).default('Unidad'),
-        unitPrice: z.number().min(0, 'El precio no puede ser negativo'),
-        codigoInterno: z.string().trim().max(50).nullable().optional(),
-        marca: z.string().trim().max(100).nullable().optional(),
-        procedencia: z.string().trim().max(100).nullable().optional(),
-      }),
-    )
+    .array(quoteItemSchema)
     .min(1, 'Agrega al menos un artículo')
     .max(200),
 });
@@ -155,7 +145,7 @@ quotesRouter.get('/:id', requireAuth, async (req: AuthRequest, res, next) => {
     }
     const [items] = await pool.query<RowDataPacket[]>(
       `SELECT id, product_id, description, quantity, unit, unit_price, subtotal,
-              codigo_interno, marca, procedencia
+              codigo_interno, marca, procedencia, from_scan
        FROM quote_items WHERE quote_id = ? ORDER BY sort_order, id`,
       [id],
     );
@@ -200,6 +190,7 @@ quotesRouter.get('/:id', requireAuth, async (req: AuthRequest, res, next) => {
           codigoInterno: (it.codigo_interno as string | null) ?? null,
           marca: (it.marca as string | null) ?? null,
           procedencia: (it.procedencia as string | null) ?? null,
+          ...(Number(it.from_scan) === 1 ? { fromScan: true } : {}),
         })),
       },
     });
@@ -278,6 +269,7 @@ quotesRouter.post('/', requireAuth, async (req: AuthRequest, res, next) => {
       };
     });
     const total = round2(lines.reduce((sum, l) => sum + l.subtotal, 0));
+    if (total > 9999999999.99) throw badRequest('El total de la cotización supera el máximo permitido');
 
     const [ins] = await conn.query<ResultSetHeader>(
       `INSERT INTO quotes (business_id, user_id, client_id, branch_id, status, notes, total,
@@ -289,10 +281,10 @@ quotesRouter.post('/', requireAuth, async (req: AuthRequest, res, next) => {
     for (const l of lines) {
       await conn.query(
         `INSERT INTO quote_items (quote_id, product_id, description, quantity, unit, unit_price, subtotal,
-          codigo_interno, marca, procedencia)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          codigo_interno, marca, procedencia, from_scan)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [ins.insertId, l.productId ?? null, l.description, l.quantity, l.unit, l.unitPrice, l.subtotal,
-          l.codigoInterno, l.marca, l.procedencia],
+          l.codigoInterno, l.marca, l.procedencia, l.fromScan ? 1 : 0],
       );
     }
 
@@ -337,17 +329,17 @@ quotesRouter.post('/:id/duplicate', requireAuth, async (req: AuthRequest, res, n
     );
     const [items] = await conn.query<RowDataPacket[]>(
       `SELECT product_id, description, quantity, unit, unit_price, subtotal,
-              codigo_interno, marca, procedencia
+              codigo_interno, marca, procedencia, from_scan
        FROM quote_items WHERE quote_id = ? ORDER BY sort_order, id`,
       [id],
     );
     for (const it of items) {
       await conn.query(
         `INSERT INTO quote_items (quote_id, product_id, description, quantity, unit, unit_price, subtotal,
-          codigo_interno, marca, procedencia)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          codigo_interno, marca, procedencia, from_scan)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [ins.insertId, it.product_id, it.description, it.quantity, it.unit, it.unit_price, it.subtotal,
-          it.codigo_interno, it.marca, it.procedencia],
+          it.codigo_interno, it.marca, it.procedencia, it.from_scan],
       );
     }
 
@@ -442,17 +434,6 @@ quotesRouter.patch('/:id', requireAuth, async (req: AuthRequest, res, next) => {
   }
 });
 
-const quoteItemSchema = z.object({
-  productId: z.number().int().positive().nullable().optional(),
-  description: z.string().trim().min(1, 'La descripción es obligatoria').max(255),
-  quantity: z.number().positive('La cantidad debe ser mayor a 0'),
-  unit: z.string().trim().min(1).max(20).default('Unidad'),
-  unitPrice: z.number().min(0, 'El precio no puede ser negativo'),
-  codigoInterno: z.string().trim().max(50).nullable().optional(),
-  marca: z.string().trim().max(100).nullable().optional(),
-  procedencia: z.string().trim().max(100).nullable().optional(),
-});
-
 quotesRouter.post('/:id/items', requireAuth, async (req: AuthRequest, res, next) => {
   const conn = await pool.getConnection();
   try {
@@ -478,13 +459,14 @@ quotesRouter.post('/:id/items', requireAuth, async (req: AuthRequest, res, next)
     const subtotal = round2(input.quantity * input.unitPrice);
     const [ins] = await conn.query<ResultSetHeader>(
       `INSERT INTO quote_items (quote_id, product_id, description, quantity, unit, unit_price, subtotal,
-        codigo_interno, marca, procedencia)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        codigo_interno, marca, procedencia, from_scan)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [quoteId, input.productId ?? null, input.description, input.quantity, input.unit,
         input.unitPrice, subtotal,
         snap?.codigo ?? input.codigoInterno ?? null,
         input.marca === undefined ? snap?.marca ?? null : input.marca || null,
-        input.procedencia === undefined ? snap?.procedencia ?? null : input.procedencia || null],
+        input.procedencia === undefined ? snap?.procedencia ?? null : input.procedencia || null,
+        input.fromScan ? 1 : 0],
     );
     const total = await recalcTotal(conn, quoteId);
     await conn.commit();
@@ -497,31 +479,22 @@ quotesRouter.post('/:id/items', requireAuth, async (req: AuthRequest, res, next)
   }
 });
 
-const patchItemSchema = z.object({
-  description: z.string().trim().min(1).max(255).optional(),
-  quantity: z.number().positive('La cantidad debe ser mayor a 0').optional(),
-  unit: z.string().trim().min(1).max(20).optional(),
-  unitPrice: z.number().min(0, 'El precio no puede ser negativo').optional(),
-  marca: z.string().trim().max(100).nullable().optional(),
-  procedencia: z.string().trim().max(100).nullable().optional(),
-});
-
 quotesRouter.patch('/:id/items/:itemId', requireAuth, async (req: AuthRequest, res, next) => {
   const conn = await pool.getConnection();
   try {
     const quoteId = parseId(req.params.id);
     const itemId = parseId(req.params.itemId);
-    const patch = patchItemSchema.parse(req.body);
     await conn.beginTransaction();
     await requireDraft(conn, quoteId);
     const [rows] = await conn.query<RowDataPacket[]>(
-      'SELECT quantity, unit_price FROM quote_items WHERE id = ? AND quote_id = ?',
+      'SELECT quantity, unit_price, from_scan FROM quote_items WHERE id = ? AND quote_id = ?',
       [itemId, quoteId],
     );
     const row = rows[0];
     if (!row) {
       throw notFound('Artículo no encontrado');
     }
+    const patch = quoteItemPatchSchema(Number(row.from_scan) === 1).parse(req.body);
     const sets: string[] = [];
     const params: unknown[] = [];
     if (patch.description !== undefined) {
@@ -552,6 +525,7 @@ quotesRouter.patch('/:id/items/:itemId', requireAuth, async (req: AuthRequest, r
     const quantity = patch.quantity ?? Number(row.quantity);
     const unitPrice = patch.unitPrice ?? Number(row.unit_price);
     const subtotal = round2(quantity * unitPrice);
+    if (subtotal > 9999999999.99) throw badRequest('El subtotal supera el máximo permitido');
     sets.push('subtotal = ?');
     params.push(subtotal, itemId, quoteId);
     await conn.query(

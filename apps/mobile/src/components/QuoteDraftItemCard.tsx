@@ -56,6 +56,8 @@ export function QuoteDraftItemCard({ item, index, expanded, onToggle, disabled =
     if (input) onInputFocus?.(input);
   };
   const blur = (field: QuoteDraftField) => {
+    if (field === 'unitPrice' && item.fromScan && !quoteDraftNumberText(item, 'unitPrice').trim())
+      onChange({ unitPrice: 0, unitPriceText: '0' });
     setFocused(null);
     setTouched(previous => ({ ...previous, [field]: true }));
   };

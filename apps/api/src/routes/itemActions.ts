@@ -47,7 +47,8 @@ export function registerItemActions(router: Router, kind: 'quote' | 'sale') {
         ' WHERE id = ? AND business_id = ? FOR UPDATE', [id, req.businessId]);
       if (!parent[0]) throw notFound();
       if (parent[0].state !== editable) throw conflict('Este documento no admite cambios');
-      const columns = 'product_id, description, quantity, unit, unit_price, subtotal, codigo_interno, marca, procedencia';
+      const columns = 'product_id, description, quantity, unit, unit_price, subtotal, codigo_interno, marca, procedencia' +
+        (kind === 'quote' ? ', from_scan' : '');
       const [result] = await conn.query<ResultSetHeader>('INSERT INTO ' + items + ' (' + parentKey + ', ' + columns +
         ') SELECT ' + parentKey + ', ' + columns + ' FROM ' + items + ' WHERE id = ? AND ' + parentKey + ' = ?', [itemId, id]);
       if (!result.affectedRows) throw notFound('Producto no encontrado');

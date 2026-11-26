@@ -79,14 +79,15 @@ export function buildCommercialDocument(input: CommercialInput): string {
     </table></div>` : signature || sealHtml ? `<div class="signature-section"><div class="signature-single"><div class="seal-container">${sealHtml}</div>
       ${signature ? `<div class="signature-line"></div><div>${escape(business.nombre)}</div>` : ''}</div></div>` : '';
   const rows = doc.items.map((item, i) => {
+    const scannedQuote = !!quote && 'fromScan' in item && item.fromScan === true;
     const metadata = !quote ? [business.pdf_mostrar_marca !== false && item.marca ? 'Marca: ' + item.marca : '', business.pdf_mostrar_procedencia !== false && item.procedencia ? 'Procedencia: ' + item.procedencia : ''].filter(Boolean).join(' · ') : '';
     return `<tr class="${i % 2 ? 'row-even' : 'row-odd'}"><td class="col-num">${i + 1}</td>
       ${!delivery ? `<td class="col-code">${escape(item.codigoInterno || '-')}</td>` : ''}
       <td class="col-art"><span class="art-name">${escape(item.description)}</span>${metadata ? `<div class="art-meta">${escape(metadata)}</div>` : ''}</td>
       ${showBrand ? `<td class="col-brand">${escape(item.marca?.trim() || '-')}</td>` : ''}
       ${showOrigin ? `<td class="col-origin">${escape(item.procedencia?.trim() || '-')}</td>` : ''}
-      <td class="col-qty">${quantity(item.quantity)}</td>
-      ${delivery ? '' : `<td class="col-unit">${escape(item.unit || 'Unidad')}</td><td class="col-price col-money">${currency} ${money(item.unitPrice)}</td><td class="col-subt col-money">${currency} ${money(item.subtotal)}</td>`}</tr>`;
+      <td class="col-qty">${scannedQuote && item.quantity === 0 ? '' : quantity(item.quantity)}</td>
+      ${delivery ? '' : `<td class="col-unit">${escape(scannedQuote ? item.unit : item.unit || 'Unidad')}</td><td class="col-price col-money">${currency} ${money(item.unitPrice)}</td><td class="col-subt col-money">${currency} ${money(item.subtotal)}</td>`}</tr>`;
   }).join('');
   const fontFaces = (['regular', 'medium', 'semibold', 'bold'] as const).map((key, i) => fonts[key] ? `@font-face{font-family:Poppins;font-weight:${[400,500,600,700][i]};src:url("${fonts[key]}") format('truetype')}` : '').join('\n')
     + (fonts.footer ? `@font-face{font-family:Prompt;font-weight:400;src:url("${fonts.footer}") format('truetype')}` : '');

@@ -213,6 +213,39 @@ test('magic scanning cannot be queued without internet', async t => {
   assert.deepEqual(app.queue(), []); app.stop();
 });
 
+for (const connected of [false, true]) test(`${connected ? 'Novaled' : 'Lumis'} conserva y sincroniza una cotización escaneada incompleta con precio cero`, async t => {
+  const disk = await sqliteFixture(t), server = backend();
+  const scope = `${connected ? 'novaled' : 'lumis'}/api/company12/scan-empty`;
+  let app = await prime(await disk.open(), server, scope, connected);
+  const quote = (await app.request('/api/quotes', { method: 'POST', body: { items: [
+    { fromScan: true, productId: null, description: '', quantity: 0, unit: '', unitPrice: 0, createProduct: false },
+    { fromScan: true, productId: null, description: 'Leído', quantity: 2, unit: '', unitPrice: 0, createProduct: false },
+  ] } })).quote;
+  assert.equal(quote.total, 0);
+  assert.equal(quote.items[0].description, '');
+  assert.equal(quote.items[0].quantity, 0);
+  assert.equal(quote.items[0].unitPrice, 0);
+  await app.request(`/api/quotes/${quote.id}/items/${quote.items[0].id}`, { method: 'PATCH', body: { description: 'Revisado' } });
+  app.stop(); disk.close();
+  app = await session(await disk.open(), server, scope, connected); app.setOnline(false);
+  const restored = (await app.request(`/api/quotes/${quote.id}`)).quote;
+  assert.equal(restored.items[0].fromScan, true);
+  assert.equal(restored.items[0].description, 'Revisado');
+  assert.equal(restored.items[0].unit, '');
+  assert.equal(restored.items[0].quantity, 0);
+  assert.equal(restored.items[0].unitPrice, 0);
+  await assert.rejects(app.request('/api/sales/from-quote', { method: 'POST', body: { quoteId: quote.id } }), /antes de convertir/);
+  app.setOnline(true); await app.synchronize();
+  assert.equal(app.queue().length, 0);
+  const remote = Object.values(server.records.quotes)[0];
+  assert.equal(remote.items[0].fromScan, true);
+  assert.equal(remote.items[0].description, 'Revisado');
+  assert.equal(remote.items[0].unit, '');
+  assert.equal(remote.items[0].quantity, 0);
+  assert.equal(remote.items[0].unitPrice, 0);
+  app.stop();
+});
+
 test('acknowledged document creation survives a lost detail read before mapping dependent item edits', async t => {
   const disk = await sqliteFixture(t), server = backend(); let app = await prime(await disk.open(), server);
   const quote = (await app.request('/api/quotes', { method: 'POST', body: { items: [{ description: 'Original', quantity: 1, unitPrice: 10, unit: 'Unidad' }] } })).quote;

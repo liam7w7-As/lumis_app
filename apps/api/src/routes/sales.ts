@@ -1054,6 +1054,9 @@ salesRouter.post('/from-quote', requireAuth, async (req: AuthRequest, res, next)
        FROM quote_items WHERE quote_id = ? ORDER BY sort_order, id`,
       [quoteId],
     );
+    if (items.some(item => !String(item.description ?? '').trim() || !String(item.unit ?? '').trim() || Number(item.quantity) <= 0)) {
+      throw badRequest('Completa el nombre, la unidad y la cantidad de los artículos antes de convertir la cotización en venta');
+    }
     const [sale] = await conn.query<ResultSetHeader>(
       `INSERT INTO sales (business_id, user_id, client_id, branch_id, quote_id, total,
           notes, include_sello, show_notes, include_signature, client_details, initial_payment) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, 0)`,

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { Product, QuoteScanLine } from '../../apps/mobile/src/lib/api';
 import { newScanProduct, reviewScanLines, scannedQuoteItems, scanFieldText, scanReviewError, selectScanProduct } from '../../apps/mobile/src/lib/quoteScan';
-import { buildQuoteItems, quoteDraftNumberText, quoteDraftSubtotal, QuoteDraftValidationError } from '../../apps/mobile/src/lib/quoteDraftEditing';
+import { buildQuoteItems, quoteDraftNumberText, quoteDraftSubtotal } from '../../apps/mobile/src/lib/quoteDraftEditing';
 
 const product: Product = { id: 41, name: 'Interruptor 32A', price: 65, unit: 'Unidad', stock: 12,
   description: null, codigoInterno: 'TM-32', marca: 'Aurora', procedencia: 'Bolivia' };
@@ -18,7 +18,7 @@ test('los datos ausentes se muestran vacíos, incluidos los marcadores de texto 
     quantity: null, unit: 'null', unitPrice: null, codigoInterno: 'null' })]);
   assert.equal(empty.quantity, '');
   assert.equal(empty.unit, '');
-  assert.equal(empty.unitPrice, '');
+  assert.equal(empty.unitPrice, '0');
   assert.equal(empty.source.codigoInterno, null);
 });
 
@@ -38,7 +38,7 @@ test('una coincidencia exacta usa identidad y datos reales del catálogo; no cam
   assert.equal(row.unitPrice, '65');
   assert.equal(row.unit, 'Unidad');
   const [item] = scannedQuoteItems([row]);
-  assert.deepEqual(item, { productId: 41, name: 'Interruptor 32A', quantity: 2, unit: 'Unidad',
+  assert.deepEqual(item, { fromScan: true, productId: 41, name: 'Interruptor 32A', quantity: 2, unit: 'Unidad',
     unitPrice: 65, marca: 'Aurora', procedencia: 'Bolivia', codigoInterno: 'TM-32' });
 });
 
@@ -59,13 +59,14 @@ test('las sugerencias no se confirman solas y una cantidad ilegible permanece va
 test('un producto nuevo admite campos vacíos y se marca para crear únicamente al guardar la cotización', () => {
   const [row] = reviewScanLines([source({ name: 'Luminaria nueva', candidates: [], selectedProductId: null, match: 'none' })]);
   assert.equal(row.mode, 'new');
-  assert.equal(row.unitPrice, '');
+  assert.equal(row.unitPrice, '0');
   assert.equal(scanReviewError(row), null);
   assert.equal(scanReviewError({ ...row, unit: 'Unidad' }), null);
   const incomplete = { ...scannedQuoteItems([row])[0], key: 'incomplete' };
-  assert.equal(quoteDraftNumberText(incomplete, 'unitPrice'), '');
-  assert.equal(quoteDraftSubtotal(incomplete), null);
-  assert.throws(() => buildQuoteItems([incomplete]), QuoteDraftValidationError, 'No se guarda un precio vacío como si fuera cero');
+  assert.equal(quoteDraftNumberText(incomplete, 'unitPrice'), '0');
+  assert.equal(quoteDraftSubtotal(incomplete), 0);
+  assert.equal(buildQuoteItems([incomplete])[0].unitPrice, 0);
+  assert.equal(buildQuoteItems([incomplete])[0].unit, '');
   const [item] = scannedQuoteItems([{ ...row, unit: 'Unidad', unitPrice: '12,50', quantity: '1,5' }]);
   assert.equal(item.productId, null);
   assert.equal(item.createProduct, true);
@@ -81,15 +82,17 @@ test('todos los inputs pueden quedar vacíos al incorporar y conservan su vacío
   assert.equal(item.name, '');
   assert.equal(item.unit, '');
   assert.equal(quoteDraftNumberText(item, 'quantity'), '');
-  assert.equal(quoteDraftNumberText(item, 'unitPrice'), '');
-  assert.equal(quoteDraftSubtotal(item), null);
+  assert.equal(quoteDraftNumberText(item, 'unitPrice'), '0');
+  assert.equal(quoteDraftSubtotal(item), 0);
+  assert.deepEqual(buildQuoteItems([item])[0], { fromScan: true, productId: null, description: '', quantity: 0,
+    unit: '', unitPrice: 0, marca: null, procedencia: null, createProduct: false });
 });
 
 test('quitar una coincidencia no copia su precio a otro producto y no borra una edición al pulsar la opción ya activa', () => {
   const [row] = reviewScanLines([source({ name: 'Interruptor leído distinto' })]);
   const fresh = newScanProduct(row);
   assert.equal(fresh.name, 'Interruptor leído distinto');
-  assert.equal(fresh.unitPrice, '');
+  assert.equal(fresh.unitPrice, '0');
   const edited = { ...fresh, unit: 'Unidad', unitPrice: '80' };
   assert.equal(newScanProduct(edited), edited);
   const selected = { ...selectScanProduct(fresh, product), unitPrice: '70' };
@@ -102,15 +105,17 @@ test('los productos excluidos no se añaden ni impiden confirmar y se rechazan n
   assert.equal(scannedQuoteItems(rows).length, 1);
   assert.equal(scanReviewError(rows[1]), null);
   assert.throws(() => scannedQuoteItems(rows.map(row => ({ ...row, included: false }))), /al menos un producto/);
-  for (const quantity of ['3abc', '1.2.3', '-2', '0', '1,234', '1e3'])
+  for (const quantity of ['3abc', '1.2.3', '-2', '1,234', '1e3'])
     assert.match(scanReviewError({ ...rows[0], quantity })!, /cantidad/);
   assert.equal(scanReviewError({ ...rows[0], unitPrice: '0' }), null, 'Un precio cero debe ser explícito, no un valor supuesto');
+  assert.equal(scanReviewError({ ...rows[0], quantity: '0' }), null);
 });
 
-test('el nombre de un producto nuevo respeta el límite de catálogo sin reducir descripciones existentes', () => {
+test('una descripción escaneada larga permanece en el documento sin crear un producto de catálogo inválido', () => {
   const [existing] = reviewScanLines([source()]);
   assert.equal(scanReviewError({ ...existing, name: 'A'.repeat(200) }), null);
-  const fresh = { ...newScanProduct(existing), name: 'A'.repeat(151), unit: 'Unidad', unitPrice: '1' };
-  assert.match(scanReviewError(fresh)!, /150 caracteres/);
-  assert.equal(scanReviewError({ ...fresh, name: 'A'.repeat(150) }), null);
+  const fresh = { ...newScanProduct(existing), name: 'A'.repeat(200), unit: 'Unidad', unitPrice: '1' };
+  assert.equal(scanReviewError(fresh), null);
+  assert.equal(scannedQuoteItems([fresh])[0].createProduct, false);
+  assert.match(scanReviewError({ ...fresh, name: 'A'.repeat(256) })!, /255 caracteres/);
 });

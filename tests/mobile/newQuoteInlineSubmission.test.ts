@@ -171,6 +171,19 @@ test('una cantidad o precio vacío conserva el texto, evita guardar y permite vo
   }
 });
 
+test('Guardar y ver PDF admite un artículo del escaneo sin nombre, cantidad ni unidad y envía precio cero', async () => {
+  const app = harness([product({ fromScan: true, productId: null, createProduct: true, name: '', quantityText: '', unit: '', unitPriceText: '' })]);
+  app.render();
+  const sending = app.saveHandler()();
+  assert.equal(app.requests.length, 1);
+  assert.deepEqual(plain(app.requests[0].body.items), [{ fromScan: true, productId: null, description: '', quantity: 0,
+    unit: '', unitPrice: 0, marca: 'Marca original', procedencia: 'Bolivia', createProduct: false }]);
+  assert.equal(app.messages.length, 0);
+  app.requests[0].result.resolve({ quote: { id: 25 } });
+  await sending;
+  assert.deepEqual(app.routes, ['/quotes/25/preview?created=1']);
+});
+
 test('dos toques en Guardar comparten el envío y los eventos pendientes no editan ni eliminan líneas mientras se guarda', async () => {
   const app = harness([product()]); app.render();
   const card = app.card(), save = app.saveHandler();

@@ -13,6 +13,30 @@ import {
   sampleFonts,
 } from "./documentFixtures";
 
+test('el PDF de cotización mantiene nombre, cantidad y unidad escaneados vacíos y muestra precio cero', () => {
+  const html = buildQuoteHtml({
+    quote: { ...sampleQuote, total: 0, items: [{ ...sampleQuote.items[0], fromScan: true,
+      description: '', quantity: 0, unit: '', unitPrice: 0, subtotal: 0 }] },
+    business: sampleBusiness, branchName: null, images: sampleImages, fonts: sampleFonts,
+  });
+  const rows = html.match(/<table class="items">[\s\S]*?<tbody>([\s\S]*?)<\/tbody>/)![1];
+  assert.match(rows, /<span class="art-name"><\/span>/);
+  assert.match(rows, /<td class="col-qty"><\/td>/);
+  assert.match(rows, /<td class="col-unit"><\/td>/);
+  assert.match(rows, /<td class="col-price col-money">Bs\. 0\.00<\/td>/);
+  assert.doesNotMatch(rows, /Unidad|NaN|null|undefined/);
+});
+
+test('los valores leídos del escaneo permanecen visibles en el PDF y los manuales conservan su unidad de respaldo', () => {
+  const input = { business: sampleBusiness, branchName: null, images: sampleImages, fonts: sampleFonts };
+  const html = buildQuoteHtml({ ...input, quote: { ...sampleQuote, items: [{ ...sampleQuote.items[0], fromScan: true, quantity: 2.5, unit: 'Metro', unitPrice: 3 }] } });
+  assert.match(html, /<td class="col-qty">2\.50<\/td>/);
+  assert.match(html, /<td class="col-unit">Metro<\/td>/);
+  assert.match(html, /<td class="col-price col-money">Bs\. 3\.00<\/td>/);
+  const manual = buildQuoteHtml({ ...input, quote: { ...sampleQuote, items: [{ ...sampleQuote.items[0], unit: '' }] } });
+  assert.match(manual, /<td class="col-unit">Unidad<\/td>/);
+});
+
 test('PDFs use and escape document client details, including explicit empty values', () => {
   const details = { name: 'Proyecto <Norte>', phone: '71111111', email: 'norte@example.com', address: 'Av. <Principal>', nit: '12345' };
   const common = { business: sampleBusiness, branchName: null, images: sampleImages, fonts: sampleFonts };

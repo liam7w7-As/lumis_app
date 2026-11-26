@@ -68,3 +68,18 @@ test('límites de cantidad, precio, subtotal y total evitan importes fuera de la
   assert.ok(quoteDraftErrors(item({ name: ' ' })).name);
   assert.ok(quoteDraftErrors(item({ unit: ' ' })).unit);
 });
+
+test('un artículo escaneado se guarda con datos vacíos y precio cero, sin relajar los artículos manuales', () => {
+  const row = item({ fromScan: true, productId: null, createProduct: true, name: '', quantityText: '', unit: '', unitPriceText: '' });
+  assert.deepEqual(quoteDraftErrors(row), {});
+  assert.equal(quoteDraftSubtotal(row), 0);
+  assert.deepEqual(buildQuoteItems([row])[0], { fromScan: true, productId: null, description: '', quantity: 0,
+    unit: '', unitPrice: 0, marca: 'Aurora', procedencia: 'Bolivia', createProduct: false });
+  assert.ok(quoteDraftErrors({ ...row, fromScan: false }).name);
+  assert.ok(quoteDraftErrors({ ...row, fromScan: false }).quantity);
+  assert.ok(quoteDraftErrors({ ...row, fromScan: false }).unitPrice);
+  assert.ok(quoteDraftErrors({ ...row, fromScan: false }).unit);
+  const priced = item({ fromScan: true, quantityText: '', unitPriceText: '12,50' });
+  assert.equal(buildQuoteItems([priced])[0].unitPrice, 12.5);
+  assert.equal(quoteDraftSubtotal(priced), 0);
+});

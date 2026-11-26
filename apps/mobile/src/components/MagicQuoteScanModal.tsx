@@ -319,7 +319,7 @@ function ScanSession({ visible, token, onClose, onAdd, maxItems = 200 }: MagicQu
           </View>
           <Text style={[styles.caption, { color: colors.muted }]}>Leído: {row.source.name}</Text>
           <Text style={[styles.label, { color: colors.muted }]}>Nombre del producto</Text>
-          <TextInput value={row.name} onChangeText={name => update(row.key, { name })} editable={editable} maxLength={row.mode === 'new' ? 150 : 255}
+          <TextInput value={row.name} onChangeText={name => update(row.key, { name })} editable={editable} maxLength={255}
             accessibilityLabel={`Nombre del producto ${index + 1}`} placeholder="Nombre del producto" placeholderTextColor={colors.muted} style={field} />
           {!!row.source.candidates.length && <View style={styles.candidates}>
             <Text style={[styles.label, { color: colors.muted }]}>Coincidencias del catálogo</Text>
@@ -355,13 +355,14 @@ function ScanSession({ visible, token, onClose, onAdd, maxItems = 200 }: MagicQu
             <View style={styles.field}>
               <Text style={[styles.label, { color: colors.muted }]}>Precio unitario</Text>
               <TextInput value={row.unitPrice} onChangeText={unitPrice => update(row.key, { unitPrice })} keyboardType="decimal-pad" editable={editable}
+                onEndEditing={({ nativeEvent }) => { if (!nativeEvent.text.trim()) update(row.key, { unitPrice: '0' }); }}
                 maxLength={12} accessibilityLabel={`Precio del producto ${index + 1}`} placeholder="Precio" placeholderTextColor={colors.muted} style={field} />
             </View>
           </View>
           {!!rowError && <Text style={[styles.caption, { color: colors.error }]}>{rowError}</Text>}
         </View>;
       })}
-      <Text style={[styles.description, { color: colors.muted }]}>Puedes completar los campos vacíos en la cotización. Las coincidencias sin elegir se añadirán sin vincular al catálogo.</Text>
+      <Text style={[styles.description, { color: colors.muted }]}>Los datos faltantes pueden quedar vacíos. El precio que falte se guardará como 0. Las coincidencias sin elegir se añadirán sin vincular al catálogo.</Text>
       {rows.length >= 100 && <Text style={[styles.description, { color: colors.primary }]}>Esta hoja alcanzó los 100 productos. Si quedan líneas sin leer, fotografía esa parte con «Añadir hoja».</Text>}
       {overLimit && <Text accessibilityRole="alert" style={[styles.description, { color: colors.error }]}>Seleccionaste {selectedCount} productos. Puedes añadir {maxItems}; desmarca los que no necesitas.</Text>}
       {!!pendingSheets && <Text style={[styles.description, { color: colors.muted }]}>Completa o quita las hojas pendientes para añadir todos los productos juntos.</Text>}

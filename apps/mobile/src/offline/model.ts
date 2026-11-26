@@ -20,9 +20,10 @@ function total(doc: Data) {
             doc.estadoPago = doc.totalPagado >= doc.total - .005 ? 'pagado' : 'por_cobrar';
     }
 }
-function item(state: State, data: Data): Data {
+function item(state: State, data: Data, quotation = false): Data {
     const product = data.productId ? state.records[keyOf('products', data.productId)]?.data : null;
-    if (!data.description?.trim() || !Number.isFinite(data.quantity) || data.quantity <= 0 || !Number.isFinite(data.unitPrice) || data.unitPrice < 0)
+    const scanned = quotation && data.fromScan === true;
+    if ((!scanned && !data.description?.trim()) || !Number.isFinite(data.quantity) || (scanned ? data.quantity < 0 : data.quantity <= 0) || !Number.isFinite(data.unitPrice) || data.unitPrice < 0)
         throw new Error('Revisa el nombre, la cantidad y el precio del artículo.');
     return { productId: null, unit: 'Unidad', codigoInterno: product?.codigoInterno ?? null, marca: product?.marca ?? null, procedencia: product?.procedencia ?? null, ...clone(data), id: allocate(state), subtotal: Math.round(data.quantity * data.unitPrice * 100) / 100 };
 }
@@ -125,7 +126,7 @@ export function applyMutation(state: State, path: string, method: string, body: 
             const branch = body.branchId ? record(state, 'branches', body.branchId) : null;
             const seller = body.agentId ? record(state, 'agents', body.agentId).name : user.name;
             state.values.documentSequence = (state.values.documentSequence ?? 0) + 1;
-            data = { ...data, number: 'P-' + state.device.toUpperCase() + '-' + state.values.documentSequence, clientId: body.clientId ?? null, client: client ? clone(client) : null, clientName: client?.name ?? null, branchId: body.branchId ?? null, branchName: branch?.name ?? null, sellerName: seller, agentId: body.agentId ?? null, createdAt: body.createdAt ?? now, notes: body.notes ?? null, showNotes: false, includeSignature: false, items: body.items.map((value: Data) => item(state, value)), total: 0 };
+            data = { ...data, number: 'P-' + state.device.toUpperCase() + '-' + state.values.documentSequence, clientId: body.clientId ?? null, client: client ? clone(client) : null, clientName: client?.name ?? null, branchId: body.branchId ?? null, branchName: branch?.name ?? null, sellerName: seller, agentId: body.agentId ?? null, createdAt: body.createdAt ?? now, notes: body.notes ?? null, showNotes: false, includeSignature: false, items: body.items.map((value: Data) => item(state, value, kind === 'quotes')), total: 0 };
             if (kind === 'quotes')
                 Object.assign(data, { status: 'borrador', includeSeal: false, versionNumero: 1, fechaVencimiento: null, terminos: state.values['/api/business']?.business?.terminos_default ?? null });
             else {
@@ -143,6 +144,8 @@ export function applyMutation(state: State, path: string, method: string, body: 
     }
     if (kind === 'sales' && suffix === '/from-quote') {
         const quote = record(state, 'quotes', body.quoteId);
+        if (quote.items.some((line: Data) => line.fromScan && (!line.description?.trim() || !line.unit?.trim() || !(line.quantity > 0))))
+            throw Error('Completa el nombre, la cantidad y la unidad de los artículos escaneados antes de convertir la cotización en venta.');
         const result = applyMutation(state, '/api/sales', 'POST', { ...clone(quote), metodoPago: 'por_pagar', items: quote.items }, user);
         quote.status = 'convertida';
         record(state, 'sales', result.sale.id).quoteId = quote.id;
@@ -224,14 +227,17 @@ export function applyMutation(state: State, path: string, method: string, body: 
                 throw Error('Orden de artículos inválido.');
         }
         else if (method === 'POST') {
-            result = item(state, line[2] ? doc.items[index] : body);
+            result = item(state, line[2] ? doc.items[index] : body, kind === 'quotes');
             doc.items.push(result);
         }
         else if (index >= 0 && method === 'DELETE')
             doc.items.splice(index, 1);
         else if (index >= 0) {
-            result = Object.assign(doc.items[index], clone(body));
-            if (!result.description?.trim() || result.quantity <= 0 || result.unitPrice < 0)
+            const scanned = kind === 'quotes' && doc.items[index].fromScan === true;
+            const patch = clone(body);
+            delete patch.fromScan;
+            result = Object.assign(doc.items[index], patch);
+            if ((!scanned && !result.description?.trim()) || !Number.isFinite(result.quantity) || (scanned ? result.quantity < 0 : result.quantity <= 0) || !Number.isFinite(result.unitPrice) || result.unitPrice < 0)
                 throw Error('Revisa los datos del artículo.');
         }
         else

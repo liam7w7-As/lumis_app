@@ -1,0 +1,2 @@
+ALTER TABLE quote_items
+  ADD COLUMN from_scan TINYINT(1) NOT NULL DEFAULT 0;
