@@ -19,13 +19,14 @@ const response = (id: string): QuoteScan => ({ id, lines: [{ name: 'Lámpara', q
 
 // Execute the real modal with controlled native picking, requests and React commits.
 function harness(add: (items: scanReview.ScannedQuoteItem[]) => Promise<void> | void = () => {}, options: {
-  maxItems?: number; pick?: () => Promise<{ uri: string; base64: string; ext: string } | null>;
+  maxItems?: number; reducedMotion?: boolean; pick?: () => Promise<{ uri: string; base64: string; ext: string } | null>;
 } = {}) {
   const hooks: unknown[] = [];
   let cursor = 0, effects: (() => void)[] = [];
   let visible = true, closeCalls = 0;
   let photoNumber = 0;
   const confirmations: { text: string; onPress?: () => void; style?: string }[][] = [];
+  const scrollCalls: { to: string; animated: boolean }[] = [];
   const requests: { input: { scanId: string; base64: string }; result: ReturnType<typeof deferred<{ scan: QuoteScan }>> }[] = [];
   const react = {
     useState(initial: unknown) {
@@ -49,7 +50,8 @@ function harness(add: (items: scanReview.ScannedQuoteItem[]) => Promise<void> | 
   const pick = options.pick ?? (async () => { photoNumber += 1; return { uri: `file:///private/photo-${photoNumber}.png`, base64: `image-bytes-${photoNumber}`, ext: 'png' }; });
   const modules: Record<string, unknown> = {
     react, 'react/jsx-runtime': { jsx, jsxs: jsx },
-    'react-native': { ...Object.fromEntries(['ActivityIndicator', 'Image', 'Pressable', 'Text', 'TextInput', 'View'].map(name => [name, name])),
+    'react-native': { ...Object.fromEntries(['ActivityIndicator', 'Image', 'Pressable', 'ScrollView', 'Text', 'TextInput', 'View'].map(name => [name, name])),
+      Keyboard: { dismiss() {} },
       StyleSheet: { create: (value: unknown) => value } },
     '@expo/vector-icons/Ionicons': { default: 'Icon' },
     '../lib/api': { api: { scanQuote(input: { scanId: string; base64: string }) {
@@ -59,6 +61,7 @@ function harness(add: (items: scanReview.ScannedQuoteItem[]) => Promise<void> | 
     '../lib/quoteScan': scanReview,
     '../lib/feedback': { feedback: { warning(_title: string, _message: string, actions: typeof confirmations[number]) { confirmations.push(actions); } } },
     '../context/BusinessContext': { useMoney: () => (value: number) => 'Bs. ' + value },
+    '../context/MotionContext': { useReducedMotion: () => !!options.reducedMotion },
     '../theme/ThemeContext': { useTheme: () => ({ colors: { text: '#111111', muted: '#666666', primary: '#5842f4', border: '#cccccc', background: '#ffffff', error: '#cc0000' }, dark: false }) },
     './FormModal': { FormModal: 'FormModal' }, './PrimaryButton': { PrimaryButton: 'PrimaryButton' },
   };
@@ -71,6 +74,10 @@ function harness(add: (items: scanReview.ScannedQuoteItem[]) => Promise<void> | 
     cursor = 0; effects = [];
     const session = exports.MagicQuoteScanModal({ visible, token: 'session-user-one', maxItems: options.maxItems, onClose: () => { visible = false; closeCalls += 1; }, onAdd: add });
     tree = (session.type as (props: Record<string, unknown>) => Element)(session.props);
+    (tree.props.scrollRef as { current: unknown }).current = {
+      scrollTo: (options: { animated: boolean }) => scrollCalls.push({ to: 'start', animated: options.animated }),
+      scrollToEnd: (options: { animated: boolean }) => scrollCalls.push({ to: 'end', animated: options.animated }),
+    };
     effects.forEach(run => run());
     return tree;
   };
@@ -78,12 +85,12 @@ function harness(add: (items: scanReview.ScannedQuoteItem[]) => Promise<void> | 
     if (Array.isArray(value)) return value.flatMap(nodes);
     if (!value || typeof value !== 'object' || !('props' in value)) return [];
     const item = value as Element;
-    return [item, ...nodes(item.props.children)];
+    return [item, ...nodes(item.props.children), ...nodes(item.props.footer)];
   }
   function text(value: unknown): string {
     if (typeof value === 'string' || typeof value === 'number') return String(value);
     if (Array.isArray(value)) return value.map(text).join('');
-    return value && typeof value === 'object' && 'props' in value ? text((value as Element).props.children) : '';
+    return value && typeof value === 'object' && 'props' in value ? text([(value as Element).props.children, (value as Element).props.footer]) : '';
   }
   return {
     requests, render,
@@ -94,6 +101,8 @@ function harness(add: (items: scanReview.ScannedQuoteItem[]) => Promise<void> | 
     press(label: string) { const node = this.find(label); (node.props.onPress as () => void)(); },
     labels: () => text(tree),
     elements: () => nodes(tree),
+    contentElements: () => nodes(tree.props.children),
+    footerElements: () => nodes(tree.props.footer), scrollCalls,
     confirmRemoval() { confirmations.at(-1)?.find(action => action.style === 'destructive')?.onPress?.(); },
   };
 }
@@ -169,7 +178,7 @@ test('los errores al confirmar aparecen junto al botón de añadir, después de 
   const app = harness(() => { calls += 1; }); app.render();
   app.press('Elegir imagen'); await tick();
   const scan = app.requests[0], result = response(scan.input.scanId);
-  result.lines[0].quantity = null;
+  result.lines[0].quantity = -1;
   scan.result.resolve({ scan: result });
   await tick(); app.render();
   app.press('Añadir 1 producto'); app.render();
@@ -182,6 +191,35 @@ test('los errores al confirmar aparecen junto al botón de añadir, después de 
   assert.ok(errorIndex > lastFieldIndex && errorIndex < buttonIndex);
   assert.equal(calls, 0);
   assert.match(app.labels(), /Hoja 1, producto 1: Indica una cantidad/);
+});
+
+test('añadir permanece en el pie fijo y los controles llevan al inicio o al final de 100 productos', async () => {
+  const app = harness(() => {}, { reducedMotion: true }); app.render();
+  app.press('Elegir imagen'); await tick();
+  const scan = app.requests[0], result = response(scan.input.scanId);
+  result.lines = Array.from({ length: 100 }, (_, index) => ({ ...result.lines[0], name: `Artículo ${index + 1}` }));
+  scan.result.resolve({ scan: result }); await tick(); app.render();
+  assert.ok(app.footerElements().some(node => node.props.title === 'Añadir 100 productos'));
+  assert.ok(!app.contentElements().some(node => node.props.title === 'Añadir 100 productos'));
+  app.press('Ir al final de la revisión');
+  app.press('Ir al inicio de la revisión');
+  assert.deepEqual(app.scrollCalls, [{ to: 'end', animated: false }, { to: 'start', animated: false }]);
+});
+
+test('se incorporan datos incompletos para editarlos después, sin escribir cantidad uno ni precio cero', async () => {
+  let saved: scanReview.ScannedQuoteItem[] = [];
+  const app = harness(items => { saved = items; }); app.render();
+  app.press('Elegir imagen'); await tick();
+  const scan = app.requests[0], result = response(scan.input.scanId);
+  result.lines[0] = { ...result.lines[0], quantity: null, unitPrice: null, unit: null };
+  scan.result.resolve({ scan: result }); await tick(); app.render();
+  assert.equal(app.find('Añadir 1 producto').props.disabled, false);
+  app.press('Añadir 1 producto'); await tick();
+  assert.equal(saved.length, 1);
+  assert.equal(saved[0].quantityText, '');
+  assert.equal(saved[0].unitPriceText, '');
+  assert.equal(saved[0].unit, '');
+  assert.equal(app.closed(), true);
 });
 
 test('cuatro hojas de 50 productos conservan las ediciones y se incorporan juntas en orden', async () => {

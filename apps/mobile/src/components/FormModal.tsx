@@ -1,12 +1,13 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, Ref } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/ThemeContext';
 import { AppModal } from './AppModal';
 
-export function FormModal({ visible, title, onClose, children, icon = 'create-outline' }: {
+export function FormModal({ visible, title, onClose, children, icon = 'create-outline', footer, scrollRef }: {
   visible: boolean; title: string; onClose: () => void; children: ReactNode; icon?: keyof typeof Ionicons.glyphMap;
+  footer?: ReactNode; scrollRef?: Ref<ScrollView>;
 }) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
@@ -27,10 +28,11 @@ export function FormModal({ visible, title, onClose, children, icon = 'create-ou
               <Ionicons name="close" size={20} color={colors.muted} />
             </Pressable>
           </View>
-          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}
+          <ScrollView ref={scrollRef} style={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.content}>
             {children}
           </ScrollView>
+          {footer && <View style={[styles.footer, { borderTopColor: colors.border }]}>{footer}</View>}
         </Pressable>
       </KeyboardAvoidingView>
     </AppModal>
@@ -45,4 +47,6 @@ const styles = StyleSheet.create({
   close: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
   title: { flex: 1, fontSize: 18, lineHeight: 26, fontFamily: 'Poppins-Bold', fontWeight: '700' },
   content: { gap: 16, paddingBottom: 8 },
+  scroll: { flexShrink: 1 },
+  footer: { flexShrink: 0, borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 12, marginTop: 12, gap: 10 },
 });

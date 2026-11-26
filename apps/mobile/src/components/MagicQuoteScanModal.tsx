@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { api } from '../lib/api';
 import { pickImageFromCamera, pickImageFromLibrary, type PickedImage } from '../lib/media';
@@ -12,6 +12,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { FormModal } from './FormModal';
 import { PrimaryButton } from './PrimaryButton';
 import { feedback } from '../lib/feedback';
+import { useReducedMotion } from '../context/MotionContext';
 
 interface ScanSheet {
   id: string;
@@ -38,6 +39,8 @@ export function MagicQuoteScanModal(props: MagicQuoteScanModalProps) {
 function ScanSession({ visible, token, onClose, onAdd, maxItems = 200 }: MagicQuoteScanModalProps) {
   const { colors, dark } = useTheme();
   const formatMoney = useMoney();
+  const reducedMotion = useReducedMotion();
+  const scroll = useRef<ScrollView>(null);
   const [sheets, setSheets] = useState<ScanSheet[]>([]);
   const sheetsRef = useRef<ScanSheet[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -211,7 +214,28 @@ function ScanSession({ visible, token, onClose, onAdd, maxItems = 200 }: MagicQu
       <Text style={[styles.description, { color: colors.error }]}>{error}</Text>
     </View> : null;
 
-  return <FormModal visible={visible} title="Escaneo mágico" icon="sparkles-outline" onClose={close}>
+  const footer = allRows.length ? <>
+    <View style={styles.scrollControls}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Ir al inicio de la revisión" style={styles.scrollControl}
+        onPress={() => { Keyboard.dismiss(); scroll.current?.scrollTo({ y: 0, animated: !reducedMotion }); }}>
+        <Ionicons name="arrow-up-outline" size={18} color={colors.primary} />
+        <Text style={[styles.sourceText, { color: colors.primary }]}>Inicio</Text>
+      </Pressable>
+      <Text style={[styles.caption, { color: colors.muted }]}>{selectedCount} seleccionados</Text>
+      <Pressable accessibilityRole="button" accessibilityLabel="Ir al final de la revisión" style={styles.scrollControl}
+        onPress={() => { Keyboard.dismiss(); scroll.current?.scrollToEnd({ animated: !reducedMotion }); }}>
+        <Text style={[styles.sourceText, { color: colors.primary }]}>Final</Text>
+        <Ionicons name="arrow-down-outline" size={18} color={colors.primary} />
+      </Pressable>
+    </View>
+    {pendingSheets > 0 && <Text style={[styles.caption, { color: colors.muted }]}>Hay {pendingSheets} {pendingSheets === 1 ? 'hoja pendiente' : 'hojas pendientes'} de lectura.</Text>}
+    {overLimit && <Text style={[styles.caption, { color: colors.error }]}>Puedes añadir {maxItems} artículos. Desmarca algunos para continuar.</Text>}
+    {errorNotice}
+    <PrimaryButton title={`Añadir ${selectedCount} ${selectedCount === 1 ? 'producto' : 'productos'}`}
+      onPress={() => { void add(); }} loading={adding} disabled={busy || selectedCount === 0 || pendingSheets > 0 || overLimit} />
+  </> : undefined;
+
+  return <FormModal visible={visible} title="Escaneo mágico" icon="sparkles-outline" onClose={close} footer={footer} scrollRef={scroll}>
     <Text style={[styles.description, { color: colors.muted }]}>
       Fotografía la lista. Compararemos sus productos con el catálogo de tu empresa para que los revises antes de añadirlos.
     </Text>
@@ -337,19 +361,19 @@ function ScanSession({ visible, token, onClose, onAdd, maxItems = 200 }: MagicQu
           {!!rowError && <Text style={[styles.caption, { color: colors.error }]}>{rowError}</Text>}
         </View>;
       })}
-      <Text style={[styles.description, { color: colors.muted }]}>Los productos nuevos se crearán al guardar la cotización. Revisa cantidades, unidades y precios antes de continuar.</Text>
+      <Text style={[styles.description, { color: colors.muted }]}>Puedes completar los campos vacíos en la cotización. Las coincidencias sin elegir se añadirán sin vincular al catálogo.</Text>
       {rows.length >= 100 && <Text style={[styles.description, { color: colors.primary }]}>Esta hoja alcanzó los 100 productos. Si quedan líneas sin leer, fotografía esa parte con «Añadir hoja».</Text>}
       {overLimit && <Text accessibilityRole="alert" style={[styles.description, { color: colors.error }]}>Seleccionaste {selectedCount} productos. Puedes añadir {maxItems}; desmarca los que no necesitas.</Text>}
       {!!pendingSheets && <Text style={[styles.description, { color: colors.muted }]}>Completa o quita las hojas pendientes para añadir todos los productos juntos.</Text>}
     </>}
-    {errorNotice}
-    {!!allRows.length && <PrimaryButton title={`Añadir ${selectedCount} ${selectedCount === 1 ? 'producto' : 'productos'}`}
-      onPress={() => { void add(); }} loading={adding} disabled={busy || selectedCount === 0 || pendingSheets > 0 || overLimit} />}
+    {!allRows.length && errorNotice}
   </FormModal>;
 }
 
 const styles = StyleSheet.create({
   sheetList: { gap: 8 },
+  scrollControls: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 },
+  scrollControl: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, minHeight: 42, paddingHorizontal: 3 },
   sheet: { borderWidth: 1, borderRadius: 14, flexDirection: 'row', alignItems: 'center' },
   sheetSelect: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, minHeight: 60 },
   removeSheet: { padding: 12, minHeight: 48, minWidth: 44, justifyContent: 'center', alignItems: 'center' },

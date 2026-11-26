@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { Product, QuoteScanLine } from '../../apps/mobile/src/lib/api';
 import { newScanProduct, reviewScanLines, scannedQuoteItems, scanFieldText, scanReviewError, selectScanProduct } from '../../apps/mobile/src/lib/quoteScan';
+import { buildQuoteItems, quoteDraftNumberText, quoteDraftSubtotal, QuoteDraftValidationError } from '../../apps/mobile/src/lib/quoteDraftEditing';
 
 const product: Product = { id: 41, name: 'Interruptor 32A', price: 65, unit: 'Unidad', stock: 12,
   description: null, codigoInterno: 'TM-32', marca: 'Aurora', procedencia: 'Bolivia' };
@@ -45,24 +46,43 @@ test('las sugerencias no se confirman solas y una cantidad ilegible permanece va
   const [row] = reviewScanLines([source({ match: 'suggested', name: 'Interruptor 63A', quantity: null })]);
   assert.equal(row.productId, null);
   assert.equal(row.quantity, '');
-  assert.match(scanReviewError(row)!, /cantidad/);
+  assert.equal(scanReviewError(row), null);
   const quantity = { ...row, quantity: '3' };
-  assert.match(scanReviewError(quantity)!, /Selecciona un producto/);
+  assert.equal(scanReviewError(quantity), null);
+  const unmatched = scannedQuoteItems([quantity])[0];
+  assert.equal(unmatched.productId, null);
+  assert.equal(unmatched.createProduct, false, 'Una sugerencia sin elegir no crea un duplicado del catálogo');
   const chosen = selectScanProduct(quantity, product);
   assert.equal(scannedQuoteItems([chosen])[0].productId, product.id);
 });
 
-test('un producto nuevo requiere revisión y se marca para crear únicamente al guardar la cotización', () => {
+test('un producto nuevo admite campos vacíos y se marca para crear únicamente al guardar la cotización', () => {
   const [row] = reviewScanLines([source({ name: 'Luminaria nueva', candidates: [], selectedProductId: null, match: 'none' })]);
   assert.equal(row.mode, 'new');
   assert.equal(row.unitPrice, '');
-  assert.match(scanReviewError(row)!, /unidad/);
-  assert.match(scanReviewError({ ...row, unit: 'Unidad' })!, /precio/);
+  assert.equal(scanReviewError(row), null);
+  assert.equal(scanReviewError({ ...row, unit: 'Unidad' }), null);
+  const incomplete = { ...scannedQuoteItems([row])[0], key: 'incomplete' };
+  assert.equal(quoteDraftNumberText(incomplete, 'unitPrice'), '');
+  assert.equal(quoteDraftSubtotal(incomplete), null);
+  assert.throws(() => buildQuoteItems([incomplete]), QuoteDraftValidationError, 'No se guarda un precio vacío como si fuera cero');
   const [item] = scannedQuoteItems([{ ...row, unit: 'Unidad', unitPrice: '12,50', quantity: '1,5' }]);
   assert.equal(item.productId, null);
   assert.equal(item.createProduct, true);
   assert.equal(item.unitPrice, 12.5);
   assert.equal(item.quantity, 1.5);
+});
+
+test('todos los inputs pueden quedar vacíos al incorporar y conservan su vacío en el borrador', () => {
+  const [row] = reviewScanLines([source({ name: '', quantity: null, unit: null, unitPrice: null,
+    candidates: [], selectedProductId: null, match: 'none' })]);
+  assert.equal(scanReviewError(row), null);
+  const item = { ...scannedQuoteItems([row])[0], key: 'empty-fields' };
+  assert.equal(item.name, '');
+  assert.equal(item.unit, '');
+  assert.equal(quoteDraftNumberText(item, 'quantity'), '');
+  assert.equal(quoteDraftNumberText(item, 'unitPrice'), '');
+  assert.equal(quoteDraftSubtotal(item), null);
 });
 
 test('quitar una coincidencia no copia su precio a otro producto y no borra una edición al pulsar la opción ya activa', () => {

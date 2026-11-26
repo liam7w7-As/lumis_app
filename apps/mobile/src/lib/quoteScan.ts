@@ -4,8 +4,10 @@ export interface ScannedQuoteItem {
   productId: number | null;
   name: string;
   quantity: number;
+  quantityText?: string;
   unit: string;
   unitPrice: number;
+  unitPriceText?: string;
   marca: string | null;
   procedencia: string | null;
   codigoInterno?: string | null;
@@ -70,13 +72,11 @@ function decimal(value: string): number | null {
 export function scanReviewError(row: ScanReviewRow): string | null {
   if (!row.included) return null;
   const nameLimit = row.mode === 'new' ? 150 : 255;
-  if (!row.name.trim() || row.name.trim().length > nameLimit) return `Indica un nombre de hasta ${nameLimit} caracteres.`;
+  if (row.name.trim().length > nameLimit) return `Indica un nombre de hasta ${nameLimit} caracteres.`;
   const quantity = decimal(row.quantity);
-  if (quantity === null || quantity <= 0) return 'Indica una cantidad mayor a cero, con hasta 2 decimales.';
-  if (row.mode === 'catalog' && !row.source.candidates.some(product => product.id === row.productId))
-    return 'Selecciona un producto del catálogo o elige «Crear producto nuevo».';
-  if (!row.unit.trim() || row.unit.trim().length > 20) return 'Indica una unidad de hasta 20 caracteres.';
-  if (decimal(row.unitPrice) === null) return 'Indica un precio válido, con hasta 2 decimales.';
+  if (row.quantity.trim() && (quantity === null || quantity <= 0)) return 'Indica una cantidad mayor a cero, con hasta 2 decimales.';
+  if (row.unit.trim().length > 20) return 'Indica una unidad de hasta 20 caracteres.';
+  if (row.unitPrice.trim() && decimal(row.unitPrice) === null) return 'Indica un precio válido, con hasta 2 decimales.';
   return null;
 }
 
@@ -93,11 +93,14 @@ export function scannedQuoteItems(rows: ScanReviewRow[]): ScannedQuoteItem[] {
       ? row.source.candidates.find(candidate => candidate.id === row.productId) : undefined;
     return {
       productId: product?.id ?? null,
-      name: row.name.trim(), quantity: decimal(row.quantity)!, unit: row.unit.trim(),
-      unitPrice: decimal(row.unitPrice)!, marca: scanFieldText(product?.marca) || null,
+      name: row.name.trim(), quantity: decimal(row.quantity) ?? 0, unit: row.unit.trim(),
+      ...(!row.quantity.trim() ? { quantityText: '' } : {}),
+      unitPrice: decimal(row.unitPrice) ?? 0,
+      ...(!row.unitPrice.trim() ? { unitPriceText: '' } : {}),
+      marca: scanFieldText(product?.marca) || null,
       procedencia: scanFieldText(product?.procedencia) || null,
       codigoInterno: scanFieldText(product?.codigoInterno ?? row.source.codigoInterno) || null,
-      ...(product ? {} : { createProduct: true }),
+      ...(product ? {} : { createProduct: row.mode === 'new' }),
     };
   });
 }
