@@ -1,13 +1,35 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { Product, QuoteScanLine } from '../../apps/mobile/src/lib/api';
-import { newScanProduct, reviewScanLines, scannedQuoteItems, scanReviewError, selectScanProduct } from '../../apps/mobile/src/lib/quoteScan';
+import { newScanProduct, reviewScanLines, scannedQuoteItems, scanFieldText, scanReviewError, selectScanProduct } from '../../apps/mobile/src/lib/quoteScan';
 
 const product: Product = { id: 41, name: 'Interruptor 32A', price: 65, unit: 'Unidad', stock: 12,
   description: null, codigoInterno: 'TM-32', marca: 'Aurora', procedencia: 'Bolivia' };
 const source = (patch: Partial<QuoteScanLine> = {}): QuoteScanLine => ({
   name: 'Interruptor 32A', quantity: 2, unit: null, unitPrice: null,
   candidates: [product], selectedProductId: product.id, match: 'exact', ...patch,
+});
+
+test('los datos ausentes se muestran vacíos, incluidos los marcadores de texto null y undefined', () => {
+  for (const value of [null, undefined, 'null', ' NULL ', 'undefined', 'Undefined', '', '  ', NaN])
+    assert.equal(scanFieldText(value), '');
+  const [empty] = reviewScanLines([source({ match: 'none', candidates: [], selectedProductId: null,
+    quantity: null, unit: 'null', unitPrice: null, codigoInterno: 'null' })]);
+  assert.equal(empty.quantity, '');
+  assert.equal(empty.unit, '');
+  assert.equal(empty.unitPrice, '');
+  assert.equal(empty.source.codigoInterno, null);
+});
+
+test('los datos detectados se precargan sin convertir el precio cero en un campo vacío', () => {
+  const [row] = reviewScanLines([source({ match: 'none', candidates: [], selectedProductId: null,
+    name: 'Cable 2.5 mm', quantity: 1.5, unit: 'Metro', unitPrice: 0, codigoInterno: 'NULL-001' })]);
+  assert.equal(row.name, 'Cable 2.5 mm');
+  assert.equal(row.quantity, '1.5');
+  assert.equal(row.unit, 'Metro');
+  assert.equal(row.unitPrice, '0');
+  assert.equal(scanReviewError(row), null);
+  assert.equal(scannedQuoteItems([row])[0].codigoInterno, 'NULL-001');
 });
 
 test('una coincidencia exacta usa identidad y datos reales del catálogo; no cambia la cantidad leída', () => {

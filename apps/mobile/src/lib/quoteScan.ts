@@ -24,27 +24,34 @@ export interface ScanReviewRow {
   unitPrice: string;
 }
 
-const textNumber = (value: number | null) => value === null ? '' : String(value);
+export function scanFieldText(value: unknown): string {
+  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : '';
+  if (typeof value !== 'string') return '';
+  const text = value.trim();
+  return /^(?:null|undefined)$/i.test(text) ? '' : text;
+}
 
 export function selectScanProduct(row: ScanReviewRow, product: Product): ScanReviewRow {
   if (row.mode === 'catalog' && row.productId === product.id) return row;
-  return { ...row, mode: 'catalog', productId: product.id, name: product.name,
-    unit: product.unit, unitPrice: String(product.price) };
+  return { ...row, mode: 'catalog', productId: product.id, name: scanFieldText(product.name),
+    unit: scanFieldText(product.unit), unitPrice: scanFieldText(product.price) };
 }
 
 export function newScanProduct(row: ScanReviewRow): ScanReviewRow {
   if (row.mode === 'new') return row;
-  return { ...row, mode: 'new', productId: null, name: row.source.name, unit: row.source.unit ?? '',
-    unitPrice: textNumber(row.source.unitPrice) };
+  return { ...row, mode: 'new', productId: null, name: scanFieldText(row.source.name), unit: scanFieldText(row.source.unit),
+    unitPrice: scanFieldText(row.source.unitPrice) };
 }
 
 export function reviewScanLines(lines: QuoteScanLine[]): ScanReviewRow[] {
-  return lines.map((source, index) => {
+  return lines.map((raw, index) => {
+    const source = { ...raw, name: scanFieldText(raw.name), unit: scanFieldText(raw.unit) || null,
+      codigoInterno: scanFieldText(raw.codigoInterno) || null };
     const row: ScanReviewRow = {
       key: String(index), source, included: true,
       mode: source.candidates.length ? 'catalog' : 'new', productId: null,
-      name: source.name, quantity: textNumber(source.quantity),
-      unit: source.unit ?? '', unitPrice: textNumber(source.unitPrice),
+      name: source.name, quantity: scanFieldText(source.quantity),
+      unit: scanFieldText(source.unit), unitPrice: scanFieldText(source.unitPrice),
     };
     // A suggestion is never silently treated as a confirmed match.
     const exact = source.match === 'exact'
@@ -76,9 +83,10 @@ export function scanReviewError(row: ScanReviewRow): string | null {
 export function scannedQuoteItems(rows: ScanReviewRow[]): ScannedQuoteItem[] {
   const selected = rows.filter(row => row.included);
   if (!selected.length) throw new Error('Selecciona al menos un producto para añadir.');
-  for (const row of selected) {
+  for (const [index, row] of rows.entries()) {
+    if (!row.included) continue;
     const error = scanReviewError(row);
-    if (error) throw new Error(`Producto ${Number(row.key) + 1}: ${error}`);
+    if (error) throw new Error(`Producto ${index + 1}: ${error}`);
   }
   return selected.map(row => {
     const product = row.mode === 'catalog'
@@ -86,8 +94,9 @@ export function scannedQuoteItems(rows: ScanReviewRow[]): ScannedQuoteItem[] {
     return {
       productId: product?.id ?? null,
       name: row.name.trim(), quantity: decimal(row.quantity)!, unit: row.unit.trim(),
-      unitPrice: decimal(row.unitPrice)!, marca: product?.marca ?? null,
-      procedencia: product?.procedencia ?? null, codigoInterno: product?.codigoInterno ?? row.source.codigoInterno ?? null,
+      unitPrice: decimal(row.unitPrice)!, marca: scanFieldText(product?.marca) || null,
+      procedencia: scanFieldText(product?.procedencia) || null,
+      codigoInterno: scanFieldText(product?.codigoInterno ?? row.source.codigoInterno) || null,
       ...(product ? {} : { createProduct: true }),
     };
   });

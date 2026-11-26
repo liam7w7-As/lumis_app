@@ -331,6 +331,7 @@ function NewQuoteScreenContent() {
       </TutorialScrollView>
 
       {token && <MagicQuoteScanModal key={token} visible={scanOpen} token={token}
+        maxItems={Math.max(0, 200 - items.length)}
         onClose={() => { setScanOpen(false); void refreshLicense(); }}
         onAdd={lines => {
           if (items.length + lines.length > 200) throw new Error('La cotización admite hasta 200 artículos. Desmarca algunos productos para continuar.');

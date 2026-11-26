@@ -48,10 +48,36 @@ test('OpenAI recibe imagen y esquema estricto sin persistencia; datos ausentes s
   assert.equal(result[0].quantity, null);
   assert.equal(result[0].unitPrice, null);
   assert.equal(sent!.store, false);
-  assert.equal(sent!.model, 'gpt-4o-mini');
+  assert.equal(sent!.model, 'gpt-6-luna');
+  assert.deepEqual(sent!.reasoning, { effort: 'none' });
   assert.equal(sent!.text.format.type, 'json_schema');
   assert.equal(sent!.text.format.strict, true);
   assert.match(sent!.input[0].content[1].image_url, /^data:image\/png;base64,/);
+});
+
+test('la lectura conserva 50 productos y permite mantener un modelo anterior por configuración', async t => {
+  const original = globalThis.fetch, previousKey = process.env.OPENAI_API_KEY, previousModel = process.env.OPENAI_SCAN_MODEL;
+  process.env.OPENAI_API_KEY = 'test-only-key-not-real';
+  t.after(() => {
+    globalThis.fetch = original;
+    if (previousKey === undefined) delete process.env.OPENAI_API_KEY; else process.env.OPENAI_API_KEY = previousKey;
+    if (previousModel === undefined) delete process.env.OPENAI_SCAN_MODEL; else process.env.OPENAI_SCAN_MODEL = previousModel;
+  });
+  const items = Array.from({ length: 50 }, (_, index) => ({ ...line, name: `Cable ${index + 1} mm`, quantity: index + 1 }));
+  for (const model of ['gpt-6-luna', 'gpt-4o-mini']) {
+    process.env.OPENAI_SCAN_MODEL = model;
+    globalThis.fetch = async (_url, init) => {
+      const body = JSON.parse(String(init?.body));
+      assert.equal(body.model, model);
+      if (model === 'gpt-6-luna') assert.deepEqual(body.reasoning, { effort: 'none' });
+      else assert.equal(body.reasoning, undefined, 'Un modelo anterior no debe recibir parámetros de razonamiento');
+      return new Response(JSON.stringify({ status: 'completed', output: [{ type: 'message', content: [{
+        type: 'output_text', text: JSON.stringify({ items }),
+      }] }] }));
+    };
+    const result = await readQuoteImage({ buffer: Buffer.from([137, 80, 78, 71]), ext: 'png' });
+    assert.deepEqual(result, items);
+  }
 });
 
 test('respuestas incompletas, rechazos y errores de proveedor no exponen texto crudo', async t => {
