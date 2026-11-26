@@ -16,7 +16,7 @@ export function FormModal({ visible, title, onClose, children, icon = 'create-ou
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={[styles.overlay, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 }]}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessible={false} />
-        <Pressable accessible={false} collapsable={false} onPress={event => event.stopPropagation()}
+        <View collapsable={false}
           style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <View style={styles.header}>
             <View style={[styles.icon, { backgroundColor: colors.primary + '18' }]}>
@@ -28,12 +28,12 @@ export function FormModal({ visible, title, onClose, children, icon = 'create-ou
               <Ionicons name="close" size={20} color={colors.muted} />
             </Pressable>
           </View>
-          <ScrollView ref={scrollRef} style={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}
+          <ScrollView ref={scrollRef} style={styles.scroll} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.content}>
             {children}
           </ScrollView>
           {footer && <View style={[styles.footer, { borderTopColor: colors.border }]}>{footer}</View>}
-        </Pressable>
+        </View>
       </KeyboardAvoidingView>
     </AppModal>
   );

@@ -45,3 +45,19 @@ test('los modales sin pie conservan su contenido y cierre habituales', () => {
   assert.ok(nodes(tree).includes(content));
   assert.ok(nodes(tree).some(node => node.props.accessibilityLabel === 'Cerrar formulario'));
 });
+
+test('el arrastre del contenido no compite con un contenedor pulsable', () => {
+  const { tree } = render({ type: 'Button', props: { title: 'Añadir' } });
+  const visit = (element: Element, ancestors: Element[] = []): void => {
+    if (element.type === 'ScrollView') {
+      assert.ok(!ancestors.some(parent => parent.type === 'Pressable'), 'El contenedor no debe reclamar los gestos del ScrollView');
+      assert.equal(element.props.keyboardDismissMode, 'on-drag');
+      return;
+    }
+    const children = [element.props.children].flat(Infinity) as unknown[];
+    for (const child of children) if (child && typeof child === 'object' && 'props' in child) visit(child as Element, [...ancestors, element]);
+  };
+  visit(tree);
+  const backdrop = nodes(tree).find(node => node.type === 'Pressable' && node.props.accessible === false)!;
+  assert.equal(typeof backdrop.props.onPress, 'function', 'Tocar fuera del formulario sigue cerrándolo');
+});
