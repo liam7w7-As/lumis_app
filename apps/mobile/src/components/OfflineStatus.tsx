@@ -20,7 +20,7 @@ export function OfflineStatus() {
     const color = status.errors ? colors.error : colors.primary;
     const retry = () => { void retryOffline().catch(error => feedback.error('No se pudo sincronizar', error instanceof Error ? error.message : 'Inténtalo nuevamente.')); };
     return <>
-    <Pressable accessibilityRole="button" accessibilityLabel={`${title}. ${status.pending} cambios pendientes. Ver sincronización`} onPress={() => setOpen(true)} style={{ position: 'absolute', right: 14, bottom: insets.bottom + 80, zIndex: 100, width: 42, height: 42, borderRadius: 21, backgroundColor: colors.surface, borderColor: color, borderWidth: 1, alignItems: 'center', justifyContent: 'center', elevation: 3 }}>
+    <Pressable accessibilityRole="button" accessibilityLabel={`${title}. ${status.pending} cambios pendientes. Ver sincronización`} onPress={() => setOpen(true)} style={{ position: 'absolute', left: 14, bottom: insets.bottom + 80, zIndex: 100, width: 42, height: 42, borderRadius: 21, backgroundColor: colors.surface, borderColor: color, borderWidth: 1, alignItems: 'center', justifyContent: 'center', elevation: 3 }}>
       {status.syncing ? <ActivityIndicator size="small" color={color}/> : <Ionicons name={status.errors ? 'alert-circle-outline' : status.online ? 'cloud-upload-outline' : 'cloud-offline-outline'} size={23} color={color}/>}
       {!!status.pending && <View style={{ position: 'absolute', right: -4, top: -5, borderRadius: 10, backgroundColor: color, paddingHorizontal: 5 }}><Text style={{ color: colors.onPrimary, fontSize: 10 }}>{status.pending}</Text></View>}
     </Pressable>
