@@ -1,5 +1,6 @@
 import { clone, keyOf, type Data, type Kind, type State } from './types';
 import { assembleDashboard, dashboardRange, type DashboardPeriod } from './dashboard';
+import { clientSearchKey, matchingClients } from '../lib/clientSuggestions';
 export const kinds: Kind[] = ['clients', 'products', 'quotes', 'sales', 'branches', 'agents'];
 export const singular: Record<Kind, string> = { clients: 'client', products: 'product', quotes: 'quote', sales: 'sale', branches: 'branch', agents: 'agent' };
 export function allocate(state: State) { state.next = Math.max(Date.now() * 1000, state.next + 1); return state.next; }
@@ -41,9 +42,11 @@ export function readLocal(state: State, path: string, user: Data, connected: boo
     if (list) {
         const kind = list[1];
         let data = rows(state, kind);
-        const search = (url.searchParams.get('search') ?? '').toLocaleLowerCase();
+        const search = kind === 'clients' ? clientSearchKey(url.searchParams.get('search') ?? '')
+            : (url.searchParams.get('search') ?? '').toLocaleLowerCase();
         if (search)
-            data = data.filter(row => [row.name, row.description, row.clientName, row.number, row.codigoInterno].some(value => String(value ?? '').toLocaleLowerCase().includes(search)));
+            data = kind === 'clients' ? matchingClients(data as (Data & { id: number; name: string })[], search, Infinity)
+                : data.filter(row => [row.name, row.description, row.clientName, row.number, row.codigoInterno].some(value => String(value ?? '').toLocaleLowerCase().includes(search)));
         if (url.searchParams.has('id'))
             data = data.filter(row => row.id === Number(url.searchParams.get('id')));
         if (kind === 'sales') {
@@ -54,9 +57,9 @@ export function readLocal(state: State, path: string, user: Data, connected: boo
         }
         if (kind === 'quotes' || kind === 'sales')
             data = [...data].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
-        else
+        else if (!(kind === 'clients' && search))
             data = [...data].sort((a, b) => String(a.name).localeCompare(String(b.name)));
-        if (connected && !['branches', 'agents'].includes(kind)) {
+        if ((connected && !['branches', 'agents'].includes(kind)) || (kind === 'clients' && url.searchParams.has('page'))) {
             const page = Math.max(1, Number(url.searchParams.get('page') ?? 1));
             const perPage = 50;
             const count = data.length;

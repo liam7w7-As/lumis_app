@@ -1,4 +1,5 @@
-import { applyMutation, kinds, readLocal, singular } from './model';
+import { applyMutation, kinds, readLocal, rows, singular } from './model';
+import { matchingClients } from '../lib/clientSuggestions';
 import { clone, emptyState, keyOf, rootOf, type Data, type Operation, type Reply, type Request, type State, type Status, type Store } from './types';
 type IO = {
     store: Store;
@@ -172,7 +173,7 @@ export function createOfflineEngine(io: IO) {
                     let reply: Reply;
                     try {
                         const query = new URLSearchParams();
-                        if (io.connected && !['branches', 'agents'].includes(kind)) query.set('page',String(page));
+                        if ((io.connected && !['branches', 'agents'].includes(kind)) || kind === 'clients') query.set('page',String(page));
                         if (kind === 'sales') query.set('estadoVenta',saleState);
                         reply = await io.send('/api/' + kind + (query.size ? '?' + query.toString() : ''), { timeoutMs: 15000 });
                     }
@@ -422,6 +423,30 @@ export function createOfflineEngine(io: IO) {
             if (method === 'GET') {
                 if (path === '/health')
                     return (await io.send(path, options)).data;
+                const query = new URL(path, 'https://local.invalid');
+                if (online && query.pathname === '/api/clients' && query.searchParams.get('search')?.trim()) {
+                    try {
+                        const reply = await io.send(path, { ...options, timeoutMs: options.timeoutMs ?? 8000 });
+                        if (!Array.isArray(reply.data.clients)) throw Error('No se pudo leer la lista de clientes.');
+                        await edit(() => {
+                            for (const client of reply.data.clients) {
+                                const value = normalize(client, 'clients');
+                                const key = keyOf('clients', value.id);
+                                if (!hasPending(key)) state.records[key] = { data: value };
+                            }
+                        });
+                        const remote = reply.data.clients.map((client: Data) => {
+                            const value = normalize(client, 'clients');
+                            return state.records[keyOf('clients', value.id)]?.data ?? value;
+                        });
+                        const pendingClients = rows(state, 'clients').filter(client => hasPending(keyOf('clients', client.id)));
+                        return { ...reply.data, clients: matchingClients([...remote, ...pendingClients], query.searchParams.get('search')!, Infinity) };
+                    } catch (error) {
+                        if (!active || errorStatus(error) !== 0) throw error;
+                        online = false; publish();
+                    }
+                    return readLocal(state, path, io.user, io.connected);
+                }
                 try {
                     return readLocal(state, path, io.user, io.connected);
                 }

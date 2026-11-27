@@ -535,7 +535,7 @@ export const api = {
       token,
     }),
   clients: (token: string, options: ListOptions = {}) =>
-    request<{ clients: Client[]; meta?: PageMeta }>(collectionPath('/api/clients', IS_NOVALED ? options : {}), { token }),
+    request<{ clients: Client[]; meta?: PageMeta }>(collectionPath('/api/clients', options), { token }),
   createClient: (
     input: { name: string; phone?: string | null; email?: string | null },
     token: string,

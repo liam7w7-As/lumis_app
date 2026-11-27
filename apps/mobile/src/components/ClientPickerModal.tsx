@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { Pressable, Text, TextInput, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { api, type Client } from '../lib/api';
-import { IS_NOVALED } from '../lib/backend';
+import { matchingClients } from '../lib/clientSuggestions';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
 import { usePagedCollection } from '../hooks/usePagedCollection';
@@ -16,14 +16,14 @@ export function ClientPickerModal({ selectedId, onPick, onClose }: {
   const { colors } = useTheme();
   const [search, setSearch] = useState('');
   const query = search.trim();
-  const remoteQuery = IS_NOVALED ? query : '';
+  const remoteQuery = query;
   const fetchPage = useCallback(async (page: number) => {
     if (!token) return { items: [] };
     const result = await api.clients(token, { search: remoteQuery, page });
     return { items: result.clients, meta: result.meta };
   }, [token, remoteQuery]);
   const { items, loading, loadingMore, hasMore, error, load, loadMore } = usePagedCollection(fetchPage);
-  const clients = IS_NOVALED ? items : items.filter(client => client.name.toLowerCase().includes(query.toLowerCase()));
+  const clients = query ? matchingClients(items, query, Infinity) : items;
   return <FormModal visible title="Elegir cliente" icon="people-outline" onClose={onClose}>
     <TextInput accessibilityLabel="Buscar cliente" placeholder="Buscar cliente" placeholderTextColor={colors.muted}
       value={search} onChangeText={setSearch} maxLength={100} autoCapitalize="none"

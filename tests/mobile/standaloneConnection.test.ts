@@ -37,7 +37,7 @@ test('Lumis independiente conserva sus rutas, usuarios y envíos sin campos de N
   await api.quotes('lumis-session', { search: '42', page: 2 });
   assert.equal(requests.at(-1)!.path, '/api/quotes');
   await api.clients('lumis-session', { search: 'Cliente', page: 2, id: 1001 });
-  assert.equal(requests.at(-1)!.path, '/api/clients');
+  assert.equal(requests.at(-1)!.path, '/api/clients?search=Cliente&page=2&id=1001');
   await api.products('lumis-session', undefined, 2);
   assert.equal(requests.at(-1)!.path, '/api/products');
   await api.sales('lumis-session', { page: 2 });

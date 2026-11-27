@@ -9,6 +9,7 @@ import ts from 'typescript';
 import { createHash } from 'node:crypto';
 import { createOfflineEngine } from '../../apps/mobile/src/offline/engine';
 import { allocate } from '../../apps/mobile/src/offline/model';
+import { clientSearchKey, matchingClients } from '../../apps/mobile/src/lib/clientSuggestions';
 import { clone, emptyState, type Data, type Reply, type Request, type Store } from '../../apps/mobile/src/offline/types';
 
 const user = { id: 7, businessId: 12, name: 'Agente local', role: 'admin', permissions: { viewQuotes: true, createQuotes: true, viewSales: true, createSales: true, takePayments: true, manualEntry: true } };
@@ -211,6 +212,57 @@ test('magic scanning cannot be queued without internet', async t => {
   const disk = await sqliteFixture(t), server = backend(), app = await prime(await disk.open(), server);
   await assert.rejects(app.request('/api/quotes/scan', { method: 'POST', body: { base64: 'image' } }), /necesita conexión/);
   assert.deepEqual(app.queue(), []); app.stop();
+});
+
+for (const connected of [false, true]) test(`${connected ? 'Novaled' : 'Lumis'} busca clientes remotos, conserva los locales pendientes y permite reutilizarlos offline`, async t => {
+  const disk = await sqliteFixture(t), server = backend();
+  for (let id = 1; id <= 215; id++) server.records.clients[id] = { id, name: `Cliente ${String(id).padStart(3, '0')}`, phone: null, email: null };
+  server.records.clients[215].name = 'UMSA Universidad';
+  server.records.clients[216] = { id: 216, name: 'Álvaro Ñúñez', phone: null, email: null };
+  const pages: string[] = [];
+  let offline = false;
+  const send = async (path: string, options: Request = {}): Promise<Reply> => {
+    const url = new URL(path, 'https://api.invalid');
+    if (url.pathname !== '/api/clients' || (options.method && options.method !== 'GET')) return server.send(path, options);
+    if (offline) throw issue(0, 'NETWORK_ERROR');
+    pages.push(path);
+    const query = url.searchParams.get('search');
+    const all = Object.values(server.records.clients);
+    const data = query ? matchingClients(all as (Data & { id: number; name: string })[], query, Infinity) : all;
+    const page = Number(url.searchParams.get('page') ?? 1);
+    return { data: { clients: clone(data.slice((page - 1) * 50, page * 50)), meta: { currentPage: page, total: data.length, lastPage: Math.max(1, Math.ceil(data.length / 50)) } }, capability: true };
+  };
+  const scope = `${connected ? 'novaled' : 'lumis'}/api/clients-search/user7`;
+  const open = async () => {
+    const engine = createOfflineEngine({ store: await disk.open(), scope, user: clone(user), connected, send });
+    await engine.initialize(); return engine;
+  };
+  let app = await open(); await app.refresh();
+  assert.ok(pages.includes('/api/clients?page=5'), 'Lumis también sincroniza los clientes posteriores a los primeros 200');
+  app.setOnline(false);
+  const pendingClient = (await app.request('/api/clients', { method: 'POST', body: { name: 'UMSA Local' } })).client;
+  app.stop(); disk.close();
+  server.records.clients[217] = { id: 217, name: 'UMSA Nueva', phone: '70000000', email: null };
+  app = await open();
+  const found = await app.request('/api/clients?search=umsa&page=1');
+  assert.deepEqual(found.clients.map((client: Data) => client.name).sort(), ['UMSA Local', 'UMSA Nueva', 'UMSA Universidad']);
+  assert.equal(found.clients.find((client: Data) => client.name === 'UMSA Local').id, pendingClient.id);
+  assert.equal(app.queue().length, 1, 'La búsqueda no crea otro cliente ni consume su operación pendiente');
+  const accented = await app.request('/api/clients?search=ALVARO%20NUNEZ&page=1');
+  assert.equal(accented.clients[0].name, 'Álvaro Ñúñez');
+  assert.equal(clientSearchKey(accented.clients[0].name), 'alvaro nunez');
+  offline = true;
+  const fallback = await app.request('/api/clients?search=UMSA&page=1');
+  assert.equal(fallback.clients.length, 3, 'Una caída de red conserva las sugerencias descargadas y el cliente local');
+  app.stop(); disk.close(); app = await open(); app.setOnline(false);
+  const retained = await app.request('/api/clients?search=UMSA&page=1');
+  assert.equal(retained.clients.find((client: Data) => client.id === 217).phone, '70000000');
+  const quote = (await app.request('/api/quotes', { method: 'POST', body: { clientId: 217,
+    items: [{ description: 'Artículo', quantity: 1, unit: 'Unidad', unitPrice: 10 }] } })).quote;
+  assert.equal(quote.clientId, 217);
+  assert.equal(quote.clientName, 'UMSA Nueva');
+  assert.equal(app.queue().filter(op => op.path === '/api/clients' && op.method === 'POST').length, 1);
+  app.stop();
 });
 
 for (const connected of [false, true]) test(`${connected ? 'Novaled' : 'Lumis'} conserva y sincroniza una cotización escaneada incompleta con precio cero`, async t => {

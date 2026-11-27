@@ -13,6 +13,7 @@ import { buildDeliveryNoteHtml } from '../lib/deliveryDocument';
 import { IS_NOVALED } from '../lib/backend';
 import { downloadNovaledPdf } from '../lib/pdfFile';
 import { getOfflineGateway } from '../offline/bridge';
+import { documentFileName } from '../lib/documentFileName';
 
 export function DeliveryPreviewScreen({ saleId, documentType = 'delivery' }: {
   saleId: number; documentType?: 'sale' | 'delivery';
@@ -27,11 +28,14 @@ export function DeliveryPreviewScreen({ saleId, documentType = 'delivery' }: {
   const loadDocument = useCallback(async (token: string): Promise<DocumentSource> => {
     if (!Number.isSafeInteger(saleId) || saleId <= 0) throw new Error('Venta no encontrada.');
     const { sale } = await api.saleDetail(saleId, token);
+    const namedDocument = documentType === 'delivery' && sale.deliverySnapshot ? { ...sale, ...sale.deliverySnapshot } : sale;
+    const fileName = documentFileName(documentType, namedDocument);
     const offline = getOfflineGateway()?.status();
     if (IS_NOVALED && saleId < 1e12 && offline?.online !== false && !offline?.pending) {
-      const fileName = 'nota-' + (documentType === 'sale' ? 'venta' : 'entrega') + '-' + (sale.number ?? sale.id) + '.pdf';
+      if (documentType === 'delivery' && !sale.deliverySnapshot)
+        throw new Error('No se pudieron obtener los datos de la nota de entrega. Vuelve a abrir el documento o actualiza la API.');
       try {
-        return { pdf: await downloadNovaledPdf(documentType, saleId, fileName, token, documentType === 'delivery' ? signature : undefined), fileName, title: (documentType === 'sale' ? 'Nota de venta #' : 'Nota de entrega de venta #') + (sale.number ?? sale.id), warnings: [] };
+        return { pdf: await downloadNovaledPdf(documentType, saleId, fileName, token, documentType === 'delivery' ? signature : undefined), fileName, title: (documentType === 'sale' ? 'Nota de venta #' : 'Nota de entrega #') + (namedDocument.number ?? namedDocument.id), warnings: [] };
       } catch (error) {
         if (!/network request failed|failed to fetch|networkerror|tardó demasiado/i.test(String(error))) throw error;
       }
@@ -53,7 +57,7 @@ export function DeliveryPreviewScreen({ saleId, documentType = 'delivery' }: {
     } : sale;
     return {
       html: buildDeliveryNoteHtml({ documentType, sale: localSale, business: documentBusiness(business), branchName: localSale.branchName, images, fonts, deliverySignature: signature }),
-      fileName: 'nota-' + (documentType === 'sale' ? 'venta' : 'entrega') + '-' + (sale.number ?? sale.id) + '.pdf',
+      fileName,
       title: (documentType === 'sale' ? 'Nota de venta #' : 'Nota de entrega #') + (localSale.number ?? localSale.id),
       warnings: images.warnings,
     };

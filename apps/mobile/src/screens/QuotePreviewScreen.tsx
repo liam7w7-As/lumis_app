@@ -8,15 +8,16 @@ import { buildQuoteHtml } from '../lib/quoteDocument';
 import { IS_NOVALED } from '../lib/backend';
 import { downloadNovaledQuotePdf } from '../lib/pdfFile';
 import { getOfflineGateway } from '../offline/bridge';
+import { documentFileName } from '../lib/documentFileName';
 
 export function QuotePreviewScreen({ quoteId }: { quoteId: number }) {
   const {created}=useLocalSearchParams<{created?:string}>();
   const loadDocument = useCallback(async (token: string): Promise<DocumentSource> => {
     if (!Number.isSafeInteger(quoteId) || quoteId <= 0) throw new Error('Cotización no encontrada.');
     const { quote } = await api.quoteDetail(quoteId, token);
+    const fileName = documentFileName('quote', quote);
     const offline = getOfflineGateway()?.status();
     if (IS_NOVALED && quoteId < 1e12 && offline?.online !== false && !offline?.pending) {
-      const fileName = 'cotizacion-' + (quote.number ?? quote.id) + '.pdf';
       try {
         return { pdf: await downloadNovaledQuotePdf(quoteId, fileName, token), fileName, title: 'Cotización #' + (quote.number ?? quote.id), warnings: [] };
       } catch (error) {
@@ -33,7 +34,7 @@ export function QuotePreviewScreen({ quoteId }: { quoteId: number }) {
     });
     return {
       html: buildQuoteHtml({ quote, business: documentBusiness(business), branchName: quote.branchName, images, fonts }),
-      fileName: 'cotizacion-' + (quote.number ?? quote.id) + '.pdf',
+      fileName,
       title: 'Cotización #' + (quote.number ?? quote.id),
       warnings: images.warnings,
     };

@@ -5,6 +5,7 @@ import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import { buildDeliveryNoteHtml } from '../../apps/mobile/src/lib/deliveryDocument';
 import { sampleBusiness, sampleFonts, sampleImages, sampleSale } from './documentFixtures';
+import { documentFileName } from '../../apps/mobile/src/lib/documentFileName';
 
 for (const novaled of [false, true]) {
   test(`${novaled ? 'Novaled' : 'Lumis'} previews select the correct PDF source for sale and delivery`, async () => {
@@ -19,7 +20,9 @@ for (const novaled of [false, true]) {
       '../components/FormModal': { FormModal: 'FormModal' }, '../components/PrimaryButton': { PrimaryButton: 'Button' },
       '../theme/ThemeContext': { useTheme: () => ({ colors: {} }) },
       '../components/DocumentPreviewScreen': { DocumentPreviewScreen: 'Preview' },
-      '../lib/api': { api: { saleDetail: async () => ({ sale: { ...sampleSale, number: 42, total: 200, totalPagado: 50 } }), business: async () => ({ business: sampleBusiness }) }, mediaUrl: (url: unknown) => url },
+      '../lib/api': { api: { saleDetail: async () => ({ sale: { ...sampleSale, number: 42, total: 200, totalPagado: 50,
+        deliverySnapshot: { id: 7, number: 7, clientName: 'UMSA' } } }), business: async () => ({ business: sampleBusiness }) }, mediaUrl: (url: unknown) => url },
+      '../lib/documentFileName': { documentFileName },
       '../lib/documentBusiness': { documentBusiness: (value: unknown) => value },
       '../lib/docAssets': { loadDocFonts: async () => sampleFonts, loadDocImages: async () => ({ ...sampleImages, warnings: [] }) },
       '../lib/deliveryDocument': { buildDeliveryNoteHtml },

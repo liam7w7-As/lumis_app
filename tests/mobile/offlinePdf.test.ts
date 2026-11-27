@@ -6,6 +6,7 @@ import ts from 'typescript';
 import { buildQuoteHtml } from '../../apps/mobile/src/lib/quoteDocument';
 import { buildDeliveryNoteHtml } from '../../apps/mobile/src/lib/deliveryDocument';
 import { sampleBusiness, sampleFonts, sampleImages, sampleQuote, sampleSale } from './documentFixtures';
+import { documentFileName } from '../../apps/mobile/src/lib/documentFileName';
 
 function preview(kind: 'quote' | 'sale' | 'delivery', novaled: boolean, online: boolean, pending: number, id: number, downloadError?: string, salePatch: Record<string, unknown> = {}) {
   const downloads: string[] = [];
@@ -22,13 +23,15 @@ function preview(kind: 'quote' | 'sale' | 'delivery', novaled: boolean, online: 
     '../theme/ThemeContext': { useTheme: () => ({ colors: {} }) },
     '../lib/api': { api: {
       quoteDetail: async () => ({ quote: { ...sampleQuote, id, number: 'P-LOCAL-1' } }),
-      saleDetail: async () => ({ sale: { ...sampleSale, id, number: 'P-LOCAL-1', ...salePatch } }),
+      saleDetail: async () => ({ sale: { ...sampleSale, id, number: 'P-LOCAL-1',
+        ...(novaled && online && !pending && id < 1e12 ? { deliverySnapshot: { id, number: 'P-LOCAL-1' } } : {}), ...salePatch } }),
       business: async () => ({ business: sampleBusiness }),
     }, mediaUrl: (value: unknown) => value },
     '../lib/documentBusiness': { documentBusiness: (value: unknown) => value },
     '../lib/docAssets': { loadDocFonts: async () => sampleFonts, loadDocImages: async () => ({ ...sampleImages, warnings: [] }) },
     '../lib/quoteDocument': { buildQuoteHtml }, '../lib/deliveryDocument': { buildDeliveryNoteHtml: (input: Parameters<typeof buildDeliveryNoteHtml>[0]) => { builtSales.push(input.sale); return buildDeliveryNoteHtml(input); } },
     '../lib/backend': { IS_NOVALED: novaled },
+    '../lib/documentFileName': { documentFileName },
     '../lib/pdfFile': { downloadNovaledPdf: download, downloadNovaledQuotePdf: download },
     '../offline/bridge': { getOfflineGateway: () => ({ status: () => ({ online, pending }) }) },
   };
@@ -67,12 +70,19 @@ for (const novaled of [false, true]) test(`${novaled ? 'Novaled' : 'Lumis'} entr
   assert.equal(document.initialPayment, 100); assert.equal(document.total, 650); assert.equal(document.totalPagado, 200);
   assert.equal(document.estado, 'activa'); assert.equal(document.metodoPago, 'por_pagar'); assert.equal(document.includeSello, true);
   assert.equal(document.includeSignature, true); assert.deepEqual(app.downloads, []);
+  assert.equal(result.fileName, 'NE-CLIENTE-HISTORICO-DE-ENTREGA-7.pdf');
   const sale = preview('sale', novaled, false, 0, 42, undefined, patch); const saleResult = await sale.load();
   assert.match(saleResult.html, /<title>NOTA DE VENTA #42<\/title>/);
   assert.equal(sale.builtSales[0].initialPayment, 100); assert.ok(!saleResult.html.includes('Artículo de la nota emitida'));
   const noScheduledDate = preview('delivery', novaled, false, 0, 42, undefined, { ...patch, deliverySnapshot: { ...patch.deliverySnapshot, deliveryDate: null } });
   const fallback = await noScheduledDate.load();
   assert.ok(fallback.html.includes('02/01/2025')); assert.ok(!fallback.html.includes('10/01/2025'));
+});
+
+test('Novaled no descarga la venta como entrega cuando falta la identidad de su nota', async () => {
+  const app = preview('delivery', true, true, 0, 42, undefined, { deliverySnapshot: undefined });
+  await assert.rejects(app.load(), /datos de la nota de entrega/);
+  assert.deepEqual(app.downloads, []);
 });
 
 for (const novaled of [false, true]) for (const kind of ['quote', 'sale', 'delivery'] as const) {
