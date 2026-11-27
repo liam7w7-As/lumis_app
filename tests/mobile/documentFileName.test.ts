@@ -5,6 +5,7 @@ import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import { documentFileName } from '../../apps/mobile/src/lib/documentFileName';
 import { sampleBusiness, sampleFonts, sampleImages, sampleQuote, sampleSale } from './documentFixtures';
+import { canShowSalePaymentSummary } from '../../apps/mobile/src/lib/salePaymentSummary';
 
 test('los PDF usan COT/NV/NE, el cliente del documento y su número visible', () => {
   for (const [kind, prefix] of [['quote', 'COT'], ['sale', 'NV'], ['delivery', 'NE']] as const)
@@ -39,7 +40,10 @@ function screen(kind: 'quote' | 'sale' | 'delivery', novaled: boolean, online: b
     react: { useCallback: (fn: unknown) => fn, useState: (value: unknown) => [value, () => {}] },
     'react/jsx-runtime': { jsx, jsxs: jsx },
     'react-native': { Pressable: 'Pressable', Text: 'Text', TextInput: 'TextInput', View: 'View' },
-    '@expo/vector-icons/Ionicons': 'Icon', 'expo-router': { router: {}, useLocalSearchParams: () => ({}) },
+    '@expo/vector-icons/Ionicons': 'Icon', 'expo-router': { router: {}, useLocalSearchParams: () => ({ signature: 'asesor' }) },
+    '../components/DeliverySignatureOptions': { DeliverySignatureOptions: 'DeliverySignatureOptions' },
+    '../components/PdfPaymentOption': { PdfPaymentOption: 'PdfPaymentOption' },
+    '../lib/salePaymentSummary': { canShowSalePaymentSummary },
     '../components/FormModal': { FormModal: 'FormModal' }, '../components/PrimaryButton': { PrimaryButton: 'Button' },
     '../components/DocumentPreviewScreen': { DocumentPreviewScreen: 'Preview' },
     '../theme/ThemeContext': { useTheme: () => ({ colors: {} }) },
@@ -131,7 +135,11 @@ test('el PDF generado y el descargado se guardan realmente con el nombre COT/NV/
     assert.notEqual(generated.uri, downloaded.uri, 'Dos vistas no reemplazan un PDF que se está compartiendo');
   }
   assert.deepEqual(requests, ['https://api.example.test/api/v1/lumis/quotes/435/pdf',
-    'https://api.example.test/api/v1/lumis/sales/435/pdf', 'https://api.example.test/api/v1/lumis/sales/435/delivery/pdf']);
+    'https://api.example.test/api/v1/lumis/sales/435/pdf?mostrar_pagos=0', 'https://api.example.test/api/v1/lumis/sales/435/delivery/pdf']);
+  await exports.downloadNovaledPdf('sale', 435, 'NV-UMSA-435.pdf', 'test-session', { showPaymentSummary: true });
+  assert.equal(requests.at(-1), 'https://api.example.test/api/v1/lumis/sales/435/pdf?mostrar_pagos=1');
+  await exports.downloadNovaledPdf('delivery', 435, 'NE-UMSA-435.pdf', 'test-session', { mode: 'otro', name: 'Ana Pérez & socios', showPaymentSummary: true });
+  assert.equal(requests.at(-1), 'https://api.example.test/api/v1/lumis/sales/435/delivery/pdf?firma_entrega=otro&nombre_entrega=Ana%20P%C3%A9rez%20%26%20socios');
 });
 
 test('las rutas de vista previa Novaled conservan el cliente y número de cada documento', async () => {

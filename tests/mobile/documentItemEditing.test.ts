@@ -6,6 +6,7 @@ import ts from 'typescript';
 import { sampleBusiness, sampleQuote, sampleSale, documentItems } from './documentFixtures';
 import { getDocumentClient, verifySavedDocumentClient } from '../../apps/mobile/src/lib/documentClient';
 import { changedQuoteOptions } from '../../apps/mobile/src/lib/quoteOptions';
+import { canShowSalePaymentSummary } from '../../apps/mobile/src/lib/salePaymentSummary';
 
 type Element = { type: unknown; props: Record<string, any> };
 type Screen = 'quote' | 'sale';
@@ -16,7 +17,7 @@ const tick = () => new Promise<void>(resolve => setImmediate(resolve));
 
 // Native events and React commits are separate so Quote's last keystroke can be
 // submitted before blur, while Sale's normal state commit is exercised as well.
-function harness(screen: Screen, novaled: boolean, newSale = false, firstItem: Record<string, unknown> = {}) {
+function harness(screen: Screen, novaled: boolean, newSale = false, firstItem: Record<string, unknown> = {}, salePatch: Record<string, unknown> = {}) {
   const hooks: unknown[] = [];
   let cursor = 0, effects: (() => void)[] = [], tree: Element;
   let access = { canEdit: true, proLocked: false, access: novaled ? 'allowed' : 'pro' };
@@ -30,7 +31,7 @@ function harness(screen: Screen, novaled: boolean, newSale = false, firstItem: R
     ...sampleSale, estado: 'activa', estadoPago: 'por_cobrar', metodoPago: 'por_pagar',
     branchId: 1, agentId: 7, clientId: null, payments: [], totalPagado: 0,
     notaPago: null, transferenciaNumero: null, comprobanteUrl: null,
-    canEditItems: true, canChangeBranch: true,
+    canEditItems: true, canChangeBranch: true, ...salePatch,
   });
   // A legacy row may have no snapshot even though the PDF falls back to catalog
   // metadata. An untouched input must not overwrite that fallback with null.
@@ -111,6 +112,9 @@ function harness(screen: Screen, novaled: boolean, newSale = false, firstItem: R
     '../components/ReorderItemsModal': { ReorderItemsModal: 'ReorderItemsModal' },
     '../components/PrimaryButton': { PrimaryButton: 'PrimaryButton' },
     '../components/DocumentOptions': { DocumentOptions: 'DocumentOptions' },
+    '../components/DeliverySignatureOptions': { DeliverySignatureOptions: 'DeliverySignatureOptions' },
+    '../components/PdfPaymentOption': { PdfPaymentOption: 'PdfPaymentOption' },
+    '../lib/salePaymentSummary': { canShowSalePaymentSummary },
     '../components/SegmentedTabs': { SegmentedTabs: 'SegmentedTabs' },
     '../components/SalePaymentSection': { SalePaymentSection: 'SalePaymentSection' },
     '../components/ClientPickerModal': { ClientPickerModal: 'ClientPickerModal' },
@@ -194,6 +198,9 @@ function harness(screen: Screen, novaled: boolean, newSale = false, firstItem: R
     },
     saveHeader() { return find(node => node.type === 'Pressable' && !node.props.accessibilityLabel && content(node.props.children) === 'Guardar').onPress(); },
     selectDocument(tab: 'venta' | 'entrega') { find(node => node.type === 'SegmentedTabs').onChange(tab); render(); },
+    signatureOptions() { return find(node => node.type === 'DeliverySignatureOptions'); },
+    paymentOption() { return find(node => node.type === 'PdfPaymentOption'); },
+    hasPaymentOption() { return nodes(tree).some(node => node.type === 'PdfPaymentOption'); },
     previewTitle() { return find(node => node.type === 'PrimaryButton' && (screen === 'quote' ? node.props.title === 'Generar vista previa' : node.props.title.startsWith('Ver PDF de la '))).title; },
     preview() { return find(node => node.type === 'PrimaryButton' && (screen === 'quote' ? node.props.title === 'Generar vista previa' : node.props.title.startsWith('Ver PDF de la '))).onPress(); },
     lock() { access = { canEdit: false, proLocked: true, access: 'free' }; render(); },
@@ -242,9 +249,43 @@ for (const novaled of [false, true]) {
     app.selectDocument('venta');
     assert.equal(app.previewTitle(), 'Ver PDF de la venta');
     app.preview(); await tick(); app.render();
-    assert.deepEqual(app.routes, [`/pos/${sampleSale.id}/preview`, `/pos/${sampleSale.id}/delivery`, `/pos/${sampleSale.id}/preview`]);
+    assert.deepEqual(app.routes, [`/pos/${sampleSale.id}/preview?mostrar_pagos=0`, `/pos/${sampleSale.id}/delivery?signature=asesor&name=`, `/pos/${sampleSale.id}/preview?mostrar_pagos=0`]);
     assert.deepEqual(app.documentPatches, []);
     assert.deepEqual(app.messages, []);
+  });
+  test(`${variant}: el detalle elige otro nombre para entrega sin modificar al asesor ni el documento`, async () => {
+    const app = harness('sale', novaled); await app.mount(); app.selectDocument('entrega');
+    assert.deepEqual(plain(app.signatureOptions().value), { mode: 'asesor', name: '' });
+    app.signatureOptions().onChange({ mode: 'otro', name: '   ' }); app.render();
+    await app.preview(); app.render();
+    assert.equal(app.routes.length, 0); assert.match(app.signatureOptions().error, /nombre/);
+    app.signatureOptions().onChange({ mode: 'otro', name: '  Ana Pérez & socios  ' }); app.render();
+    await app.preview(); await tick(); app.render();
+    assert.deepEqual(app.routes, ['/pos/25/delivery?signature=otro&name=Ana%20P%C3%A9rez%20%26%20socios']);
+    assert.deepEqual(app.documentPatches, []); assert.deepEqual(app.itemPatches, []);
+    app.signatureOptions().onChange({ mode: 'sin_nombre', name: 'Nombre anterior' }); app.render();
+    await app.preview(); await tick();
+    assert.equal(app.routes.at(-1), '/pos/25/delivery?signature=sin_nombre&name=');
+  });
+  test(`${variant}: el check de abonos es de impresión, inicia desmarcado y funciona en consulta`, async () => {
+    const app = harness('sale', novaled); await app.mount();
+    assert.equal(app.paymentOption().checked, false);
+    app.lock(); app.paymentOption().onChange(true); app.render();
+    await app.preview(); await tick(); app.render();
+    assert.deepEqual(app.routes, ['/pos/25/preview?mostrar_pagos=1']);
+    assert.deepEqual(app.documentPatches, []); assert.deepEqual(app.itemPatches, []);
+    app.paymentOption().onChange(false); app.render();
+    await app.preview(); await tick();
+    assert.equal(app.routes.at(-1), '/pos/25/preview?mostrar_pagos=0');
+  });
+  test(`${variant}: una venta al contado totalmente pagada no ofrece un bloque de abonos`, async () => {
+    const app = harness('sale', novaled, false, {}, {
+      metodoPago: 'efectivo', estadoPago: 'pagado', totalPagado: sampleSale.total, initialPayment: sampleSale.total,
+      payments: [{ id: 1, amount: sampleSale.total }],
+    });
+    await app.mount(); assert.equal(app.hasPaymentOption(), false);
+    await app.preview(); await tick();
+    assert.deepEqual(app.routes, ['/pos/25/preview?mostrar_pagos=0']);
   });
   for (const screen of ['quote', 'sale'] as const) {
     test(`${variant}: ${screen} edita datos del cliente por modal y los conserva al volver a abrir`, async () => {
@@ -291,7 +332,7 @@ for (const novaled of [false, true]) {
     assert.equal(app.createdSales[0].items[0].unitPrice, 19.75);
     assert.equal(app.createdSales[0].items[0].productId, documentItems[0].productId);
     assert.deepEqual(app.itemPatches, []);
-    assert.deepEqual(app.routes, ['/pos/99/preview?created=1']);
+    assert.deepEqual(app.routes, ['/pos/99/preview?created=1&mostrar_pagos=0']);
   });
   test(`${variant}: nueva venta permite cambiar marca y vaciar procedencia desde el mismo acordeón`, async () => {
     const app = harness('sale', novaled, true); await app.mount(); app.open(1);
@@ -353,7 +394,7 @@ for (const novaled of [false, true]) {
       assert.equal(app.itemPatches.length, 1);
       assert.equal(app.itemPatches[0].body.marca, 'Marca nueva');
       assert.equal(app.itemPatches[0].body.procedencia, 'Perú');
-      assert.deepEqual(app.routes, [screen === 'quote' ? '/quotes/42/preview' : '/pos/25/preview']);
+      assert.deepEqual(app.routes, [screen === 'quote' ? '/quotes/42/preview' : '/pos/25/preview?mostrar_pagos=0']);
       assert.deepEqual(app.messages, []);
     });
 
@@ -405,7 +446,7 @@ for (const novaled of [false, true]) {
       assert.ok(app.accessRequests() > 0);
       await app.preview(); await tick();
       assert.equal(app.itemPatches.length, 0);
-      assert.deepEqual(app.routes, [screen === 'quote' ? '/quotes/42/preview' : '/pos/25/preview']);
+      assert.deepEqual(app.routes, [screen === 'quote' ? '/quotes/42/preview' : '/pos/25/preview?mostrar_pagos=0']);
     });
   }
 }

@@ -40,10 +40,11 @@ export async function downloadNovaledQuotePdf(id: number, fileName: string, toke
 }
 
 export async function downloadNovaledPdf(kind: 'quote' | 'sale' | 'delivery' | 'payment-proof', id: number, fileName: string, token: string,
-  signature?: { mode: 'asesor' | 'otro' | 'sin_nombre'; name: string }): Promise<PreparedPdf> {
+  printOptions?: { mode?: 'asesor' | 'otro' | 'sin_nombre'; name?: string; showPaymentSummary?: boolean }): Promise<PreparedPdf> {
   if (!Number.isSafeInteger(id) || id <= 0) throw new Error('Documento no encontrado.');
   const path = kind === 'quote' ? '/quotes/' + id + '/pdf' : '/sales/' + id + (kind === 'sale' ? '/pdf' : '/' + kind + '/pdf');
-  const options = signature && kind === 'delivery' ? '?firma_entrega=' + signature.mode + '&nombre_entrega=' + encodeURIComponent(signature.name) : '';
+  const options = kind === 'sale' ? '?mostrar_pagos=' + (printOptions?.showPaymentSummary ? '1' : '0')
+    : printOptions?.mode && kind === 'delivery' ? '?firma_entrega=' + printOptions.mode + '&nombre_entrega=' + encodeURIComponent(printOptions.name ?? '') : '';
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 45000);
   try {

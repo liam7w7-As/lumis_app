@@ -6,6 +6,7 @@ import ts from 'typescript';
 import { buildDeliveryNoteHtml } from '../../apps/mobile/src/lib/deliveryDocument';
 import { sampleBusiness, sampleFonts, sampleImages, sampleSale } from './documentFixtures';
 import { documentFileName } from '../../apps/mobile/src/lib/documentFileName';
+import { canShowSalePaymentSummary } from '../../apps/mobile/src/lib/salePaymentSummary';
 
 for (const novaled of [false, true]) {
   test(`${novaled ? 'Novaled' : 'Lumis'} previews select the correct PDF source for sale and delivery`, async () => {
@@ -16,7 +17,10 @@ for (const novaled of [false, true]) {
       'react/jsx-runtime': { jsx, jsxs: jsx },
       'react-native': { Pressable: 'Pressable', Text: 'Text', TextInput: 'TextInput', View: 'View' },
       '@expo/vector-icons/Ionicons': 'Icon',
-      'expo-router': { router: {}, useLocalSearchParams: () => ({}) },
+      'expo-router': { router: {}, useLocalSearchParams: () => ({ signature: 'asesor' }) },
+      '../components/DeliverySignatureOptions': { DeliverySignatureOptions: 'DeliverySignatureOptions' },
+      '../components/PdfPaymentOption': { PdfPaymentOption: 'PdfPaymentOption' },
+      '../lib/salePaymentSummary': { canShowSalePaymentSummary },
       '../components/FormModal': { FormModal: 'FormModal' }, '../components/PrimaryButton': { PrimaryButton: 'Button' },
       '../theme/ThemeContext': { useTheme: () => ({ colors: {} }) },
       '../components/DocumentPreviewScreen': { DocumentPreviewScreen: 'Preview' },

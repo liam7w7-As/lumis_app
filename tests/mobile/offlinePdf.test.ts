@@ -7,6 +7,7 @@ import { buildQuoteHtml } from '../../apps/mobile/src/lib/quoteDocument';
 import { buildDeliveryNoteHtml } from '../../apps/mobile/src/lib/deliveryDocument';
 import { sampleBusiness, sampleFonts, sampleImages, sampleQuote, sampleSale } from './documentFixtures';
 import { documentFileName } from '../../apps/mobile/src/lib/documentFileName';
+import { canShowSalePaymentSummary } from '../../apps/mobile/src/lib/salePaymentSummary';
 
 function preview(kind: 'quote' | 'sale' | 'delivery', novaled: boolean, online: boolean, pending: number, id: number, downloadError?: string, salePatch: Record<string, unknown> = {}) {
   const downloads: string[] = [];
@@ -17,7 +18,10 @@ function preview(kind: 'quote' | 'sale' | 'delivery', novaled: boolean, online: 
     react: { useCallback: (fn: unknown) => fn, useState: (value: unknown) => [value, () => {}] },
     'react/jsx-runtime': { jsx, jsxs: jsx },
     'react-native': { Pressable: 'Pressable', Text: 'Text', TextInput: 'TextInput', View: 'View' },
-    '@expo/vector-icons/Ionicons': 'Icon', 'expo-router': { router: {}, useLocalSearchParams: () => ({}) },
+    '@expo/vector-icons/Ionicons': 'Icon', 'expo-router': { router: {}, useLocalSearchParams: () => ({ signature: 'asesor' }) },
+    '../components/DeliverySignatureOptions': { DeliverySignatureOptions: 'DeliverySignatureOptions' },
+    '../components/PdfPaymentOption': { PdfPaymentOption: 'PdfPaymentOption' },
+    '../lib/salePaymentSummary': { canShowSalePaymentSummary },
     '../components/FormModal': { FormModal: 'FormModal' }, '../components/PrimaryButton': { PrimaryButton: 'Button' },
     '../components/DocumentPreviewScreen': { DocumentPreviewScreen: 'Preview' },
     '../theme/ThemeContext': { useTheme: () => ({ colors: {} }) },

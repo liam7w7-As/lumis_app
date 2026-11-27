@@ -159,7 +159,7 @@ test('conexión Novaled: rutas aisladas, errores de validación y descarga del P
     for (const kind of ['sale','delivery','payment-proof'] as const) {
       const result = await downloadNovaledPdf(kind,42,kind + '-9.pdf','mobile-token',kind === 'delivery' ? { mode: 'otro',name: 'Ana Pérez' } : undefined);
       assert.equal(result.base64,pdf.toString('base64')); assert.equal(requests.at(-1)!.auth,'Bearer mobile-token');
-      assert.equal(requests.at(-1)!.path,'/api/v1/lumis/sales/42/' + (kind === 'sale' ? '' : kind + '/') + 'pdf' + (kind === 'delivery' ? '?firma_entrega=otro&nombre_entrega=Ana%20P%C3%A9rez' : ''));
+      assert.equal(requests.at(-1)!.path,'/api/v1/lumis/sales/42/' + (kind === 'sale' ? '' : kind + '/') + 'pdf' + (kind === 'delivery' ? '?firma_entrega=otro&nombre_entrega=Ana%20P%C3%A9rez' : kind === 'sale' ? '?mostrar_pagos=0' : ''));
     }
   });
 });

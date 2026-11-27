@@ -4,6 +4,7 @@ import { buildQuoteHtml } from "../../apps/mobile/src/lib/quoteDocument";
 import { buildDeliveryNoteHtml } from "../../apps/mobile/src/lib/deliveryDocument";
 import { documentEditAccess } from "../../apps/mobile/src/lib/documentAccess";
 import { changedQuoteOptions } from "../../apps/mobile/src/lib/quoteOptions";
+import { canShowSalePaymentSummary } from "../../apps/mobile/src/lib/salePaymentSummary";
 import type { CompanyLicense } from "../../apps/mobile/src/lib/api";
 import {
   sampleBusiness,
@@ -68,7 +69,7 @@ const saleHtml = (delivery: boolean, business = sampleBusiness) =>
 
 test('venta sigue el resumen de Novaled web con abono inicial, saldo original y estado', () => {
   for (const [initial, status] of [[0, 'POR COBRAR'], [50, 'ABONO PARCIAL'], [200, 'PAGADO']] as const) {
-    const html = buildDeliveryNoteHtml({ documentType: 'sale',
+    const html = buildDeliveryNoteHtml({ documentType: 'sale', showPaymentSummary: true,
       sale: { ...sampleSale, id: 999, number: 42, total: 200, initialPayment: initial, totalPagado: 200, estadoPago: 'pagado', metodoPago: 'por_pagar', clientName: 'Cliente del documento' },
       business: sampleBusiness, branchName: null, images: sampleImages, fonts: sampleFonts });
     assert.ok(html.includes('NOTA DE VENTA #42') && html.includes('Cliente del documento'));
@@ -79,9 +80,9 @@ test('venta sigue el resumen de Novaled web con abono inicial, saldo original y 
   }
 });
 
-test('venta pagada conserva el resumen y los documentos antiguos usan el acumulado disponible', () => {
-  const common = { business: sampleBusiness, branchName: null, images: sampleImages, fonts: sampleFonts };
-  const paid = buildDeliveryNoteHtml({ ...common, documentType: 'sale', sale: { ...sampleSale, total: 200, initialPayment: 200, totalPagado: 200, estadoPago: 'pagado' } });
+test('el resumen solicitado conserva el abono inicial y el acumulado disponible en documentos antiguos', () => {
+  const common = { business: sampleBusiness, branchName: null, images: sampleImages, fonts: sampleFonts, showPaymentSummary: true };
+  const paid = buildDeliveryNoteHtml({ ...common, documentType: 'sale', sale: { ...sampleSale, total: 200, initialPayment: 200, totalPagado: 200, estadoPago: 'pagado', metodoPago: 'por_pagar' } });
   assert.ok(paid.includes('class="sale-summary"') && paid.includes('PAGADO'));
   assert.ok(paid.includes('Saldo pendiente:</span><span class="payment-value">Bs. 0.00'));
   const legacy = buildDeliveryNoteHtml({ ...common, documentType: 'sale', sale: { ...sampleSale, total: 200, initialPayment: null, totalPagado: 80 } });
@@ -90,15 +91,77 @@ test('venta pagada conserva el resumen y los documentos antiguos usan el acumula
   assert.ok(cancelled.includes('ANULADO'));
 });
 
-test('entrega imprime cantidades, estado y saldo sin precios ni el total de venta', () => {
+test('los abonos se imprimen solo a petición sin mover los totales ni cambiar la venta', () => {
+  const input = { business: sampleBusiness, branchName: null, images: sampleImages, fonts: sampleFonts };
+  const sale = { ...sampleSale, total: 200, initialPayment: 50, totalPagado: 80, metodoPago: 'por_pagar' as const };
+  const snapshot = JSON.stringify(sale);
+  for (const showPaymentSummary of [undefined, false]) {
+    const html = buildDeliveryNoteHtml({ ...input, documentType: 'sale', sale, showPaymentSummary });
+    assert.doesNotMatch(html, /<table class="payment-facts"|Abono:|Estado de pago:/);
+    assert.match(html, /<td class="sale-payments"><\/td><td class="sale-total">/);
+    assert.match(html, /\.sale-total\{width:42\.4%\}/);
+    assert.match(html, /<table class="totals-wrap" data-pdf-totals>/);
+    assert.match(html, /<td class="value">Bs\. 200\.00<\/td>/);
+  }
+  const enabled = buildDeliveryNoteHtml({ ...input, documentType: 'sale', sale, showPaymentSummary: true });
+  assert.match(enabled, /Abono:<\/span><span class="payment-value">Bs\. 50\.00/);
+  assert.match(enabled, /Saldo pendiente:<\/span><span class="payment-value">Bs\. 150\.00/);
+  assert.equal(JSON.stringify(sale), snapshot);
+});
+
+test('una venta ordinaria pagada en su totalidad no imprime abonos aunque se soliciten', () => {
+  const input = { business: sampleBusiness, branchName: null, images: sampleImages, fonts: sampleFonts };
+  for (const metodoPago of ['efectivo', 'qr', 'transferencia'] as const) {
+    const sale = { ...sampleSale, total: 200, initialPayment: 200, totalPagado: 200, estadoPago: 'pagado' as const,
+      metodoPago, payments: [{ id: 1, monto: 200, nota: null, createdAt: sampleSale.createdAt }] };
+    assert.equal(canShowSalePaymentSummary(sale), false);
+    const html = buildDeliveryNoteHtml({ ...input, documentType: 'sale', sale, showPaymentSummary: true });
+    assert.doesNotMatch(html, /<table class="payment-facts"|Abono:|Estado de pago:/);
+    assert.match(html, /<td class="value">Bs\. 200\.00<\/td>/);
+  }
+});
+
+test('los créditos y las ventas saldadas con abonos conservan la opción de mostrar pagos', () => {
+  const sale = { ...sampleSale, total: 200, totalPagado: 200, estadoPago: 'pagado' as const, metodoPago: 'efectivo' as const };
+  assert.equal(canShowSalePaymentSummary({ ...sale, initialPayment: 50 }), true);
+  assert.equal(canShowSalePaymentSummary({ ...sale, initialPayment: 200, metodoPago: 'por_pagar' }), true);
+  assert.equal(canShowSalePaymentSummary({ ...sale, initialPayment: null, payments: [
+    { id: 1, monto: 50, nota: null, createdAt: sale.createdAt },
+    { id: 2, monto: 150, nota: null, createdAt: sale.createdAt },
+  ] }), true);
+  assert.equal(canShowSalePaymentSummary({ ...sale, initialPayment: null, estadoPago: 'por_cobrar', totalPagado: 80 }), true);
+});
+
+test('crédito sin abono inicial conserva el resumen tras pagarse completo con un único pago', () => {
+  const input = { business: sampleBusiness, branchName: null, images: sampleImages, fonts: sampleFonts };
+  for (const metodoPago of ['efectivo', 'transferencia'] as const) {
+    const sale = { ...sampleSale, total: 200, totalPagado: 200, estadoPago: 'pagado' as const, metodoPago,
+      initialPayment: 0, payments: [{ id: 1, monto: 200, nota: null, createdAt: sampleSale.createdAt }] };
+    assert.equal(canShowSalePaymentSummary(sale), true);
+    const html = buildDeliveryNoteHtml({ ...input, documentType: 'sale', sale, showPaymentSummary: true });
+    assert.match(html, /Abono:<\/span><span class="payment-value">Bs\. 0\.00/);
+    assert.match(html, /Saldo pendiente:<\/span><span class="payment-value">Bs\. 200\.00/);
+    assert.equal(canShowSalePaymentSummary({ ...sale, initialPayment: null }), false);
+    assert.equal(canShowSalePaymentSummary({ ...sale, initialPayment: undefined }), false);
+  }
+});
+
+test('entrega imprime cinco columnas con unidad y subtotal, estado y saldo sin precio unitario', () => {
   const sale = saleHtml(false), delivery = saleHtml(true);
   assert.ok(sale.includes('Precio unitario') && sale.includes('TOTAL'));
   assert.ok(!sale.includes('Entregué conforme') && !sale.includes('Recibí conforme'));
   assert.ok(delivery.includes('Entregué conforme') && delivery.includes('Recibí conforme'));
   assert.ok(delivery.includes('Estado de pago:') && delivery.includes('Saldo pendiente:'));
   assert.ok(!delivery.includes('Precio unitario') && !delivery.includes('Sub total:'));
-  assert.ok(!delivery.includes('<th class="col-code">') && !delivery.includes('<th class="col-unit">'));
-  assert.match(delivery, /colspan="3"/);
+  assert.ok(!delivery.includes('<th class="col-code">'));
+  const table = delivery.match(/<table class="items">([\s\S]*?)<\/table>/)![1];
+  assert.deepEqual([...table.matchAll(/<th class="[^\"]+">([^<]+)<\/th>/g)].map(match => match[1]), ['N°', 'Artículo', 'Cant.', 'Unidad', 'Subtotal']);
+  const rows = table.match(/<tbody>([\s\S]*?)<\/tbody>/)![1];
+  for (const row of rows.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)) assert.equal([...row[1].matchAll(/<td\b/g)].length, 5);
+  assert.match(rows, /<td class="col-unit">Unidad<\/td>/);
+  assert.match(rows, /<td class="col-subt col-money">Bs\. 650\.00<\/td>/);
+  assert.match(rows, /<td class="col-subt col-money">Bs\. 240\.00<\/td>/);
+  assert.match(delivery, /colspan="5"/);
 });
 
 test('la entrega conserva ambas conformidades con todos los adicionales apagados', () => {
@@ -162,7 +225,7 @@ test("preferencias de empresa ocultan columnas completas y aprovechan el ancho l
     saleHtml(true, business),
   ]) {
     assert.doesNotMatch(html, /<t[dh] class="col-(brand|origin)"/);
-    assert.match(html, /colspan="[37]"/);
+    assert.match(html, /colspan="[57]"/);
     assert.match(html, /Interruptor termomagnético/);
     assert.match(html, /890\.00/);
   }

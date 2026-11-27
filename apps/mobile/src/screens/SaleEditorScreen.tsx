@@ -41,6 +41,9 @@ import { ItemSwipe } from '../components/ItemSwipe';
 import { ReorderItemsModal } from '../components/ReorderItemsModal';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { DocumentOptions, type DocumentOptionValues } from '../components/DocumentOptions';
+import { DeliverySignatureOptions, type DeliverySignature } from '../components/DeliverySignatureOptions';
+import { PdfPaymentOption } from '../components/PdfPaymentOption';
+import { canShowSalePaymentSummary } from '../lib/salePaymentSummary';
 import { SegmentedTabs } from '../components/SegmentedTabs';
 import { SalePaymentSection } from '../components/SalePaymentSection';
 import { DocumentClientModal } from '../components/DocumentClientModal';
@@ -133,6 +136,9 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
   const [documentNotes, setDocumentNotes] = useState('');
   const [showNotes, setShowNotes] = useState(false);
   const [includeSignature, setIncludeSignature] = useState(false);
+  const [deliverySignature, setDeliverySignature] = useState<DeliverySignature>({ mode: 'asesor', name: '' });
+  const [signatureError, setSignatureError] = useState<string | null>(null);
+  const [showPaymentSummary, setShowPaymentSummary] = useState(false);
   const [optionsBusy, setOptionsBusy] = useState(false);
   const pending = useLegacyPending('/api/sales');
   const restored = useRef<unknown>(null);
@@ -208,6 +214,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
   const clientId = isDetail ? (sale?.clientId ?? null) : (client?.id ?? null);
   const total = isDetail ? (sale?.total ?? 0) : round2(items.reduce((s, it) => s + it.quantity * it.unitPrice, 0));
   const hasItems = isDetail ? (sale?.items.length ?? 0) > 0 : items.length > 0;
+  const paymentPdfAvailable = isDetail ? !!sale && canShowSalePaymentSummary(sale) : metodo === 'por_pagar';
   useTutorialAvailability({ ready: !loading && !error, hasItems });
   const tutorial = useTutorial();
 
@@ -539,10 +546,19 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
     ]);
   };
 
-  // El ✓ en la pestaña de entrega: marca la venta como entregada (la primera
-  // vez fija la fecha) y abre la vista previa de su nota de entrega.
+  const validateDeliverySignature = () => {
+    if (deliverySignature.mode === 'otro' && !deliverySignature.name.trim()) {
+      setSignatureError('Escribe el nombre para la firma.');
+      return false;
+    }
+    setSignatureError(null);
+    return true;
+  };
+  const deliveryPreviewPath = () => `/pos/${saleId}/delivery?signature=${deliverySignature.mode}&name=${encodeURIComponent(deliverySignature.mode === 'otro' ? deliverySignature.name.trim() : '')}`;
+
+  // Guardar en la pestaña de entrega registra su fecha y abre su propio PDF.
   const handleDeliver = async () => {
-    if (!token || saleId == null) return;
+    if (!token || saleId == null || saving || optionsBusy || !validateDeliverySignature()) return;
     if (isVoided) {
       feedback.alert('Venta anulada', 'No se puede entregar una venta anulada.');
       return;
@@ -554,7 +570,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
         const res = await api.deliverSale(saleId, token);
         setSale((prev) => (prev ? { ...prev, entregadaAt: res.entregadaAt } : prev));
       }
-      router.push(`/pos/${saleId}/delivery`);
+      router.push(deliveryPreviewPath());
     } catch (err) {
       showApiError(err, 'No se pudo registrar la entrega');
     } finally {
@@ -593,11 +609,12 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
 
   const openDocumentPreview = async () => {
     if (!isDetail || saleId == null || saving || optionsBusy) return;
+    if (docTab === 'entrega' && !validateDeliverySignature()) return;
     setSaving(true);
     try {
       await persistLineDraft();
       if (!await persistDocumentNotes()) return;
-      router.push(docTab === 'entrega' ? `/pos/${saleId}/delivery` : `/pos/${saleId}/preview`);
+      router.push(docTab === 'entrega' ? deliveryPreviewPath() : `/pos/${saleId}/preview?mostrar_pagos=${showPaymentSummary ? '1' : '0'}`);
     } catch (err) {
       showApiError(err, docTab === 'entrega' ? 'No se pudo abrir el PDF de la entrega' : 'No se pudo abrir el PDF de la venta');
     } finally {
@@ -702,7 +719,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
         }
       }
       clear();
-      router.replace(`/pos/${created.id}/preview?created=1`);
+      router.replace(`/pos/${created.id}/preview?created=1&mostrar_pagos=${showPaymentSummary ? '1' : '0'}`);
       if(receiptWarning)feedback.warning('Venta guardada',`La venta #${created.number??created.id} está guardada. El comprobante no se pudo subir; puedes adjuntarlo desde el detalle.`);
     } catch (err) {
       showApiError(err, 'No se pudo crear la venta');
@@ -1179,6 +1196,8 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
               <>
                 <DocumentOptions delivery values={{ showNotes, includeSignature, includeSeal: includeSello }}
                   disabled={optionsBusy || saving || isVoided} onToggle={key => { void toggleDocumentOption(key); }} />
+                <DeliverySignatureOptions value={deliverySignature} error={signatureError} disabled={saving || optionsBusy}
+                  onChange={value => { setDeliverySignature(value); setSignatureError(null); }} />
 
                 <Text style={[styles.fieldLabel, { color: colors.muted }]}>Estado de pago</Text>
                 {metodoSelector}
@@ -1190,6 +1209,7 @@ function SaleEditorScreenContent({ saleId }: { saleId?: number }) {
                 {metodoSelector}
                 {paymentSection}
 
+                {paymentPdfAvailable && <PdfPaymentOption checked={showPaymentSummary} onChange={setShowPaymentSummary} disabled={saving || optionsBusy} />}
                 {!(isDetail && metodo === 'por_pagar') && (
                   <PrimaryButton
                     title={
